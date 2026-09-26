@@ -8,23 +8,23 @@ from pathlib import Path
 
 
 IPAD_TESTS = (
-    "LoopdyCardCatalogUITests/testIPadUsesReadableTwoColumnCatalogLayout",
-    "LoopdyLaunchTests/testIPadChatUsesPersistentCollapsibleSidebarAndRecentersTheCanvas",
-    "LoopdyLaunchTests/testIPadReasoningChipReflectsRealActiveAndCompletedLifecycle",
-    "LoopdyLaunchTests/testIPadSidebarContentsStayInsideBothEdges",
-    "LoopdyLaunchTests/testProjectChangesMarkdownPreviewAndPanelExpansionOnIPad",
-    "LoopdyLaunchTests/testV3IPadHeaderAtAccessibilityXXXL",
-    "LoopdyLaunchTests/testV3IPadHeaderInLandscape",
-    "LoopdyLaunchTests/testV3IPadHeaderUsesFullWidthAndLargerAlignedControls",
-    "LoopdyLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRail",
-    "LoopdyLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRailInLandscape",
-    "LoopdyLaunchTests/testV3IPadWideModelPopoverAtAccessibilityXXXL",
+    "BighelpCardCatalogUITests/testIPadUsesReadableTwoColumnCatalogLayout",
+    "BighelpLaunchTests/testIPadChatUsesPersistentCollapsibleSidebarAndRecentersTheCanvas",
+    "BighelpLaunchTests/testIPadReasoningChipReflectsRealActiveAndCompletedLifecycle",
+    "BighelpLaunchTests/testIPadSidebarContentsStayInsideBothEdges",
+    "BighelpLaunchTests/testProjectChangesMarkdownPreviewAndPanelExpansionOnIPad",
+    "BighelpLaunchTests/testV3IPadHeaderAtAccessibilityXXXL",
+    "BighelpLaunchTests/testV3IPadHeaderInLandscape",
+    "BighelpLaunchTests/testV3IPadHeaderUsesFullWidthAndLargerAlignedControls",
+    "BighelpLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRail",
+    "BighelpLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRailInLandscape",
+    "BighelpLaunchTests/testV3IPadWideModelPopoverAtAccessibilityXXXL",
     "Release180UITests/testProjectChangesOutsideTapDismissesWithoutBreakingInsideControls",
     "SimplifiedShellUITests/testChatMatchesUnclutteredReferenceAndDisclosesComposerControls",
     "SimplifiedShellUITests/testAgentsDestinationSearchGroupsAndDrawerOrder",
     "AgentsUITests/testLastRowClearsSearchAndNavigationInPortraitAndLandscape",
 )
-SELECTOR_PREFIX = "-only-testing:LoopdyUITests/"
+SELECTOR_PREFIX = "-only-testing:BighelpUITests/"
 
 
 def selectors(root: Path) -> list[str]:
@@ -34,7 +34,7 @@ def selectors(root: Path) -> list[str]:
         r"^(?:@MainActor\s+)?(?:final\s+)?class\s+(\w+)(?:\s*:\s*(\w+))?",
         re.MULTILINE,
     )
-    for path in sorted((root / "LoopdyUITests").glob("*.swift")):
+    for path in sorted((root / "BighelpUITests").glob("*.swift")):
         source = path.read_text()
         methods = list(method_pattern.finditer(source))
         if not methods:
@@ -45,7 +45,7 @@ def selectors(root: Path) -> list[str]:
         classes = list(class_pattern.finditer(source))
         for method in methods:
             preceding = [declaration for declaration in classes if declaration.start() < method.start()]
-            if not preceding or preceding[-1].group(2) not in {"XCTestCase", "LoopdyUITestCase"}:
+            if not preceding or preceding[-1].group(2) not in {"XCTestCase", "BighelpUITestCase"}:
                 raise ValueError(f"Unrecognized UI test class in {path}: {method.group(1)}")
             tests.append(f"{SELECTOR_PREFIX}{preceding[-1].group(1)}/{method.group(1)}")
     if not tests or len(tests) != len(set(tests)):
@@ -75,7 +75,7 @@ def verify_ipad_log(log: Path, expected: list[str]) -> dict:
     # logs, not an assumed xcresult JSON schema. A changed/missing log format
     # fails closed rather than letting omitted or skipped tests look green.
     records = re.findall(
-        r"Test Case '-\[(?:LoopdyUITests\.)?(\w+) (test\w+)\]' "
+        r"Test Case '-\[(?:BighelpUITests\.)?(\w+) (test\w+)\]' "
         r"(started|passed|failed|skipped)\b",
         log.read_text(errors="replace"),
     )

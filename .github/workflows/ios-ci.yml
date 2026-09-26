@@ -33,6 +33,12 @@ jobs:
           repository: NousResearch/hermes-agent
           ref: 5bd439d3ed4ae5f099857813383389dcd0ab4369
           path: .ci/hermes
+      # The Hermes plugin lives in promptclickrun/bighelp-plugin; test the revision the app pins.
+      - uses: actions/checkout@v4
+        with:
+          repository: promptclickrun/bighelp-plugin
+          ref: e6f900ed85590571ac842b1651647414bda91beb
+          path: .ci/plugin
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -45,7 +51,7 @@ jobs:
           set -o pipefail
           export HERMES_HOME="$RUNNER_TEMP/wiki-hermes-home"
           export TMPDIR=/tmp
-          export PYTHONPATH="$GITHUB_WORKSPACE/.ci/hermes:$GITHUB_WORKSPACE/plugins/loopdy:$GITHUB_WORKSPACE/plugins/loopdy/tests"
+          export PYTHONPATH="$GITHUB_WORKSPACE/.ci/hermes:$GITHUB_WORKSPACE/.ci/plugin:$GITHUB_WORKSPACE/.ci/plugin/tests"
           .ci/hermes/venv/bin/python -m unittest \
             test_wiki_integration test_wiki_service test_wiki_wire \
             test_workspace_control.WorkspaceControllerTests.test_every_wire_operation_has_one_explicit_backend_handler \
@@ -116,12 +122,12 @@ jobs:
             python3 scripts/ci_release_validation.py selectors > "$RUNNER_TEMP/ui-test-selectors.txt"
             while IFS= read -r selector; do selectors+=("$selector"); done < "$RUNNER_TEMP/ui-test-selectors.txt"
           elif [[ "$TEST_SUITE" == "native" ]]; then
-            selectors=(-only-testing:LoopdyTests)
+            selectors=(-only-testing:BighelpTests)
           elif [[ "$TEST_SUITE" == "references" ]]; then
             selectors=(
-              -only-testing:LoopdyUITests/AccountNameUITests
-              -only-testing:LoopdyUITests/ChatBuild2UITests
-              -only-testing:LoopdyUITests/ReferenceHubUITests
+              -only-testing:BighelpUITests/AccountNameUITests
+              -only-testing:BighelpUITests/ChatBuild2UITests
+              -only-testing:BighelpUITests/ReferenceHubUITests
             )
           else
             python3 scripts/ci_ui_test_shard.py "$TEST_SUITE" > "$RUNNER_TEMP/ui-test-selectors.txt"
@@ -131,10 +137,10 @@ jobs:
           printf '%s\n' "${selectors[@]}" > "$RUNNER_TEMP/test-diagnostics/selectors.txt"
           printf 'Test suite: %s\n' "$TEST_SUITE" >> "$GITHUB_STEP_SUMMARY"
           xcodebuild test \
-            -project Loopdy.xcodeproj -scheme Loopdy \
+            -project Bighelp.xcodeproj -scheme Bighelp \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -derivedDataPath "$RUNNER_TEMP/LoopdyDerivedData" \
-            -resultBundlePath "$RUNNER_TEMP/LoopdyTests.xcresult" \
+            -derivedDataPath "$RUNNER_TEMP/BighelpDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/BighelpTests.xcresult" \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 240 \
@@ -158,10 +164,10 @@ jobs:
         env:
           TEST_SUITE: ${{ matrix.suite }}
         run: |
-          if [[ -d "$RUNNER_TEMP/LoopdyTests.xcresult" ]]; then
+          if [[ -d "$RUNNER_TEMP/BighelpTests.xcresult" ]]; then
             mkdir -p "$RUNNER_TEMP/test-diagnostics"
-            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/LoopdyTests.xcresult" > "$RUNNER_TEMP/test-diagnostics/summary.json"
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/LoopdyTests.xcresult" --output-path "$RUNNER_TEMP/test-diagnostics/attachments" --only-failures
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BighelpTests.xcresult" > "$RUNNER_TEMP/test-diagnostics/summary.json"
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/BighelpTests.xcresult" --output-path "$RUNNER_TEMP/test-diagnostics/attachments" --only-failures
           fi
           python3 - <<'PY'
           import os
@@ -200,9 +206,9 @@ jobs:
         with:
           name: ios-test-evidence-${{ matrix.suite }}
           path: |
-            ${{ runner.temp }}/LoopdyTests.xcresult
+            ${{ runner.temp }}/BighelpTests.xcresult
             ${{ runner.temp }}/xcodebuild.log
-            Loopdy.xcodeproj
+            Bighelp.xcodeproj
           retention-days: 7
   release-readiness:
     runs-on: ubuntu-latest

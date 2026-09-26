@@ -59,9 +59,9 @@ struct DirectHermesNativeProbe {
             let status = try await restored.request("session.activate", params: ["session_id": .string(sid)])
             guard status.object?["session_id"]?.string == sid else { throw DirectHermesError.invalidResponse }
             await restored.disconnect()
-            let receipt: [String: LoopdyJSONValue] = ["outcome": .string("passed"), "native_password_auth": .boolean(true),
+            let receipt: [String: BighelpJSONValue] = ["outcome": .string("passed"), "native_password_auth": .boolean(true),
                 "wrong_password_rejected": .boolean(denied), "native_streaming_and_real_tool": .boolean(true),
-                "reconnect_without_resend": .boolean(true), "event_types": .array(Set(kinds).sorted().map(LoopdyJSONValue.string))]
+                "reconnect_without_resend": .boolean(true), "event_types": .array(Set(kinds).sorted().map(BighelpJSONValue.string))]
             print(String(decoding: try JSONEncoder().encode(receipt), as: UTF8.self))
         } catch {
             let safe = DirectHermesHTTP.safeError(error)

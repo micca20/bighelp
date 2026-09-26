@@ -1,6 +1,6 @@
 # Direct streaming and live voice
 
-Loopdy keeps Hermes as the execution and canonical-history owner. The native app uses bounded session pages and a separate disposable live overlay. Full tool content is retrieved only when you open its complete-content reader.
+bighelp keeps Hermes as the execution and canonical-history owner. The native app uses bounded session pages and a separate disposable live overlay. Full tool content is retrieved only when you open its complete-content reader.
 
 ## Routes
 
@@ -12,7 +12,7 @@ State-backed relay clients explicitly negotiate `state-backed-presentation-v1`. 
 
 ## Voice
 
-Live voice defaults to **Codex subscription** (`gpt-live-1-codex`). The plugin uses Hermes-managed subscription credentials; the phone receives no bearer token. Native WebRTC carries audio directly to the provider while authenticated Loopdy messages carry setup, captions and job controls. The provider sideband is connected before the answer SDP is returned.
+Live voice defaults to **Codex subscription** (`gpt-live-1-codex`). The plugin uses Hermes-managed subscription credentials; the phone receives no bearer token. Native WebRTC carries audio directly to the provider while authenticated bighelp messages carry setup, captions and job controls. The provider sideband is connected before the answer SDP is returned.
 
 Every delegated task has its own Hermes conversation, durable job identity and owner/revision checks. Tasks can finish independently and return concise, redacted results. Muting, barge-in and ending the call do not cancel accepted work. Cancel targets one job explicitly. Unknown admission or control outcomes are reconciled rather than resubmitted.
 

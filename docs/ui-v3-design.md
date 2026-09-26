@@ -1,4 +1,4 @@
-# UI V3: ChatUI adapted for Loopdy
+# UI V3: ChatUI adapted for bighelp
 
 Status: historical design and implementation record. Current shipping V3 and
 preference-migration behavior are documented in [Product](../PRODUCT.md) and
@@ -11,7 +11,7 @@ The current visual authority is the [iOS 27 native presentation contract](IOS27_
 
 ## Direction contract
 
-**Thesis:** A calm native conversation surface with Loopdy's working tools integrated, rather than a stack of showcase cards.
+**Thesis:** A calm native conversation surface with bighelp's working tools integrated, rather than a stack of showcase cards.
 
 **Visual language:** System typography, semantic theme colors, theme-accent user bubbles, neutral readable assistant content, rounded media, SF Symbols, monochrome infinity New Chat actions and pronounced native glass on functional chrome. Match the reference's hierarchy, not its fixed small text sizes.
 
@@ -33,7 +33,7 @@ The current visual authority is the [iOS 27 native presentation contract](IOS27_
 
 https://www.figma.com/community/file/1211259538649728876/chatui-swiftui-for-chat
 
-ChatUI Figma reference by its community authors, listed under CC BY 4.0. Used as design inspiration; no Figma assets or ChatUI package are vendored. Implementation uses existing Loopdy code and native SwiftUI controls.
+ChatUI Figma reference by its community authors, listed under CC BY 4.0. Used as design inspiration; no Figma assets or ChatUI package are vendored. Implementation uses existing bighelp code and native SwiftUI controls.
 
 ## Acceptance
 

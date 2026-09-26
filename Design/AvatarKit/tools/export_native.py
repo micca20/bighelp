@@ -7,7 +7,7 @@ every state, and writes one JSON file the app draws from:
 
     python3 Design/AvatarKit/tools/export_native.py
 
-Run it after editing build.py. The output is Loopdy/Resources/AvatarKit.json.
+Run it after editing build.py. The output is Bighelp/Resources/AvatarKit.json.
 Only the CSS features the kit uses are supported; anything else fails loudly.
 """
 import importlib.util
@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(HERE)
 REPO = os.path.dirname(os.path.dirname(KIT))
-OUT = os.path.join(REPO, "Loopdy", "Resources", "AvatarKit.json")
+OUT = os.path.join(REPO, "Bighelp", "Resources", "AvatarKit.json")
 
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("avatar_kit_build", os.path.join(HERE, "build.py"))

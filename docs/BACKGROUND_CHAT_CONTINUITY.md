@@ -1,6 +1,6 @@
 # Background chat continuity
 
-Loopdy uses iOS's existing `remote-notification` wake capability. Background execution is discretionary: silent pushes may be delayed, combined, or omitted; force-quit prevents background relaunch until the app is opened again. There is no audio/VoIP/location keepalive and no guarantee the phone stays current while suspended.
+bighelp uses iOS's existing `remote-notification` wake capability. Background execution is discretionary: silent pushes may be delayed, combined, or omitted; force-quit prevents background relaunch until the app is opened again. There is no audio/VoIP/location keepalive and no guarantee the phone stays current while suspended.
 
 ## Preserve content, defer presentation
 
@@ -30,7 +30,7 @@ These are application limits, not an entitlement to iOS runtime. Local flush wor
 
 ## Host reduction
 
-The Loopdy plugin limits assistant draft presentation frames to one per 250 milliseconds per active turn. Intermediate text snapshots may be coalesced. Final responses are complete and unthrottled, and tool, approval, attachment, and canonical history records are not coalesced away. This uses the existing encrypted Link transport, with no new plaintext cloud cache or Hermes core change.
+The bighelp plugin limits assistant draft presentation frames to one per 250 milliseconds per active turn. Intermediate text snapshots may be coalesced. Final responses are complete and unthrottled, and tool, approval, attachment, and canonical history records are not coalesced away. This uses the existing encrypted Link transport, with no new plaintext cloud cache or Hermes core change.
 
 ## Verification boundary
 

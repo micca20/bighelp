@@ -1,5 +1,5 @@
 app_identifier("app.loopdy.mobile")
 
-# Set LOOPDY_DEVELOPMENT_TEAM (or DEVELOPMENT_TEAM in Config/Local.xcconfig).
-team = ENV["LOOPDY_DEVELOPMENT_TEAM"].to_s.strip
+# Set BIGHELP_DEVELOPMENT_TEAM (or DEVELOPMENT_TEAM in Config/Local.xcconfig).
+team = ENV["BIGHELP_DEVELOPMENT_TEAM"].to_s.strip
 team_id(team) unless team.empty?

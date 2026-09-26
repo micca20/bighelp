@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>BighelpBuzzKitClientKey</key>
+    <string>$(BUZZKIT_CLIENT_KEY)</string>
+    <key>BighelpBuzzKitAPIURL</key>
+    <string>https://api.buzzkit.dev</string>
+    <key>CFBundleDisplayName</key>
+    <string>bighelp</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>loopdy</string>
+                <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+            </array>
+        </dict>
+    </array>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>googlechrome</string>
+		<string>firefox</string>
+		<string>brave</string>
+	</array>
+	<key>BighelpGitHubClientID</key>
+	<string>Iv23lixjYOwXssu6ryfg</string>
+	<key>BighelpGitHubInstallationURL</key>
+	<string>https://github.com/apps/loopdy-references/installations/new</string>
+	<key>BighelpLinkBaseURL</key>
+	<string>https://link.loopdy.app</string>
+	<key>BighelpNotificationKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)app.loopdy.mobile.notification</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>127.0.0.0/8</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>::1</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>100.64.0.0/10</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>fd7a:115c:a1e0::/48</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+        </dict>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>bighelp connects directly to the Hermes host you choose on your local network or Tailscale.</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>When you enable Apple Health tools, bighelp shares the Health data you choose with your selected agent and its AI provider to answer your health and fitness questions.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>bighelp does not add or change Apple Health data. It only reads the data you choose to share for your health and fitness questions.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>When you enable Calendar tools, your selected agent can read, create, update, and delete calendar events on your request.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>When you enable Reminders tools, your selected agent can read, create, update, and delete reminders on your request.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>127.0.0.0/8</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>::1</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>100.64.0.0/10</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>fd7a:115c:a1e0::/48</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+        </dict>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>bighelp connects directly to the Hermes host you choose on your local network or Tailscale.</string>
+
+    <key>BighelpNativeBrowserAuthenticationEnabled</key>
+    <true/>
+    <key>BighelpNotificationPluginRevision</key>
+    <string>e6f900ed85590571ac842b1651647414bda91beb</string>
+    <key>NSCameraUsageDescription</key>
+    <string>bighelp uses the camera to scan short-lived pairing codes, power Reflective Vision, and capture photos or scan documents you intentionally attach to chats.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>bighelp uses your approximate location, when you choose, to request live local conditions from Apple Weather for Home.</string>
+    <key>NSLocationDefaultAccuracyReduced</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>bighelp uses your microphone for live voice conversations with your selected Hermes agent.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>bighelp saves images, GIFs, and videos to Photos only when you choose Save to Photos.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>bighelp transcribes your voice on device and sends only your words to your selected Hermes agent.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+    <key>UIAppFonts</key>
+    <array>
+        <string>NotoSans-Regular.ttf</string>
+        <string>NotoSans-SemiBold.ttf</string>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict>
+</plist>

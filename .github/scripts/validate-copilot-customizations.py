@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Loopdy's GitHub Copilot instructions and custom agents."""
+"""Validate Bighelp's GitHub Copilot instructions and custom agents."""
 
 from __future__ import annotations
 
@@ -11,25 +11,25 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTRUCTIONS = ROOT / ".github" / "copilot-instructions.md"
 AGENT_DIR = ROOT / ".github" / "agents"
 EXPECTED_AGENTS = {
-    "loopdy-delivery-lead.agent.md",
-    "loopdy-product-architect.agent.md",
+    "bighelp-delivery-lead.agent.md",
+    "bighelp-product-architect.agent.md",
     "hermes-integration-architect.agent.md",
-    "loopdy-experience-designer.agent.md",
-    "loopdy-ios-builder.agent.md",
-    "loopdy-hermes-plugin-builder.agent.md",
-    "loopdy-security-reviewer.agent.md",
-    "loopdy-release-manager.agent.md",
+    "bighelp-experience-designer.agent.md",
+    "bighelp-ios-builder.agent.md",
+    "bighelp-hermes-plugin-builder.agent.md",
+    "bighelp-security-reviewer.agent.md",
+    "bighelp-release-manager.agent.md",
 }
 ALLOWED_TOOLS = {"read", "search", "edit", "execute", "agent"}
 EXPECTED_TOOLS = {
-    "loopdy-security-reviewer.agent.md": {"read", "search", "execute"},
-    "loopdy-release-manager.agent.md": {"read", "search", "execute"},
-    "loopdy-delivery-lead.agent.md": {"read", "search", "edit", "execute", "agent"},
+    "bighelp-security-reviewer.agent.md": {"read", "search", "execute"},
+    "bighelp-release-manager.agent.md": {"read", "search", "execute"},
+    "bighelp-delivery-lead.agent.md": {"read", "search", "edit", "execute", "agent"},
 }
 NATIVE_BOUNDARY_FILES = {
     "hermes-integration-architect.agent.md",
-    "loopdy-hermes-plugin-builder.agent.md",
-    "loopdy-delivery-lead.agent.md",
+    "bighelp-hermes-plugin-builder.agent.md",
+    "bighelp-delivery-lead.agent.md",
 }
 REQUIRED_BOUNDARY_TERMS = (
     "hermes",
@@ -174,14 +174,14 @@ def validate() -> None:
             raise ValidationError(
                 f"{filename}: expected tools {sorted(expected_tools)}, got {sorted(tool_set)}"
             )
-        if filename != "loopdy-delivery-lead.agent.md" and "agent" in tool_set:
+        if filename != "bighelp-delivery-lead.agent.md" and "agent" in tool_set:
             raise ValidationError(f"{filename}: only the delivery lead may invoke other agents")
         if filename in NATIVE_BOUNDARY_FILES:
             require_terms(filename, prompt, REQUIRED_BOUNDARY_TERMS)
 
     print(
         "Validated 1 repository instruction file and "
-        f"{len(EXPECTED_AGENTS)} Loopdy custom agent profiles."
+        f"{len(EXPECTED_AGENTS)} Bighelp custom agent profiles."
     )
 
 

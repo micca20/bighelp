@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-Loopdy supports Hermes and is building its own Loopdy Native harness. Neither
+bighelp supports Hermes and is building its own bighelp Native harness. Neither
 path replaces the other. The Goose-based iOS/Companion runtime in
 [issue #25](https://github.com/promptclickrun/bighelp-ios/issues/25) remains under
 development; the local Bot Mode fixture runner is not that production engine.
@@ -10,7 +10,7 @@ development; the local Bot Mode fixture runner is not that production engine.
 For Hermes hosts, Hermes owns room membership, routing, task execution,
 idempotency, fencing and the durable event log. The iOS app presents that state through one typed `groups.*` client. It can use
 native authenticated Direct workspace operations or explicitly selected,
-authenticated encrypted Link. Direct does not require a Loopdy account.
+authenticated encrypted Link. Direct does not require a bighelp account.
 The plugin forwards these fixed operations through Hermes' existing
 `tui_gateway.server.handle_request` dispatcher. No second daemon, private
 database adapter or synthesized member-turn prompt is needed.
@@ -109,7 +109,7 @@ and canonical receipt can associate a message with its local display snapshot.
 Other generic human events must not be attributed to whichever person is using
 this phone now. Display identity never grants access to a person's data.
 
-The existing plugin supplies device-bound person context on normal Loopdy
+The existing plugin supplies device-bound person context on normal bighelp
 platform turns through its public pre-LLM hook. Native hosted groups do not
 currently expose the same authenticated sender-to-first-member-turn association
 to that hook. Its session/task identifiers are not hosted discussion-task
@@ -144,8 +144,8 @@ an unconfirmed close relies on the host's bounded inactivity lease.
 
 ## Verification and release
 
-Run `HermesBotModeContractTests`, `LoopdyLinkHermesBotModeClientTests`,
-`LoopdyLinkHermesBotModeApprovalTests`, `BotModeRoomStoreTests` and
+Run `HermesBotModeContractTests`, `BighelpLinkHermesBotModeClientTests`,
+`BighelpLinkHermesBotModeApprovalTests`, `BotModeRoomStoreTests` and
 `ChatBotModeIntegrationTests` along with the chat interaction regression gate.
 The Link client tests cover request shapes, cancelled/stale results, idempotency,
 cursor validation and driver status. Store checks cover persistence, replay,
@@ -157,7 +157,7 @@ archive, then activate it using Hermes' supported installer/updater. An app
 upload does not activate a plugin on a user's host. Record source, simulator,
 live host and TestFlight evidence separately; none substitutes for the others.
 Include `test_hosted_room_contract` and the portable
-`plugins/loopdy/tests/fixtures/groups-result-v1.json` vector for negotiated
+`bighelp-plugin/tests/fixtures/groups-result-v1.json` vector for negotiated
 envelope and encryption coverage.
 
 Room discovery on the Hermes host must exclude invalid profile directories and

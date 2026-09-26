@@ -7,4 +7,4 @@ DEVELOPMENT_TEAM = ABCDE12345
 BUZZKIT_CLIENT_KEY =
 
 // App Store Connect app ID, used only by the fastlane release lanes.
-LOOPDY_APP_STORE_APP_ID = 
+BIGHELP_APP_STORE_APP_ID = 

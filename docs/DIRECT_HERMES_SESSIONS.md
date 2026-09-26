@@ -117,7 +117,7 @@ digest, boundary row ID or shared history revision. An idle read is not a
 snapshot lock. Writes may precede a failed agent build, and the returned message
 IDs may still belong to the source; a child needs authoritative history refetch.
 Whole-current-text-history branching is a different operation and does not
-implement Loopdy's selected-message checkpoint contract. The separate API-server
+implement bighelp's selected-message checkpoint contract. The separate API-server
 fork route also has different source/auth semantics and ends the original
 session; it is not a substitute.
 

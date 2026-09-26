@@ -1,8 +1,0 @@
-node_modules/
-.wrangler/
-worker-configuration.d.ts
-coverage/
-.env
-.env.*
-.dev.vars
-.dev.vars.*

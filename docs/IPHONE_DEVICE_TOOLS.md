@@ -39,13 +39,13 @@ this distinction.
 
 Requested data is sent to the selected Hermes host and its AI provider. It may
 be retained in the ordinary conversation/tool history. It is not used for
-advertising or analytics. Loopdy's mutation journal stores only request hashes,
+advertising or analytics. bighelp's mutation journal stores only request hashes,
 expiry and identity/reconciliation metadata, never Health samples, event text,
 reminder text or request arguments. The journal is protected, atomically written,
 excluded from backups and bounded to 512 records / 2 MB. No raw Apple data should
 be added to diagnostics.
 
-Hermes and the future Loopdy Native harness remain complementary. The unfinished
+Hermes and the future bighelp Native harness remain complementary. The unfinished
 Native harness is not required and is not treated as operational.
 
 ## Components and required versions
@@ -53,7 +53,7 @@ Native harness is not required and is not treated as operational.
 | Component | Responsibility |
 | --- | --- |
 | Hermes `ToolExecutionContext` extension | Carries immutable authenticated ingress ownership to official plugin handlers and hooks, with official session/turn/tool-call IDs. |
-| Loopdy plugin 2.11.2 | Registers `iphone_health`, `iphone_calendar`, `iphone_reminders`; uses the gateway connection loop to target the verified phone and correlate canonical Hermes turn IDs. |
+| bighelp plugin 2.11.2 | Registers `iphone_health`, `iphone_calendar`, `iphone_reminders`; uses the gateway connection loop to target the verified phone and correlate canonical Hermes turn IDs. |
 | Link relay with `directed-frames-v1` | Negotiates exact-recipient delivery and queues only for that active paired device. Legacy sockets never receive a broadcast fallback. |
 | iOS `DeviceToolPermissions` | Persists opt-in grants and fences asynchronous work by scope/revision. |
 | iOS `DeviceToolCoordinator` | Validates envelopes, deadlines, ownership and grants; bounds concurrency and journals mutation outcomes. |
@@ -152,7 +152,7 @@ socket receive loop while an Apple permission prompt/query is pending.
 
 Keep both HealthKit usage-description keys in the app Info.plist because the
 shared authorization API is linked even for reads. The update description must
-truthfully state that Loopdy does not change Health data. Both authorization
+truthfully state that bighelp does not change Health data. Both authorization
 calls pass an empty toShare set; health.write is not an allowed operation.
 Do not mistake an Info.plist description for permission to add Health writes.
 
@@ -161,7 +161,7 @@ Do not mistake an Info.plist description for permission to add Health writes.
 Native suites:
 `DeviceToolPermissionsTests`, `AppleDeviceToolServiceTests`,
 `DeviceToolCoordinatorTests`, `DeviceToolFileJournalTests`,
-`LoopdyLinkDirectedDeviceToolTests`, existing socket/backpressure and account
+`BighelpLinkDirectedDeviceToolTests`, existing socket/backpressure and account
 erasure suites, and `DeviceToolPermissionsUITests`.
 
 Plugin tests exercise registration with/without supported Hermes context,

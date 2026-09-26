@@ -140,7 +140,7 @@ Each view is a small transparent WKWebView. For long lists, keep live avatars to
 ## bighelp app
 
 The iOS app does not use the WKWebView wrapper in `ios/`. It draws the same art natively from
-`Loopdy/Resources/AvatarKit.json`, so avatars also work in saved profile pictures, widgets and
+`Bighelp/Resources/AvatarKit.json`, so avatars also work in saved profile pictures, widgets and
 large grids. After changing `tools/build.py`, regenerate both outputs from the repository root:
 
 ```sh

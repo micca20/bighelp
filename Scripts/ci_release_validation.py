@@ -16,12 +16,12 @@ UI_TESTS = (
     "ReferenceHubUITests/testSendKeepsKeyboardClosedWhileChatUpdates",
     "ReferenceHubUITests/testOpenReferencesSurvivesWorkspaceNavigation",
     "ReferenceHubUITests/testReferenceControlsAccessibilityAndLandscapeKeyboard",
-    "LoopdyLaunchTests/testExpandedComposerStillSendsItsFirstDraft",
-    "LoopdyLaunchTests/testV2ExpandedSlashSelectionKeepsKeyboardAndContinuedTyping",
+    "BighelpLaunchTests/testExpandedComposerStillSendsItsFirstDraft",
+    "BighelpLaunchTests/testV2ExpandedSlashSelectionKeepsKeyboardAndContinuedTyping",
     "ChatSixFixesUITests/testTypingNumberedItemIntoRichLongDraftDoesNotBlockEditing",
     "SimplifiedShellUITests/testChatMatchesUnclutteredReferenceAndDisclosesComposerControls",
     "SimplifiedShellUITests/testAgentsDestinationSearchGroupsAndDrawerOrder",
-    "LoopdyLaunchTests/testV2NativeRichFormattingExportsMarkdown",
+    "BighelpLaunchTests/testV2NativeRichFormattingExportsMarkdown",
 )
 
 
@@ -31,7 +31,7 @@ def git(revision):
 
 def completed_ui_tests(log):
     records = re.findall(
-        r"Test Case '-\[LoopdyUITests\.(\w+) (test\w+)\]' "
+        r"Test Case '-\[BighelpUITests\.(\w+) (test\w+)\]' "
         r"(started|passed|failed|skipped)\b", log,
     )
     observed = {}
@@ -67,7 +67,7 @@ def validate_receipt(receipt, run, source_tree, repository):
         or receipt.get("source_tree") != source_tree
         or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
         or receipt.get("ui_tests") != list(UI_TESTS)
-        or receipt.get("native_suite") != "LoopdyTests"
+        or receipt.get("native_suite") != "BighelpTests"
     ):
         raise ValueError("Successful validation does not cover this exact release source tree")
 
@@ -81,8 +81,8 @@ def main():
     parser.add_argument("--receipt", type=Path)
     args = parser.parse_args()
     if args.command == "selectors":
-        print("-only-testing:LoopdyTests")
-        print("\n".join("-only-testing:LoopdyUITests/" + test for test in UI_TESTS))
+        print("-only-testing:BighelpTests")
+        print("\n".join("-only-testing:BighelpUITests/" + test for test in UI_TESTS))
     elif args.command == "receipt":
         tests = completed_ui_tests(args.log.read_text(errors="replace"))
         receipt = {
@@ -92,7 +92,7 @@ def main():
             "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
             "source_commit": git("HEAD"),
             "source_tree": git("HEAD^{tree}"),
-            "native_suite": "LoopdyTests",
+            "native_suite": "BighelpTests",
             "ui_tests": tests,
         }
         args.output.write_text(json.dumps(receipt, indent=2) + "\n")

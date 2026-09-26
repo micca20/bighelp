@@ -14,30 +14,30 @@ class ReleaseValidationTests(unittest.TestCase):
     def test_discovery_keeps_native_and_shared_base_test_classes_separate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            tests = root / "LoopdyUITests"
+            tests = root / "BighelpUITests"
             tests.mkdir()
             (tests / "Native.swift").write_text("""
 import XCTest
-class LoopdyUITestCase: XCTestCase {
+class BighelpUITestCase: XCTestCase {
     func makeApp() {}
 }
 @MainActor
 final class NativeTests: XCTestCase {
     func testNativeLaunch() {}
 }
-final class SharedTests: LoopdyUITestCase {
+final class SharedTests: BighelpUITestCase {
     @MainActor func testSharedLaunch() {}
 }
 """)
             self.assertEqual(selectors(root), [
-                "-only-testing:LoopdyUITests/NativeTests/testNativeLaunch",
-                "-only-testing:LoopdyUITests/SharedTests/testSharedLaunch",
+                "-only-testing:BighelpUITests/NativeTests/testNativeLaunch",
+                "-only-testing:BighelpUITests/SharedTests/testSharedLaunch",
             ])
 
     def test_discovery_rejects_test_methods_with_an_unknown_base(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            tests = root / "LoopdyUITests"
+            tests = root / "BighelpUITests"
             tests.mkdir()
             (tests / "Unknown.swift").write_text(
                 "final class UnknownTests: UnknownBase {\n    func testUnknown() {}\n}\n"
@@ -52,14 +52,14 @@ final class SharedTests: LoopdyUITestCase {
         self.assertEqual(len(assigned), len(set(assigned)))
         self.assertEqual(set(assigned), set(selectors(root)))
         self.assertIn(
-            "-only-testing:LoopdyUITests/SimplifiedShellUITests/testChatMatchesUnclutteredReferenceAndDisclosesComposerControls",
+            "-only-testing:BighelpUITests/SimplifiedShellUITests/testChatMatchesUnclutteredReferenceAndDisclosesComposerControls",
             shards["ui-ipad"],
         )
 
     def test_every_release_ui_selector_exists_in_the_current_test_target(self):
         discovered = set(selectors(Path(__file__).resolve().parents[1]))
         self.assertEqual(len(UI_TESTS), len(set(UI_TESTS)))
-        self.assertTrue(set("-only-testing:LoopdyUITests/" + test for test in UI_TESTS) <= discovered)
+        self.assertTrue(set("-only-testing:BighelpUITests/" + test for test in UI_TESTS) <= discovered)
 
     def setUp(self):
         self.tree = "a" * 40
@@ -68,11 +68,11 @@ final class SharedTests: LoopdyUITestCase {
                     "conclusion": "success", "run_attempt": 2}
         self.receipt = {"profile": PROFILE, "run_id": 123, "run_attempt": 2,
                         "repository": "example/app", "source_tree": self.tree,
-                        "ui_tests": list(UI_TESTS), "native_suite": "LoopdyTests"}
+                        "ui_tests": list(UI_TESTS), "native_suite": "BighelpTests"}
         self.records = []
         for test in UI_TESTS:
             suite, method = test.split("/")
-            self.records.extend(f"Test Case '-[LoopdyUITests.{suite} {method}]' {state}."
+            self.records.extend(f"Test Case '-[BighelpUITests.{suite} {method}]' {state}."
                                 for state in ("started", "passed"))
         self.log = "\n".join(self.records + ["Test run with 1705 tests passed.", "** TEST SUCCEEDED **"])
 

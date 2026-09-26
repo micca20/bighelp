@@ -1,14 +1,14 @@
-# Loopdy architecture
+# bighelp architecture
 
-Production transport contract: **native Hermes only for chat**. Cloudflare is
-limited to optional notifications and Live Activities. The current composition,
+Production transport contract: **native Hermes only for chat**. Cloud services
+are used only for optional notifications and Live Activities, which BuzzKit delivers. The current composition,
 voice boundary, enrollment isolation and verification requirements are defined
 in [Native transport](NATIVE_TRANSPORT.md). Historical Link/paired-Direct protocol
 names remain in shared value types and migration boundaries. Their names do not
 imply a selectable chat transport; the disabled iOS transport graph is removed.
 
 This document describes the current iOS codebase and its end-to-end interaction
-with an authorized Hermes host and Loopdy's Cloudflare services. This document
+with an authorized Hermes host and bighelp's notification services. This document
 follows the implementation rather than older design proposals.
 
 The [iPhone device-tools contract](IPHONE_DEVICE_TOOLS.md) describes the native
@@ -18,15 +18,15 @@ context, and negotiated directed Link frames.
 ## 1. System boundaries
 
 Native workspaces connect directly to an independently authenticated Hermes
-host through its public interfaces. A Loopdy account, Link pairing and the
-Cloudflare runtime relay are not required for that connection. The optional
+host through its public interfaces. A bighelp account, Link pairing and the
+notification relay are not required for that connection. The optional
 Link and notification paths have their own authorization and trust boundaries.
 
-Loopdy has five important trust boundaries:
+bighelp has five important trust boundaries:
 
 1. **The iOS app** owns the user interface, local cache, device credentials,
    content encryption, notification decryption, and ActivityKit presentation.
-2. **The optional Loopdy account service** owns passkey account and device
+2. **The optional bighelp account service** owns passkey account and device
    management. Retained pairing and notification cryptography do not provide
    a production chat route or select the native host.
 3. **The authorized Hermes host** authenticates native workspace access and
@@ -41,7 +41,7 @@ The native workspace uses the following path:
 
 ```mermaid
 sequenceDiagram
-    participant I as Loopdy iOS
+    participant I as Bighelp iOS
     participant H as Authenticated Hermes host
     participant P as Configured AI/tool provider
     I->>H: Native REST authentication and WebSocket ticket
@@ -57,14 +57,14 @@ Start at the owner of a behavior, then follow its typed boundary:
 
 | Change | Start here | Boundary to preserve |
 |---|---|---|
-| App construction and account separation | `Loopdy/App/LoopdyAppComposition.swift` | Native host authority is independent of the optional account. |
-| Chat presentation and actions | `Loopdy/Chat/ChatView.swift`, `ChatModel.swift`, `ChatComposer.swift` | The retained model owns drafts and submissions; the native timeline owns scrolling. |
-| Rail, goal, tasks and subagent sheets | `Loopdy/Chat/SessionStatusRailView.swift`, `SessionGoalSheet.swift`, `SessionTasksSheet.swift`, `SessionSubagentRosterSheet.swift` | Presentation does not invent execution or session authority. |
-| Local appearance | `Loopdy/DesignSystem/LoopdyThemeReader.swift` | Resolve the consuming view's traits, including sheet and hosted-row overrides. |
-| Shared Swift wire values | Domain-named `*WireModels.swift` files in `Loopdy/Link/`; `SharedWireValidation.swift` | A historical Link name does not select a transport. Distinct field and byte policies remain distinct. |
-| Plugin HTTP mechanics | `plugins/loopdy/loopdy_plugin/http_contracts.py` | Route families keep their own errors, caps, authentication and context rechecks. |
-| Python wire contracts | `plugins/loopdy/loopdy_plugin/link_contracts.py` and its explicit domain imports | The facade preserves imports; domain modules validate values without owning transport state. |
-| Plugin adapter lifecycle | `plugins/loopdy/loopdy_plugin/adapter.py` and `adapter_*.py` | One adapter owns state and lifecycle. Helpers operate on that instance, not parallel controllers. |
+| App construction and account separation | `Bighelp/App/BighelpAppComposition.swift` | Native host authority is independent of the optional account. |
+| Chat presentation and actions | `Bighelp/Chat/ChatView.swift`, `ChatModel.swift`, `ChatComposer.swift` | The retained model owns drafts and submissions; the native timeline owns scrolling. |
+| Rail, goal, tasks and subagent sheets | `Bighelp/Chat/SessionStatusRailView.swift`, `SessionGoalSheet.swift`, `SessionTasksSheet.swift`, `SessionSubagentRosterSheet.swift` | Presentation does not invent execution or session authority. |
+| Local appearance | `Bighelp/DesignSystem/BighelpThemeReader.swift` | Resolve the consuming view's traits, including sheet and hosted-row overrides. |
+| Shared Swift wire values | Domain-named `*WireModels.swift` files in `Bighelp/Link/`; `SharedWireValidation.swift` | A historical Link name does not select a transport. Distinct field and byte policies remain distinct. |
+| Plugin HTTP mechanics | `bighelp-plugin/loopdy_plugin/http_contracts.py` | Route families keep their own errors, caps, authentication and context rechecks. |
+| Python wire contracts | `bighelp-plugin/loopdy_plugin/link_contracts.py` and its explicit domain imports | The facade preserves imports; domain modules validate values without owning transport state. |
+| Plugin adapter lifecycle | `bighelp-plugin/loopdy_plugin/adapter.py` and `adapter_*.py` | One adapter owns state and lifecycle. Helpers operate on that instance, not parallel controllers. |
 
 The plugin adapter's operation modules separate delivery, presentation, sessions,
 pickers, requests, transport and voice. They do not add listeners or a fallback
@@ -76,17 +76,17 @@ mechanics, not authorization decisions or a generic endpoint dispatcher.
 
 The XcodeGen manifest defines these application products:
 
-- **Loopdy**: the iOS and iPadOS SwiftUI application.
-- **LoopdyMac**: a native macOS application with a dedicated app entry point and
+- **bighelp**: the iOS and iPadOS SwiftUI application.
+- **BighelpMac**: a native macOS application with a dedicated app entry point and
   adaptive desktop shell.
-- **LoopdyWatch**: the watchOS companion application.
+- **BighelpWatch**: the watchOS companion application.
 - **Notification service extension**: decrypts and validates alert content
   before it is displayed.
 - **Live Activity extension**: renders Lock Screen and Dynamic Island status.
 
-The first macOS foundation tracer keeps platform presentation in `LoopdyMac/`
+The first macOS foundation tracer keeps platform presentation in `BighelpMac/`
 and compiles a harness-neutral text-session projection from
-`Loopdy/SharedFoundation/` into both Apple app targets. An iOS-only adapter maps
+`Bighelp/SharedFoundation/` into both Apple app targets. An iOS-only adapter maps
 the existing `SessionRecord` and ordered message timeline into that projection,
 so the Mac tracer does not invent a second session identity. That tracer does
 not replace iOS composition or its native transport; richer timeline content
@@ -105,9 +105,9 @@ and fail as unavailable on older systems.
 
 ### Paired Watch companion
 
-The Watch uses `WatchCompanionStore` and `LoopdyWatchApprovalBridge` over the
+The Watch uses `WatchCompanionStore` and `BighelpWatchApprovalBridge` over the
 OS-managed WatchConnectivity channel. It does not independently enroll with
-Loopdy Link or obtain the phone's credentials. The phone owns authentication,
+bighelp Link or obtain the phone's credentials. The phone owns authentication,
 host selection, session hydration, voice submission and approval decisions.
 Versioned snapshots carry bounded presentation data and short-lived action
 offers. Correlated receipts distinguish pending, committed and unconfirmed
@@ -122,7 +122,7 @@ old offers; an offline Watch cannot be remotely cleared until it reconnects.
 
 ## 3. Composition and state ownership
 
-`LoopdyAppComposition` is the composition root. It creates the concrete
+`BighelpAppComposition` is the composition root. It creates the concrete
 production or fixture implementations for every feature and injects them
 through small protocols.
 
@@ -146,7 +146,7 @@ Hermes does not expose the matching visible-row/digest/CAS boundary. Optional
 surfaces without a native adapter fail explicitly rather than using Link or
 fixture implementations.
 
-`Loopdy/Workspace` defines transport-neutral, owner-bound operations and
+`Bighelp/Workspace` defines transport-neutral, owner-bound operations and
 capability snapshots for the Direct workspace integration. Its authority
 coordinates distinguish a native host principal from a paired Link device;
 connection generations invalidate callbacks without changing the stable cache
@@ -165,7 +165,7 @@ independent requirements.
 
 The existing host registry distinguishes independent native connections from
 optional Link-owned connections. Independent hosts use a separate protected
-registry root and device-only Keychain service; their records have no Loopdy
+registry root and device-only Keychain service; their records have no bighelp
 account identity. Cloud credential changes do not retarget or erase that
 selection. Legacy account-keyed Direct records stay private in their original
 scope until an explicit, principal-verified migration; matching addresses alone
@@ -180,7 +180,7 @@ The top-level objects include:
 - `SessionCatalogStore` for remote catalog synchronization and local cache.
 - `BotModeRoomStore` for multi-agent room state.
 - `ScheduledTasksStore` for scheduled work.
-- `LoopdyLinkAccountStore` and `LoopdyLinkDeviceStore` for account and device
+- `BighelpLinkAccountStore` and `BighelpLinkDeviceStore` for account and device
   administration.
 - `DirectHermesConversationClient` and `NativeWorkspaceSessionBridge` for native
   request/stream handling and authoritative history reconciliation.
@@ -209,8 +209,8 @@ and accessibility preferences remain device-local.
 ### Provider artwork updates
 
 The iOS/iPadOS app retains its bundled provider-logo vectors as the permanent
-fallback. A single app-owned `ProviderLogoStore` refreshes an isolated public
-Cloudflare static-asset catalog on foreground activation, at most once per day
+fallback. A single app-owned `ProviderLogoStore` refreshes a public static logo
+catalog on foreground activation, at most once per day
 after success. This optional task does not block account refresh or chat startup.
 Previews and ordinary demo/test launches remain network-independent.
 
@@ -288,7 +288,7 @@ common actions without owning duplicate session state.
 
 ### Native Workspace management
 
-The owner-bound management layer under `Loopdy/WorkspaceManagement` adds typed
+The owner-bound management layer under `Bighelp/WorkspaceManagement` adds typed
 read-only inventories and reviewed, finite mutations through the shared
 operation performer. It reuses existing route owners rather than replacing
 chat, scheduling, profiles or settings. Process-profile services require explicit
@@ -439,12 +439,12 @@ adding it to the canonical timeline.
 
 ### Local customization
 
-Loopdy has no Marketplace, public catalog, publishing workflow, install gateway,
+bighelp has no Marketplace, public catalog, publishing workflow, install gateway,
 or Marketplace service. Custom themes and card templates remain local features.
 Theme creation, editing, duplication, deletion, logos, and portable import/export
 do not upload or publish content.
 
-### Loopdy Cards
+### bighelp Cards
 
 `loopdy.card` version 1 adds a display-only declarative document alongside the
 existing `loopdy.generative_ui` version 1 and 2 envelopes. The Hermes plugin
@@ -482,7 +482,7 @@ part of the owner-bound native workspace contract; the app does not construct
 the retired Link template-sync client. No production catalog URL is configured
 until a separately governed and licensed catalog is approved.
 
-See [Loopdy Cards](LOOPDY_CARDS.md) for the complete wire contract, component
+See [bighelp Cards](BIGHELP_CARDS.md) for the complete wire contract, component
 catalog, static-data policy, privacy disclosures, template lifecycle, and legacy
 compatibility statement.
 
@@ -501,9 +501,8 @@ Selected-checkpoint branching remains unavailable on the native stock-host
 contract until Hermes exposes the required visible-row/digest/CAS boundary.
 Retained fork value types do not authorize an alternate transport.
 
-Readable session content is not stored in Loopdy's Cloudflare databases or
-Durable Object routing state. It may exist in the app's local cache and on the
-authorized Hermes host.
+Readable session content is not stored by bighelp's notification services. It may
+exist in the app's local cache and on the authorized Hermes host.
 
 ### Bot Mode
 
@@ -519,7 +518,7 @@ Local persistence still uses revision and run-owner compare-and-save checks.
 Native Hermes rooms must recover against their authoritative log after relaunch;
 the old local fixture runner's settled-on-relaunch behavior must not be applied
 to durable host work. Existing fixture harness interfaces are not the unfinished
-Goose-based Loopdy Native engine. Loopdy supports both Hermes and the Native
+Goose-based bighelp Native engine. bighelp supports both Hermes and the Native
 harness direction. See [Hermes Bot Mode](HERMES_BOT_MODE.md) for the runtime
 boundary, failure semantics and release checks.
 
@@ -547,7 +546,7 @@ The voice pipeline is:
 5. Receive native response text and request bounded synthesis from the selected host.
 6. Play audio locally and append the text turn to the session timeline.
 
-Raw microphone buffers are not written to disk or uploaded by Loopdy.
+Raw microphone buffers are not written to disk or uploaded by bighelp.
 Synthesized audio is held for playback rather than added to the session cache.
 
 Input and playback share a reference-counted audio-session coordinator. Stopping
@@ -673,7 +672,7 @@ payload is keyed by the signed-in device credential ID and selected host ID,
 so fresh device enrollment starts a new layout scope. Layout is not synced to
 other devices. Project names are display labels; stable project IDs own the
 saved layout, and reordering a filtered subset preserves absent project slots.
-Deleting the Loopdy account removes account-derived host and session preference
+Deleting the bighelp account removes account-derived host and session preference
 identifiers and retired Link outbox artifacts. Native host credentials, journals
 and repositories remain outside that cloud-account erasure boundary. The app no
 longer creates a Link chat outbox. UserDefaults does not store account private
@@ -683,7 +682,7 @@ keys or access tokens.
 
 The production composition uses **native Hermes REST and `/api/ws`**. The old
 HTTPS gateway, Link chat socket, paired Direct runtime, and cloud chat adapters
-are removed from the iOS target. `Loopdy/Hermes` retains shared metadata and
+are removed from the iOS target. `Bighelp/Hermes` retains shared metadata and
 cleanup support, not an alternate connection path.
 
 Fixture mode replaces network clients with deterministic local implementations.
@@ -737,18 +736,17 @@ projection: shipping clients decode the finite v1 kind set strictly, so one
 unknown kind can reject the entire list and block account readiness after login.
 Keep those records, grants and authorization epochs intact. Native uses its
 separate versioned enrollment/catalog contract; never relabel it as Hermes.
-Worker rollback must preserve forward-migrated storage and v1 compatibility.
-See [the account catalog incident](ACCOUNT_CATALOG_COMPATIBILITY.md).
+Service rollback must preserve forward-migrated storage and v1 compatibility.
 
-`LoopdyLinkAccountStore.restoreForRecovery` preserves valid in-memory credentials
+`BighelpLinkAccountStore.restoreForRecovery` preserves valid in-memory credentials
 and account presentation during transient protected-data/keychain reads. A
 recovery generation prevents a cancelled or superseded read from replacing newer
 state. An authoritative missing credential still signs out; a real failure with
 no usable credentials remains visible.
 
-The obsolete `LoopdyAccountRefreshCoordinator` and cloud-socket host switch are
+The obsolete `BighelpAccountRefreshCoordinator` and cloud-socket host switch are
 removed. Native selection owns connection generations and replaces consumers
-only at the native authority boundary. `LoopdyHostSelectionChangeRelay` remains
+only at the native authority boundary. `BighelpHostSelectionChangeRelay` remains
 for optional account-management fixtures: it synchronously retires fixture
 models and changes their cache scope. It cannot retarget production native chat.
 
@@ -765,7 +763,7 @@ not wrap a toolbar button in a second glass circle.
 
 ### Hermes scheduler compatibility
 
-Loopdy plugin 2.9.1 calls the official Hermes cron workers in
+bighelp plugin 2.9.1 calls the official Hermes cron workers in
 `hermes_cli.web_routers.cron`; creation uses `hermes_cli.web_server_cron`.
 `hermes_cli.web_server` no longer exports these workers. The plugin's regression
 test imports the installed modules and patches their actual worker attributes,

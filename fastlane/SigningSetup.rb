@@ -31,7 +31,7 @@ def prepare_ci_signing
       issuer_id: ENV.fetch("ASC_ISSUER_ID"), key_content: ENV.fetch("ASC_PRIVATE_KEY"),
       duration: 1_200, in_house: false)
     app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
-    UI.user_error!("The API key cannot access the expected Loopdy app") unless app && app.id == APP_STORE_APP_ID
+    UI.user_error!("The API key cannot access the expected bighelp app") unless app && app.id == APP_STORE_APP_ID
     ENV["CER_KEYCHAIN_PATH"] = keychain
     get_certificates(api_key: api_key, development: false, generate_apple_certs: true,
       force: true, output_path: raw, keychain_path: keychain,
@@ -48,7 +48,7 @@ def prepare_ci_signing
     end
     # OpenSSL's explicit legacy PBE interoperates with macOS security import.
     # High iteration counts and the separately stored strong password protect the exported key.
-    package = OpenSSL::PKCS12.create(password, "Loopdy CI Apple Distribution", private_key, certificate,
+    package = OpenSSL::PKCS12.create(password, "bighelp CI Apple Distribution", private_key, certificate,
       [], "PBE-SHA1-3DES", "PBE-SHA1-3DES", 100_000, 100_000).to_der
     roundtrip = OpenSSL::PKCS12.new(package, password)
     UI.user_error!("Encrypted identity verification failed") unless roundtrip.certificate.check_private_key(roundtrip.key)

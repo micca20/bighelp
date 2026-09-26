@@ -32,17 +32,17 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="direct-native-", dir="/tmp") as temporary:
         temp = Path(temporary).resolve()
-        value_source = (repo / "Loopdy/Chat/GenerativeUIModels.swift").read_text()
+        value_source = (repo / "Bighelp/Chat/GenerativeUIModels.swift").read_text()
         separator = "\nenum GenerativeUIComponent:"
         assert separator in value_source
         # Exact production JSON value declaration, without unrelated app UI types.
-        (temp / "LoopdyJSONValue.swift").write_text(value_source.split(separator, 1)[0])
-        sources = [repo / "Loopdy/DirectHermes" / (name + ".swift") for name in
+        (temp / "BighelpJSONValue.swift").write_text(value_source.split(separator, 1)[0])
+        sources = [repo / "Bighelp/DirectHermes" / (name + ".swift") for name in
                    ("DirectHermesInterfaces", "DirectHermesAuthentication", "DirectHermesNetworking", "DirectHermesCredentialVault")]
         executable = temp / "native-probe"
         if not args.ios_tests:
             subprocess.run(["swiftc", "-parse-as-library", "-swift-version", "6", "-target", "arm64-apple-macosx15.0",
-                            *(str(p) for p in sources), str(temp / "LoopdyJSONValue.swift"), str(repo / "Scripts/DirectHermesNativeProbe.swift"),
+                            *(str(p) for p in sources), str(temp / "BighelpJSONValue.swift"), str(repo / "Scripts/DirectHermesNativeProbe.swift"),
                             "-o", str(executable)], check=True)
         elif not all((args.simulator_id, args.derived_data, args.result_root)):
             parser.error("iOS tests require simulator-id, derived-data and result-root")
@@ -90,13 +90,13 @@ def main():
             if args.ios_tests:
                 args.result_root.mkdir(parents=True, exist_ok=False)
                 client_env["TEST_RUNNER_DIRECT_PROBE_CONFIG"] = str(secret_config)
-                command = ["xcodebuildmcp", "simulator", "test", "--project-path", str(repo / "Loopdy.xcodeproj"),
-                    "--scheme", "Loopdy", "--configuration", "Debug", "--simulator-id", args.simulator_id,
+                command = ["xcodebuildmcp", "simulator", "test", "--project-path", str(repo / "Bighelp.xcodeproj"),
+                    "--scheme", "Bighelp", "--configuration", "Debug", "--simulator-id", args.simulator_id,
                     "--derived-data-path", str(args.derived_data), "--prefer-xcodebuild", "--output", "json",
                     "--json", json.dumps({"extraArgs": ["-parallel-testing-enabled", "NO"] + [
                         "-only-testing:" + selection for selection in (args.only_testing or [
-                            "LoopdyTests/DirectHermesLiveTests", "LoopdyTests/DirectHermesEndpointTests",
-                            "LoopdyTests/DirectHermesConversationTests", "LoopdyUITests/DirectHermesUITests"])],
+                            "BighelpTests/DirectHermesLiveTests", "BighelpTests/DirectHermesEndpointTests",
+                            "BighelpTests/DirectHermesConversationTests", "BighelpUITests/DirectHermesUITests"])],
                         "testRunnerEnv": {"DIRECT_PROBE_CONFIG": str(secret_config)}, "progress": False})]
                 with (args.result_root / "xcodebuild.log").open("w") as log:
                     result = subprocess.run(command, env=client_env, cwd=repo, stdout=log, stderr=subprocess.STDOUT, timeout=480)

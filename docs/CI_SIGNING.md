@@ -4,7 +4,7 @@ Use an existing encrypted Apple Distribution `.p12` backup if you have one.
 Otherwise, the optional **Prepare signing identity** workflow can generate a
 new signing key and Apple Distribution certificate on a hosted macOS runner.
 It requires an active Apple Developer membership and an App Store Connect team
-API key with certificate-creation permission and access to Loopdy. It does not
+API key with certificate-creation permission and access to bighelp. It does not
 recover a private key from a downloaded `.cer` or from an unavailable Mac.
 
 ## One-time setup from your phone

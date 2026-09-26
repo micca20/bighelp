@@ -1,6 +1,6 @@
 # Chat interaction contract
 
-Loopdy's chat should feel like a native conversation: users can read, type,
+bighelp's chat should feel like a native conversation: users can read, type,
 inspect tools, and follow a response without managing the interface themselves.
 The user accepted the experience shipped in **2.0.1 (8)** on September 10, 2026
 as the baseline to preserve. Visual redesigns and new features inherit this
@@ -75,7 +75,7 @@ boundaries described in [Background chat continuity](BACKGROUND_CHAT_CONTINUITY.
 
 The historical suite name `ChatTimelineRenderPartitionTests` now protects the
 native canvas. It does **not** require restoring the old rendering partition.
-Its [actual UIKit tests](../LoopdyTests/ChatTimelineRenderPartitionTests.swift)
+Its [actual UIKit tests](../BighelpTests/ChatTimelineRenderPartitionTests.swift)
 cover these boundaries:
 
 | Boundary | Regression tests |
@@ -93,14 +93,14 @@ cover these boundaries:
 | Old encoders cannot overwrite newer drafts or another host | `inFlightCheckpointsPreserveNewerDurableAndAccountState` |
 | Typing and review during two active chats | `testTypingAndScrollingWithTwoActiveLongChats` |
 
-Run [ChatStreamingAnchorUITests](../LoopdyUITests/ChatStreamingAnchorUITests.swift)
+Run [ChatStreamingAnchorUITests](../BighelpUITests/ChatStreamingAnchorUITests.swift)
 for the three short/long/expanded stress scenarios, growing-tail following,
 reading during a stream, consecutive tool turns, sending from history, and first
 short-response placement. Run
-[ToolDisclosureUITests](../LoopdyUITests/ToolDisclosureUITests.swift) for expanded
+[ToolDisclosureUITests](../BighelpUITests/ToolDisclosureUITests.swift) for expanded
 tool reuse, enclosing-trail recreation, and completed-fold context.
 
-Run [ComposerInteractionUITests](../LoopdyUITests/ComposerInteractionUITests.swift)
+Run [ComposerInteractionUITests](../BighelpUITests/ComposerInteractionUITests.swift)
 for visible-padding focus and action/input geometry. Validate actual keyboard
 appearance and rendered element frames; a focus Boolean alone cannot establish
 that the visible input accepts the user's tap.
@@ -173,7 +173,7 @@ must wait for the verified connection and reject results from a replaced
 connection. Navigation cancellation must not become a visible load failure.
 
 Account & Devices presents Hosts and Connected Devices. Selecting an instance
-and setting the primary instance are separate actions. Long-pressing the Loopdy
+and setting the primary instance are separate actions. Long-pressing the bighelp
 logo in every workspace sidebar presents the same loaded host selection state;
 choosing a host must not silently change the primary preference.
 

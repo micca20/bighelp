@@ -4,7 +4,7 @@
 
 The current authority is the **Ember brand kit** (bighelp, a Longview company) and its blended direction:
 1a "Messages, evolved" structure, 1b "Center stage" warm cream as light mode, and 1c "After dark" as dark mode.
-The app is a simple messaging experience for personal assistant agents. Earlier Loopdy/iOS 27 Builder references
+The app is a simple messaging experience for personal assistant agents. Earlier bighelp/iOS 27 Builder references
 are historical (`docs/ui-v3-design.md`).
 
 ## Simplicity means hierarchy, not concealment
@@ -24,9 +24,9 @@ are historical (`docs/ui-v3-design.md`).
   The wordmark is lowercase SF Pro Rounded heavy and always ends with the coral period: `bighelp.`
 - Light: cream canvas #FFF9F5, white cards, #F3ECE6 incoming bubbles, ink #1C1A19. Dark: #121110 canvas,
   #1E1C1B / #292624 surfaces, cream text. Actions are lavender-purple (#7B52E0 light, #C9B6FF dark); outgoing
-  bubbles #7B52E0 with white text. All of this lives in `LoopdyTheme` so screens read theme tokens, not system colors.
+  bubbles #7B52E0 with white text. All of this lives in `BighelpTheme` so screens read theme tokens, not system colors.
 - Settings › Appearance › **Colors** (`AppearanceStudioView`) is the everyday theme editor: a live light/dark preview,
-  12 bubble colors (`LoopdyBubbleColor`, Lavender is Ember's own), the light page (Cream #FFF9F5 or Paper #FFFFFF)
+  12 bubble colors (`BighelpBubbleColor`, Lavender is Ember's own), the light page (Cream #FFF9F5 or Paper #FFFFFF)
   and the dark page (Graphite #1C1C1F or Black #000000). High contrast keeps its own pages. Custom themes, import,
   export, fonts and logos sit one tap deeper under More themes; picking one of those clears the bubble color.
 - Agents are organic blobs and glossy orbs in their own palette color (`AgentPersonaAvatar`, via `AvatarView`).
@@ -37,7 +37,7 @@ are historical (`docs/ui-v3-design.md`).
   Hexo, Drip, Tic, Puff, Boo, Bloom, Glim), then a colorway or main color, headwear (a Bit instead picks its eyes,
   mouth, top and cheeks), a tone-on-tone pattern, and an idle move. The characters come from `Design/AvatarKit`
   (edit `tools/build.py`, then run `tools/build.py` and `tools/export_native.py`); the app draws them natively
-  from `Loopdy/Resources/AvatarKit.json`, acting out the agent's state (listening, thinking, waiting on you,
+  from `Bighelp/Resources/AvatarKit.json`, acting out the agent's state (listening, thinking, waiting on you,
   talking, happy, sleeping) plus extra moves for its current work. The look is saved as the agent's avatar picture and as its
   chat companion.
 - Product type is SF Pro. Root screens use large titles; section captions are small, bold, letterspaced and muted.
@@ -49,7 +49,7 @@ Chat opens that agent's latest chat with its live avatar big at the top: tap the
 Approvals, Schedules, Identity), tap the name to switch agents or open a group chat, and ☰ for new chats, Agents,
 Scheduled tasks, Settings and recent chats. The header's compose button starts a chat: one agent picked is a 1:1
 chat, two or more a group. The avatar reacts to what the agent is doing (thinking, writing code, browsing, making
-images…), driven by the running tool (`AgentActivityKind`, shared with the island as `LoopdyActivityPose`). On
+images…), driven by the running tool (`AgentActivityKind`, shared with the island as `BighelpActivityPose`). On
 phones with a Dynamic Island, the island names the work. In the app it grows into a stage
 (`AgentActivityIsland` + `IslandStage`): the name and the work beside the camera, and underneath, the pet acting
 it out (chasing a brain while thinking, code streaming from its laptop, fixing a computer, painting, paper
@@ -60,8 +60,8 @@ a fixed category). Every phone chat uses this big-avatar header; only the Chat t
 bar, any other chat (from the list, Feed, a task) has Back. Chat Info lives in ⋯ › People & Chat, and the line under
 the name says "Updating…" while a chat reloads from Hermes. iPad keeps its sidebar and the name-chip header.
 
-Widgets (`LoopdyActivityShared`, rendered by the Live Activity extension) use the Colors picks through
-`LoopdyWidgetSnapshot` palettes and show real agent pictures (`LoopdyActivityAvatarStore`). **Your Agent** is the
+Widgets (`BighelpActivityShared`, rendered by the Live Activity extension) use the Colors picks through
+`BighelpWidgetSnapshot` palettes and show real agent pictures (`BighelpActivityAvatarStore`). **Your Agent** is the
 lead widget: the agent's face ringed while it works with a badge for the work, its latest Feed posts and Goals,
 New chat, and Chat/Feed/Ideas/Goals links (`loopdy://agent/<tab>`); it also comes in Lock Screen sizes. Active
 Chats, Scheduled Tasks, New Chat and Recent Chats share the same look. Tinted and Lock Screen modes fall back to
@@ -74,7 +74,7 @@ skips tooling folders and shows files as it goes. **Media** shows the pictures a
 generated (`attachments.recent`), then pictures from its posts; tap one for the native preview.
 
 The app icon badge means "something arrived while you were away": pushes set it, opening bighelp clears it
-(`LoopdyAppBadge`). The app never sets a count of its own, so it can't get stuck on items the user can't see.
+(`BighelpAppBadge`). The app never sets a count of its own, so it can't get stuck on items the user can't see.
 
 Shortcuts run with bighelp closed, in the background or open. The app closes its host connection in the
 background, so a Shortcut first proves the host answers (the agent list) and reconnects once if not.

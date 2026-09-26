@@ -8,11 +8,11 @@ ios
 
 ## Product Purpose
 
-Loopdy is a native client for conversations with agents, including model selection, reasoning and tool activity, rich generated cards, files, code/project changes and voice interaction.
+bighelp is a native client for conversations with agents, including model selection, reasoning and tool activity, rich generated cards, files, code/project changes and voice interaction.
 
 ## Runtime Direction
 
-Loopdy supports Hermes and is also building **Loopdy Native**, its own native
+bighelp supports Hermes and is also building **bighelp Native**, its own native
 harness for iOS and Companion. These are complementary product paths.
 The planned Goose-based Native runtime is tracked in
 [issue #25](https://github.com/promptclickrun/bighelp-ios/issues/25); it is not a

@@ -1,11 +1,11 @@
 # Native chat transport
 
-Production chat connects directly to the selected Hermes host. Cloudflare is
-allowed only for explicitly enabled notifications and Live Activities.
+Production chat connects directly to the selected Hermes host. Cloud services are
+used only for explicitly enabled notifications and Live Activities, which BuzzKit delivers.
 
 ## Connection and storage
 
-- `LoopdyAppComposition` selects `NativeWorkspaceRuntime` and the existing
+- `BighelpAppComposition` selects `NativeWorkspaceRuntime` and the existing
   authenticated Hermes REST and `/api/ws` clients.
 - Startup always selects the independent host registry. A saved Link preference,
   cloud login, expired cloud credential, or unavailable cloud service cannot
@@ -21,7 +21,7 @@ allowed only for explicitly enabled notifications and Live Activities.
   They are not adopted by matching an address. Reauthenticate an existing native
   host explicitly when moving it into the independent registry.
 - Connect to the operator's existing Hermes dashboard address and port. No
-  additional listener, public URL, Cloudflare login or cloud pairing is required.
+  additional listener, public URL, cloud login or cloud pairing is required.
   The app discovers and offers the host's own sign-in methods: no sign-in,
   dashboard session token, access token, username/password and dashboard login.
   An ungated dashboard bootstraps its existing session token from the exact
@@ -36,7 +36,7 @@ allowed only for explicitly enabled notifications and Live Activities.
 
 The notification account action opens only account management, with no paired
 chat-device catalog. Explicit notification enrollment records a separate
-`LoopdyHostNotificationBinding` (cloud device and authorization epoch). It does
+`BighelpHostNotificationBinding` (cloud device and authorization epoch). It does
 not change the native host, principal, credentials, selected workspace or
 registry generation.
 

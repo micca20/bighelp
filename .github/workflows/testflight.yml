@@ -55,14 +55,14 @@ jobs:
           bundler-cache: true
       - name: Write per-developer settings
         env:
-          LOOPDY_DEVELOPMENT_TEAM: ${{ vars.LOOPDY_DEVELOPMENT_TEAM }}
-          LOOPDY_APP_STORE_APP_ID: ${{ vars.LOOPDY_APP_STORE_APP_ID }}
+          BIGHELP_DEVELOPMENT_TEAM: ${{ vars.BIGHELP_DEVELOPMENT_TEAM }}
+          BIGHELP_APP_STORE_APP_ID: ${{ vars.BIGHELP_APP_STORE_APP_ID }}
           BUZZKIT_CLIENT_KEY: ${{ vars.BUZZKIT_CLIENT_KEY }}
         run: |
-          test -n "$LOOPDY_DEVELOPMENT_TEAM" && test -n "$LOOPDY_APP_STORE_APP_ID" || {
-            echo "::error::Set the LOOPDY_DEVELOPMENT_TEAM and LOOPDY_APP_STORE_APP_ID repository variables."; exit 1; }
-          printf 'DEVELOPMENT_TEAM = %s\nLOOPDY_APP_STORE_APP_ID = %s\nBUZZKIT_CLIENT_KEY = %s\n' \
-            "$LOOPDY_DEVELOPMENT_TEAM" "$LOOPDY_APP_STORE_APP_ID" "$BUZZKIT_CLIENT_KEY" > Config/Local.xcconfig
+          test -n "$BIGHELP_DEVELOPMENT_TEAM" && test -n "$BIGHELP_APP_STORE_APP_ID" || {
+            echo "::error::Set the BIGHELP_DEVELOPMENT_TEAM and BIGHELP_APP_STORE_APP_ID repository variables."; exit 1; }
+          printf 'DEVELOPMENT_TEAM = %s\nBIGHELP_APP_STORE_APP_ID = %s\nBUZZKIT_CLIENT_KEY = %s\n' \
+            "$BIGHELP_DEVELOPMENT_TEAM" "$BIGHELP_APP_STORE_APP_ID" "$BUZZKIT_CLIENT_KEY" > Config/Local.xcconfig
       - name: Generate Xcode project
         run: |
           xcodebuild -version

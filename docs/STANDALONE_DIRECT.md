@@ -1,15 +1,15 @@
 # Standalone Direct Hermes
 
-Connect your Loopdy account to a reachable `hermes serve` backend without Loopdy Link chat pairing. Account sign-in, host authentication and optional notification enrollment have separate authority. Existing Link chats remain separate.
+Connect your bighelp account to a reachable `hermes serve` backend without bighelp Link chat pairing. Account sign-in, host authentication and optional notification enrollment have separate authority. Existing Link chats remain separate.
 
 ## Connect
 
-1. Sign in to or create your Loopdy account. With no configured hosts, the shared Connect Host wizard opens. Later, use **Accounts and Devices → Add Host**.
+1. Sign in to or create your bighelp account. With no configured hosts, the shared Connect Host wizard opens. Later, use **Accounts and Devices → Add Host**.
 2. Enter your host URL or IP and port.
 3. Choose a supported provider-issued access token, host username/password login, or browser sign-in. Browser sign-in uses the system authentication session, IPv4 loopback callback and PKCE.
 4. Connect, then enable optional notifications or continue without them. Select a profile and start or reopen an eligible native session.
 
-Your host must already be running a current Hermes backend and be reachable from the phone. For Tailscale, both devices must be connected to the appropriate tailnet. Loopdy does not install Tailscale, start the host, expose a listener, or modify tailnet access rules.
+Your host must already be running a current Hermes backend and be reachable from the phone. For Tailscale, both devices must be connected to the appropriate tailnet. bighelp does not install Tailscale, start the host, expose a listener, or modify tailnet access rules.
 
 Use HTTPS where possible. For an explicitly entered `http://` address, **Allow HTTP over Tailscale** permits only literal Tailscale or loopback IP ranges. It does not bypass HTTPS certificate checks or allow public plaintext hosts. The app relies on your Tailscale/VPN configuration for encryption of an HTTP connection.
 
@@ -19,7 +19,7 @@ See the [official Hermes remote-backend guide](https://hermes-agent.nousresearch
 
 A remote access token is a bearer issued by the host's authentication provider. A model-provider API key or legacy dashboard bootstrap token is not interchangeable with it. Legacy bootstrap tokens are supported only for an explicitly allowed literal loopback endpoint whose backend advertises that mode.
 
-Username/password login uses the host's native authorization exchange. Loopdy stores the resulting session in device-only Keychain storage, not the password. Login redirects are validated rather than followed blindly. Connections are bound to the exact endpoint and verified host account. Forgetting a connection removes the local login, not server history.
+Username/password login uses the host's native authorization exchange. bighelp stores the resulting session in device-only Keychain storage, not the password. Login redirects are validated rather than followed blindly. Connections are bound to the exact endpoint and verified host account. Forgetting a connection removes the local login, not server history.
 
 ## Included
 
@@ -31,7 +31,7 @@ Username/password login uses the host's native authorization exchange. Loopdy st
 
 ## Current limits
 
-This is a standalone native connection, **not full feature parity with Loopdy Link**. Attachments, voice, Wiki, Loopdy Cards/form RPC, phone integration, project-change browsing, the full provider/model picker, multi-question clarification and subagent detail/control windows are not connected through this mode yet. Unavailable composer actions are hidden; the connection menu explains support boundaries. None silently falls back to Link.
+This is a standalone native connection, **not full feature parity with bighelp Link**. Attachments, voice, Wiki, bighelp Cards/form RPC, phone integration, project-change browsing, the full provider/model picker, multi-question clarification and subagent detail/control windows are not connected through this mode yet. Unavailable composer actions are hidden; the connection menu explains support boundaries. None silently falls back to Link.
 
 The direct chat socket does not itself provide closed-app APNs. Optional managed notifications use separate signed-device enrollment and a compatible installed plugin; iOS can suspend the connection. Reopening reattaches the native session where possible. If the original runtime has disappeared, explicitly open its saved session; the app does not silently invoke the host's cold-resume/auto-continuation policy.
 

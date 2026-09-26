@@ -65,7 +65,7 @@ filesystem API is exposed. Unsupported binary/large documents remain in their or
 workflow. Preview data is memory-only, not persisted or automatically exported.
 
 The optional `WorkspaceGrantedFilesClient` is a separate adapter for the canonical
-Loopdy plugin's existing authenticated Files API. Composition selects it explicitly,
+bighelp plugin's existing authenticated Files API. Composition selects it explicitly,
 never as an error fallback that broadens authority. The authenticated native context
 must prove that the selected profile is the serving profile. Its root catalog
 contains opaque IDs and labels, not absolute source paths. Host-local grants are

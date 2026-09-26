@@ -1,7 +1,7 @@
 # Contributing
 
-Production transport contract: **native Hermes only for chat**. Cloudflare is
-limited to optional notifications and Live Activities. The current composition,
+Production transport contract: **native Hermes only for chat**. Cloud services
+are used only for optional notifications and Live Activities, which BuzzKit delivers. The current composition,
 voice boundary, enrollment isolation and verification requirements are defined
 in [Native transport](docs/NATIVE_TRANSPORT.md). Retained Link/paired-Direct protocol
 sections below describe legacy compatibility code, not a selectable chat path.
@@ -9,11 +9,10 @@ sections below describe legacy compatibility code, not a selectable chat path.
 ## Before opening a pull request
 
 1. Read [Architecture](docs/ARCHITECTURE.md).
-2. Read [Security and privacy](docs/SECURITY_AND_PRIVACY.md).
-3. For security-sensitive work, follow [SECURITY.md](SECURITY.md) instead of
+2. For security-sensitive work, follow [SECURITY.md](SECURITY.md) instead of
    opening a public issue.
-4. Keep changes focused and include tests for changed behavior.
-5. For chat, composer, card, theme, or chat-persistence work, read the
+3. Keep changes focused and include tests for changed behavior.
+4. For chat, composer, card, theme, or chat-persistence work, read the
    [Chat interaction contract](docs/CHAT_INTERACTION_CONTRACT.md) and use its
    [regression recipe](docs/DEVELOPMENT.md#chat-regression-checks).
 
@@ -22,8 +21,8 @@ sections below describe legacy compatibility code, not a selectable chat path.
 ```sh
 xcodegen generate
 xcodebuild test \
-  -project Loopdy.xcodeproj \
-  -scheme Loopdy \
+  -project Bighelp.xcodeproj \
+  -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=<available simulator>'
 ```
 
@@ -52,7 +51,7 @@ authorized service:
 - Keep external input strictly bounded and validated.
 - Do not add third-party dependencies without prior discussion.
 - Do not include DerivedData, archives, exported apps, logs, or other generated
-  build artifacts. The generated `Loopdy.xcodeproj` is the intentional
+  build artifacts. The generated `Bighelp.xcodeproj` is the intentional
   exception. Regenerate it from `project.yml`; do not edit it by hand.
 
 ## Sensitive information

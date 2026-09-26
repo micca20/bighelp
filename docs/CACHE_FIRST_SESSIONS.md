@@ -36,7 +36,7 @@ or reordering invalidates that index by identity, not by an assumed array offset
 ## Submission receipts
 
 A validated steer/queue receipt proves admission to Hermes, not model consumption.
-After that receipt, Hermes owns its queue and Loopdy retires its local uncertainty
+After that receipt, Hermes owns its queue and bighelp retires its local uncertainty
 record. Unknown outcomes and legacy records remain local and are never automatically
 resent. A recovered connection can accept a separately authored new message without
 requiring receipt-management chores. The attention surface contains only actual

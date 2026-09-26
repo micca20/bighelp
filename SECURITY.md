@@ -38,6 +38,3 @@ Use the fixture mode and locally controlled services wherever possible.
 The latest maintained source is the supported version. This document does not
 create a bug bounty or safe harbor. Agree on coordinated disclosure terms
 privately before testing beyond your own environment.
-
-See [`docs/SECURITY_AND_PRIVACY.md`](docs/SECURITY_AND_PRIVACY.md) for the
-architecture and known limitations.

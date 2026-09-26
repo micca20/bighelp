@@ -1,18 +1,18 @@
-# Loopdy repository instructions
+# bighelp repository instructions
 
 ## Product and repository
 
-Loopdy is a Swift 6 SwiftUI client for personal AI agents running through Hermes. This repository contains:
+bighelp is a Swift 6 SwiftUI client for personal AI agents running through Hermes. This repository contains:
 
-- the iOS and iPadOS app under `Loopdy/`;
-- a notification service extension under `LoopdyNotificationService/`;
-- a Live Activity extension under `LoopdyLiveActivity/`;
-- shared extension models under `LoopdyActivityShared/` and `Loopdy/NotificationShared/`;
-- Swift Testing and XCUITest targets under `LoopdyTests/` and `LoopdyUITests/`;
-- the installable Hermes platform plugin under `plugins/loopdy/`.
+- the iOS and iPadOS app under `Bighelp/`;
+- a notification service extension under `BighelpNotificationService/`;
+- a Live Activity extension under `BighelpLiveActivity/`;
+- shared extension models under `BighelpActivityShared/` and `Bighelp/NotificationShared/`;
+- Swift Testing and XCUITest targets under `BighelpTests/` and `BighelpUITests/`;
+- (the Hermes plugin lives in its own repository, promptclickrun/bighelp-plugin).
 
 Production uses independently authenticated native Hermes REST and `/api/ws`.
-Cloudflare is allowed only for optional notifications and Live Activities. Never
+Cloud services are allowed only for optional notifications and Live Activities. Never
 restore Link chat routing, queues, workers, account-catalog startup gates, or the
 old paired Direct listener. See `docs/NATIVE_TRANSPORT.md`.
 
@@ -21,13 +21,12 @@ Read these before making material changes:
 - `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT.md`
-- `docs/SECURITY_AND_PRIVACY.md`
 - `CONTRIBUTING.md`
-- `plugins/loopdy/README.md`, `plugins/loopdy/PROTOCOL.md`, and `plugins/loopdy/SECURITY.md` for plugin or protocol work
+- `bighelp-plugin/README.md`, `bighelp-plugin/PROTOCOL.md`, and `bighelp-plugin/SECURITY.md` for plugin or protocol work
 
 ## Hermes is authoritative
 
-Hermes is authoritative for agent execution, sessions, transcripts, tools, approvals, policy, profiles, projects, scheduled tasks, models, reasoning configuration, and lifecycle state. Loopdy is a native client and platform integration, not a second Hermes runtime.
+Hermes is authoritative for agent execution, sessions, transcripts, tools, approvals, policy, profiles, projects, scheduled tasks, models, reasoning configuration, and lifecycle state. bighelp is a native client and platform integration, not a second Hermes runtime.
 
 The app may keep bounded local presentation and offline state, but it must reconcile remote behavior with Hermes. Optimistic UI is never proof that Hermes accepted or committed an operation. Request, session, agent, profile, revision, sequence, acknowledgement, and authorization coordinates must match before state is committed.
 
@@ -54,7 +53,7 @@ Choose the narrowest public Hermes surface that preserves Hermes ownership. Veri
 Do not solve a missing capability by building or depending on:
 
 - a shim protocol that imitates a Hermes API;
-- a sidecar service or daemon that becomes required for normal Loopdy operation;
+- a sidecar service or daemon that becomes required for normal bighelp operation;
 - a patch, fork-only behavior, or edit to an installed Hermes checkout such as `~/.hermes/hermes-agent`;
 - monkeypatching, `sys.modules` replacement, runtime method replacement, or mutation of private Hermes globals in production code;
 - a copied agent loop, session manager, approval engine, scheduler, policy engine, project registry, profile store, transcript store, or model catalog;
@@ -65,17 +64,17 @@ Do not solve a missing capability by building or depending on:
 
 Tests may patch or stub imports to isolate behavior. Production code may not use those test techniques as architecture.
 
-If current Hermes native support cannot express a required outcome, stop that implementation path. Record the exact user outcome, missing public capability, current surfaces examined, security and compatibility requirements, and the smallest upstream Hermes extension that would close the gap. Change the Loopdy design or contribute upstream. Do not conceal the gap behind local infrastructure.
+If current Hermes native support cannot express a required outcome, stop that implementation path. Record the exact user outcome, missing public capability, current surfaces examined, security and compatibility requirements, and the smallest upstream Hermes extension that would close the gap. Change the bighelp design or contribute upstream. Do not conceal the gap behind local infrastructure.
 
 ## Current architecture
 
-- `LoopdyAppComposition` is the composition root for production and fixture dependencies.
+- `BighelpAppComposition` is the composition root for production and fixture dependencies.
 - `ShellFeatureStore` owns route-scoped feature-model creation and lifetime.
 - Mutable feature models are generally `@MainActor` and `@Observable`.
 - Features use narrow client protocols so production and deterministic fixture implementations share the same UI and model logic.
 - Keep transport wire models separate from app domain and UI models.
 - Validate, normalize, and bound every untrusted value before converting it to application state.
-- Production composition selects `NativeWorkspaceRuntime` through `WorkspaceConnectionStore`; `Loopdy/DirectHermes` owns native transport. Retained Link chat implementations are disabled compatibility code, not a fallback.
+- Production composition selects `NativeWorkspaceRuntime` through `WorkspaceConnectionStore`; `Bighelp/DirectHermes` owns native transport. Retained Link chat implementations are disabled compatibility code, not a fallback.
 - Hermes is the remote session authority. Local session records are a cache plus local draft/presentation state.
 - Versioned JSON repositories use crash-safe replacement and sequential migrations. Preserve newer-than-supported files rather than overwriting them.
 - Shared app-extension code belongs only in the explicit shared source folders.
@@ -88,7 +87,7 @@ For a new app feature, normally:
 4. Implement the native Hermes or local client.
 5. Create an `@Observable` model or store.
 6. Build a SwiftUI view that receives dependencies.
-7. Compose it through `LoopdyAppComposition` or `ShellFeatureStore`.
+7. Compose it through `BighelpAppComposition` or `ShellFeatureStore`.
 8. Add focused unit tests and appropriate UI coverage.
 
 Follow established repository architecture, not a generic MVVM template from another project.
@@ -130,7 +129,7 @@ Historical design plans and retained test names do not override this contract.
 
 ## Project generation, build, and tests
 
-`project.yml` is the Xcode project authority. `Loopdy.xcodeproj` is generated and intentionally committed. Do not edit `project.pbxproj` manually. After adding, removing, renaming, or moving source or resource files, run:
+`project.yml` is the Xcode project authority. `Bighelp.xcodeproj` is generated and intentionally committed. Do not edit `project.pbxproj` manually. After adding, removing, renaming, or moving source or resource files, run:
 
 ```sh
 xcodegen generate
@@ -140,8 +139,8 @@ Select an installed simulator shown by `xcrun simctl list devices available` or 
 
 ```sh
 xcodebuild build \
-  -project Loopdy.xcodeproj \
-  -scheme Loopdy \
+  -project Bighelp.xcodeproj \
+  -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=<available simulator>'
 ```
 
@@ -149,8 +148,8 @@ Test with:
 
 ```sh
 xcodebuild test \
-  -project Loopdy.xcodeproj \
-  -scheme Loopdy \
+  -project Bighelp.xcodeproj \
+  -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=<available simulator>'
 ```
 
@@ -169,11 +168,11 @@ For the Hermes plugin, use the Python environment bundled with a real Hermes che
 
 ```sh
 HERMES_ROOT="${HERMES_ROOT:-$HOME/.hermes/hermes-agent}"
-PYTHONPATH="$HERMES_ROOT:plugins/loopdy" \
+PYTHONPATH="$HERMES_ROOT:bighelp-plugin" \
   "$HERMES_ROOT/venv/bin/python" \
-  -m unittest discover -s plugins/loopdy/tests -v
+  -m unittest discover -s bighelp-plugin/tests -v
 
-hermes plugins doctor plugins/loopdy --ci
+hermes plugins doctor bighelp-plugin --ci
 ```
 
 If Hermes is not installed in the environment, report that the native plugin validation could not run. Do not create a fake Hermes package or weaken tests to make the command green.
@@ -186,7 +185,7 @@ python3 .github/scripts/validate-copilot-customizations.py
 
 ## Protocol and compatibility rules
 
-Loopdy Link components are independently deployed. A protocol change requires explicit old/new compatibility and failure tests. Cover strict decoding and bounds, unknown messages, rollout ordering, request/result coordinate matching, replay, sequence and acknowledgement behavior, cancellation, reconnect, duplicate delivery, revoked devices, authorization epoch changes, and cryptographic failure.
+bighelp Link components are independently deployed. A protocol change requires explicit old/new compatibility and failure tests. Cover strict decoding and bounds, unknown messages, rollout ordering, request/result coordinate matching, replay, sequence and acknowledgement behavior, cancellation, reconnect, duplicate delivery, revoked devices, authorization epoch changes, and cryptographic failure.
 
 Preserve these meanings:
 
@@ -202,7 +201,7 @@ Do not publish live protocol coordinates, private routes, administrative command
 
 ## Security and privacy
 
-Treat the app, extensions, Loopdy Link service, notification relay, Hermes host, configured providers, APNs, and local device storage as distinct trust boundaries.
+Treat the app, extensions, bighelp Link service, notification relay, Hermes host, configured providers, APNs, and local device storage as distinct trust boundaries.
 
 - Keep private keys, account content keys, tokens, and credentials in Keychain, Hermes secret/config facilities, or external secret storage as documented. Never commit them.
 - Bound identifiers, labels, counts, byte sizes, collection sizes, filenames, paths, timestamps, and response bodies.
@@ -211,7 +210,7 @@ Treat the app, extensions, Loopdy Link service, notification relay, Hermes host,
 - Preserve cancellation semantics and prevent late callbacks from committing into newer work.
 - Redact logs and user-facing errors. Do not expose local paths, secrets, raw provider bodies, or private Hermes state.
 - Sign-out, device revocation, unpair, account deletion, and profile changes must remove or invalidate access at the correct authority boundary.
-- Update `docs/ARCHITECTURE.md`, `docs/CLOUDFLARE_INFRASTRUCTURE.md`, and `docs/SECURITY_AND_PRIVACY.md` when architecture, storage, permissions, encryption, retention, or disclosure changes.
+- Update `docs/ARCHITECTURE.md` when architecture, storage, permissions, encryption, retention, or disclosure changes.
 
 Do not add third-party dependencies without explicit discussion. Preserve provenance and license files for vendored `Packages/ThinkingOrbsKit` changes.
 

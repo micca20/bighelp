@@ -26,19 +26,19 @@ def loopdy_setting(env_name, xcconfig_key)
 end
 
 def require_release_settings!
-  missing = { "LOOPDY_APP_STORE_APP_ID" => APP_STORE_APP_ID, "LOOPDY_DEVELOPMENT_TEAM" => DEVELOPMENT_TEAM }
+  missing = { "BIGHELP_APP_STORE_APP_ID" => APP_STORE_APP_ID, "BIGHELP_DEVELOPMENT_TEAM" => DEVELOPMENT_TEAM }
     .select { |_, value| value.empty? }.keys
   return if missing.empty?
 
   UI.user_error!("Set #{missing.join(' and ')} in the environment or Config/Local.xcconfig")
 end
 
-APP_STORE_APP_ID = loopdy_setting("LOOPDY_APP_STORE_APP_ID", "LOOPDY_APP_STORE_APP_ID")
+APP_STORE_APP_ID = loopdy_setting("BIGHELP_APP_STORE_APP_ID", "BIGHELP_APP_STORE_APP_ID")
 APP_IDENTIFIER = "app.loopdy.mobile"
-DEVELOPMENT_TEAM = loopdy_setting("LOOPDY_DEVELOPMENT_TEAM", "DEVELOPMENT_TEAM")
-PROJECT_PATH = File.join(REPOSITORY_ROOT, "Loopdy.xcodeproj")
+DEVELOPMENT_TEAM = loopdy_setting("BIGHELP_DEVELOPMENT_TEAM", "DEVELOPMENT_TEAM")
+PROJECT_PATH = File.join(REPOSITORY_ROOT, "Bighelp.xcodeproj")
 PROJECT_SPEC_PATH = File.join(REPOSITORY_ROOT, "project.yml")
-SCHEME = "Loopdy"
+SCHEME = "Bighelp"
 
 def asc_json(command)
   output = Actions.sh("asc #{command}", log: false)
@@ -86,7 +86,7 @@ def with_release_lock
   lock_path = File.join(Dir.tmpdir, "loopdy-app-store-#{APP_STORE_APP_ID}.lock")
   File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
     locked = lock.flock(File::LOCK_EX | File::LOCK_NB)
-    UI.user_error!("Another Loopdy TestFlight release is already running on this machine.") unless locked
+    UI.user_error!("Another bighelp TestFlight release is already running on this machine.") unless locked
     yield
   end
 end
@@ -162,12 +162,12 @@ platform :ios do
     groups = internal_testflight_groups
 
     UI.success(
-      "Ready to ship Loopdy #{version} (#{build_number}) to: " \
+      "Ready to ship bighelp #{version} (#{build_number}) to: " \
       "#{(groups[:automatic] + groups[:assignable]).join(', ')}"
     )
   end
 
-  desc "Build, upload, and distribute the next Loopdy build to every internal TestFlight group"
+  desc "Build, upload, and distribute the next bighelp build to every internal TestFlight group"
   lane :deploy_testflight do |options|
     require_release_settings!
     with_release_lock do
@@ -184,7 +184,7 @@ platform :ios do
 
       output_directory = File.expand_path("../build/fastlane", __dir__)
       FileUtils.mkdir_p(output_directory)
-      ipa_name = "Loopdy-#{version}-#{build_number}.ipa"
+      ipa_name = "bighelp-#{version}-#{build_number}.ipa"
 
       build_app(
         project: PROJECT_PATH,
@@ -218,7 +218,7 @@ platform :ios do
       )
 
       UI.success(
-        "Loopdy #{version} (#{build_number}) is available to internal groups: " \
+        "bighelp #{version} (#{build_number}) is available to internal groups: " \
         "#{(groups[:automatic] + groups[:assignable]).join(', ')}"
       )
     end
@@ -242,7 +242,7 @@ platform :ios do
     keychain = File.join(ENV.fetch("RUNNER_TEMP"), "loopdy-signing.keychain-db")
     keychain_password = SecureRandom.hex(32)
     output_directory = File.join(REPOSITORY_ROOT, "build", "testflight")
-    archive_path = File.join(output_directory, "Loopdy.xcarchive")
+    archive_path = File.join(output_directory, "Bighelp.xcarchive")
     FileUtils.mkdir_p(output_directory)
     begin
       create_keychain(path: keychain, password: keychain_password,
@@ -252,7 +252,7 @@ platform :ios do
         keychain_path: keychain, keychain_password: keychain_password, log_output: false)
       api_key = app_store_connect_api_key(**active_asc_credentials)
       app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
-      UI.user_error!("The API key cannot access the expected Loopdy app") unless app && app.id == APP_STORE_APP_ID
+      UI.user_error!("The API key cannot access the expected bighelp app") unless app && app.id == APP_STORE_APP_ID
       groups = app.get_beta_groups.select(&:is_internal_group)
       UI.user_error!("Configure at least one internal TestFlight group before uploading") if groups.empty?
       version = marketing_version
@@ -271,13 +271,14 @@ platform :ios do
       UI.user_error!("The imported distribution identity is not an active certificate on this team") unless certificate
       provisioning_profiles = {}
       {
-        "Loopdy" => APP_IDENTIFIER,
-        "LoopdyWatch" => "#{APP_IDENTIFIER}.watchkitapp",
-        "LoopdyNotificationService" => "#{APP_IDENTIFIER}.notification-service",
-        "LoopdyLiveActivity" => "#{APP_IDENTIFIER}.live-activity"
+        "Bighelp" => APP_IDENTIFIER,
+        "BighelpWatch" => "#{APP_IDENTIFIER}.watchkitapp",
+        "BighelpNotificationService" => "#{APP_IDENTIFIER}.notification-service",
+        "BighelpLiveActivity" => "#{APP_IDENTIFIER}.live-activity"
       }.each do |target, bundle_id|
         profile_uuid = get_provisioning_profile(api_key: api_key,
           app_identifier: bundle_id, cert_id: certificate.id,
+          # Existing Apple profiles are named "Loopdy CI …"; keep the name so they are reused.
           provisioning_name: "Loopdy CI #{bundle_id} #{certificate.id}",
           ignore_profiles_with_different_name: true,
           output_path: ENV.fetch("RUNNER_TEMP"), filename: "#{target}.mobileprovision",
@@ -287,10 +288,10 @@ platform :ios do
         update_code_signing_settings(path: PROJECT_PATH,
           use_automatic_signing: false, targets: [target], build_configurations: ["Release"],
           team_id: DEVELOPMENT_TEAM, code_sign_identity: "Apple Distribution",
-          sdk: target == "LoopdyWatch" ? "watchos*" : "iphoneos*",
+          sdk: target == "BighelpWatch" ? "watchos*" : "iphoneos*",
           profile_uuid: profile_uuid, profile_name: lane_context[SharedValues::SIGH_NAME])
       end
-      ipa_name = "Loopdy-#{version}-#{build_number}.ipa"
+      ipa_name = "bighelp-#{version}-#{build_number}.ipa"
       auth_args = ["-allowProvisioningUpdates", "-authenticationKeyPath", ENV.fetch("ASC_PRIVATE_KEY_PATH"),
         "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"), "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID")]
         .map { |value| Shellwords.escape(value) }.join(" ")
@@ -301,7 +302,7 @@ platform :ios do
           provisioningProfiles: provisioning_profiles,
           teamID: DEVELOPMENT_TEAM, signingCertificate: "Apple Distribution", uploadSymbols: true },
         xcargs: auth_args + " CODE_SIGN_IDENTITY='Apple Distribution'")
-      sh("codesign --verify --deep --strict #{Shellwords.escape(File.join(archive_path, 'Products/Applications/Loopdy.app'))}")
+      sh("codesign --verify --deep --strict #{Shellwords.escape(File.join(archive_path, 'Products/Applications/Bighelp.app'))}")
       notes = ENV["TESTFLIGHT_NOTES"].to_s.strip
       notes = "Chat keyboard and References stability, GitHub discovery, and simpler Wiki setup." if notes.empty?
       upload_to_testflight(api_key: api_key, app_identifier: APP_IDENTIFIER,
@@ -321,34 +322,29 @@ platform :ios do
       evidence = { version: version, build_number: build_number, app_id: app.id, build_id: build.id,
         commit: ENV["GITHUB_SHA"], internal_groups: groups.map(&:name), ready_for_internal_testing: true }
       File.write(File.join(output_directory, "release.json"), JSON.pretty_generate(evidence) + "\n")
-      UI.success("Loopdy #{version} (#{build_number}) is ready in internal TestFlight")
+      UI.success("bighelp #{version} (#{build_number}) is ready in internal TestFlight")
     ensure
       delete_keychain(keychain_path: keychain) if File.exist?(keychain)
     end
   end
 
-  desc "Install the current committed Loopdy plugin into Hermes and restart the gateway"
+  desc "Install the bighelp plugin revision this app pins into Hermes and restart the gateway"
   lane :hermes_plugin do
-    plugin_changes = Actions.sh(
-      "git -C #{Shellwords.escape(REPOSITORY_ROOT)} status --porcelain -- plugins/loopdy",
-      log: false
-    ).strip
-    UI.user_error!("Commit Loopdy plugin changes before deployment.") unless plugin_changes.empty?
-
+    info_plist = File.join(REPOSITORY_ROOT, "Bighelp", "Info.plist")
     revision = Actions.sh(
-      "git -C #{Shellwords.escape(REPOSITORY_ROOT)} rev-parse HEAD",
+      "/usr/libexec/PlistBuddy -c 'Print :BighelpNotificationPluginRevision' #{Shellwords.escape(info_plist)}",
       log: false
     ).strip
-    source = "file://#{REPOSITORY_ROOT}#plugins/loopdy"
+    UI.user_error!("Bighelp/Info.plist has no pinned plugin revision.") unless revision.match?(/\A[0-9a-f]{40}\z/)
 
-    sh("hermes plugins install #{Shellwords.escape(source)} --ref #{revision} --force --enable")
+    sh("hermes plugins install promptclickrun/bighelp-plugin --ref #{revision} --force --enable")
     sh("hermes plugins doctor loopdy --ci")
     sh("hermes gateway restart")
     sh("hermes gateway status")
     sh("hermes loopdy link status")
   end
 
-  desc "Deploy the current Loopdy plugin, then ship the next internal TestFlight build"
+  desc "Deploy the current bighelp plugin, then ship the next internal TestFlight build"
   lane :release do |options|
     require_release_settings!
     hermes_plugin

@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument("--plugin", type=Path, help="bighelp-plugin checkout (default: a sibling of --repo)")
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--auth-mode", choices=["password", "dashboard", "token"], default="password")
@@ -90,7 +91,11 @@ def main():
             "ui_meta": {"hermes-bots": {"title": "Native fixture"}},
         }
         (home / "plugins").mkdir()
-        (home / "plugins/loopdy").symlink_to(repo / "plugins/loopdy", target_is_directory=True)
+        plugin = args.plugin or repo.parent / "bighelp-plugin"
+        if not (plugin / "plugin.yaml").is_file():
+            raise SystemExit(f"{plugin} is not a bighelp-plugin checkout; pass --plugin")
+        # Hermes installs the plugin under its plugin id, "loopdy".
+        (home / "plugins/loopdy").symlink_to(plugin.resolve(), target_is_directory=True)
         if args.auth_mode in {"dashboard", "token"}:
             config.pop("dashboard")
         (home / "config.yaml").write_text(json.dumps(config))

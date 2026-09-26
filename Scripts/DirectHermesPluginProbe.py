@@ -48,7 +48,7 @@ def main():
                 destination=candidate/relative; destination.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,destination)
         def git(*argv):
             return subprocess.check_output(["git",*argv],cwd=candidate,stderr=subprocess.DEVNULL,text=True).strip()
-        git("init","-q");git("config","user.name","Loopdy integration fixture");git("config","user.email","fixture@example.invalid")
+        git("init","-q");git("config","user.name","Bighelp integration fixture");git("config","user.email","fixture@example.invalid")
         git("add",".");git("commit","-qm","Fixture candidate");sha=git("rev-parse","HEAD")
         home=root/"home"; home.mkdir(); project=root/"project";project.mkdir()
         permission_fixture=project/"fixture-permissions.txt"

@@ -13,7 +13,7 @@ Related: issue #93; prior recovery work #91. This is a bounded app-only repair, 
 
 ## Reported behavior and scope
 
-The user clarified that switching to another app preserves the current Loopdy screen when returning, but the connection is dead. Navigation restoration and crash recovery are therefore excluded. The app already invokes the full authenticated refresh on launch and foreground; adding a second logout-like pipeline would duplicate it and risk account data.
+The user clarified that switching to another app preserves the current bighelp screen when returning, but the connection is dead. Navigation restoration and crash recovery are therefore excluded. The app already invokes the full authenticated refresh on launch and foreground; adding a second logout-like pipeline would duplicate it and risk account data.
 
 ## Confirmed findings and changes
 
@@ -54,7 +54,7 @@ This is removal of a specific history-scaled UI cost, not an end-to-end app spee
 - The actual ChatView in a UIHostingController follows growing same-row content and idle incoming messages.
 - Earlier focused runs also passed live-tail projection, activity insertion/group append and background catch-up preservation checks.
 
-Use the repository's explicit `xcodebuild test` command and select `LoopdyAppReadinessTests`, the named recovery tests in `LoopdyLinkLiveSocketTests`, and the scroll/visible-canvas tests in `ChatModelTests`. Performance reproduction: `-only-testing:'LoopdyTests/ChatModelTests/timelineScrollObservationCostDoesNotGrowWithSettledHistory()'`. Use one explicit project, simulator and reusable DerivedData root. A shared runner switched to an unrelated checkout during one attempted retry reproduction; that zero-selection result was excluded and the correct checkout was exercised directly.
+Use the repository's explicit `xcodebuild test` command and select `BighelpAppReadinessTests`, the named recovery tests in `BighelpLinkLiveSocketTests`, and the scroll/visible-canvas tests in `ChatModelTests`. Performance reproduction: `-only-testing:'BighelpTests/ChatModelTests/timelineScrollObservationCostDoesNotGrowWithSettledHistory()'`. Use one explicit project, simulator and reusable DerivedData root. A shared runner switched to an unrelated checkout during one attempted retry reproduction; that zero-selection result was excluded and the correct checkout was exercised directly.
 
 ## Remaining opportunities, not claimed fixes
 
@@ -63,4 +63,4 @@ Use the repository's explicit `xcodebuild test` command and select `LoopdyAppRea
 - Open chat models retain full live history, and active route-unowned models are intentionally retained to finish work. Do not delete live data or cap visible history merely to lower memory. A device allocation profile is needed to distinguish expected growth from leaked resources.
 - Store reloads remain sequential. Blind parallelization can contend for the ordered encrypted transport and does not establish lower end-to-end latency.
 
-The exact 20–30 minute physical-device suspension incident and all real-network failure modes remain unverified. These repairs address reproduced local failure mechanisms. This historical task did not authorize a merge, TestFlight upload, installed-plugin change, Cloudflare rollout or service restart; later chat release evidence is recorded separately in the current validation report.
+The exact 20–30 minute physical-device suspension incident and all real-network failure modes remain unverified. These repairs address reproduced local failure mechanisms. This historical task did not authorize a merge, TestFlight upload, installed-plugin change, cloud rollout or service restart; later chat release evidence is recorded separately in the current validation report.

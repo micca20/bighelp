@@ -1,7 +1,7 @@
 # Development guide
 
-Production transport contract: **native Hermes only for chat**. Cloudflare is
-limited to optional notifications and Live Activities. The current composition,
+Production transport contract: **native Hermes only for chat**. Cloud services
+are used only for optional notifications and Live Activities, which BuzzKit delivers. The current composition,
 voice boundary, enrollment isolation and verification requirements are defined
 in [Native transport](NATIVE_TRANSPORT.md). Retained Link/paired-Direct protocol
 sections below describe legacy compatibility code, not a selectable chat path.
@@ -28,15 +28,15 @@ xcodegen generate
 
 Do not edit the generated project file by hand. Regenerate it after adding,
 removing, or moving source and resource files. The generated
-`Loopdy.xcodeproj` is intentionally committed so Xcode can open the repository
+`Bighelp.xcodeproj` is intentionally committed so Xcode can open the repository
 without a generation step; it must match `project.yml`.
 
 ## Build
 
 ```sh
 xcodebuild build \
-  -project Loopdy.xcodeproj \
-  -scheme Loopdy \
+  -project Bighelp.xcodeproj \
+  -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=<available simulator>'
 ```
 
@@ -73,14 +73,14 @@ Build and test the native Mac target with one reusable DerivedData root:
 
 ```sh
 xcodebuild build \
-  -project Loopdy.xcodeproj \
-  -scheme LoopdyMac \
+  -project Bighelp.xcodeproj \
+  -scheme BighelpMac \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath /private/tmp/loopdy-macos-issue-26-derived
 
 xcodebuild test \
-  -project Loopdy.xcodeproj \
-  -scheme LoopdyMac \
+  -project Bighelp.xcodeproj \
+  -scheme BighelpMac \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath /private/tmp/loopdy-macos-issue-26-derived
 ```
@@ -94,8 +94,8 @@ inspector before any conversation or composer action clips. The app has a
 
 ```sh
 xcodebuild test \
-  -project Loopdy.xcodeproj \
-  -scheme Loopdy \
+  -project Bighelp.xcodeproj \
+  -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=<available simulator>'
 ```
 
@@ -123,17 +123,17 @@ DerivedData directory. Run the integrated Debug regression set:
 CHAT_SIMULATOR_ID='<available simulator UUID>'
 CHAT_DERIVED_DATA="$PWD/DerivedData"
 xcodebuild test \
-  -project Loopdy.xcodeproj -scheme Loopdy -configuration Debug \
+  -project Bighelp.xcodeproj -scheme Bighelp -configuration Debug \
   -destination "platform=iOS Simulator,id=$CHAT_SIMULATOR_ID" \
   -derivedDataPath "$CHAT_DERIVED_DATA" -parallel-testing-enabled NO \
-  -only-testing:LoopdyTests/ChatTimelineRenderPartitionTests \
-  -only-testing:LoopdyTests/ChatModelTests \
-  -only-testing:LoopdyTests/ChatCanvasGeometryTests \
-  -only-testing:LoopdyTests/ChatCompletedTurnTests \
-  -only-testing:LoopdyTests/ChatActivityDisclosureTests \
-  -only-testing:LoopdyTests/DashboardModelTests \
-  -only-testing:LoopdyUITests/ChatStreamingAnchorUITests \
-  -only-testing:LoopdyUITests/ToolDisclosureUITests
+  -only-testing:BighelpTests/ChatTimelineRenderPartitionTests \
+  -only-testing:BighelpTests/ChatModelTests \
+  -only-testing:BighelpTests/ChatCanvasGeometryTests \
+  -only-testing:BighelpTests/ChatCompletedTurnTests \
+  -only-testing:BighelpTests/ChatActivityDisclosureTests \
+  -only-testing:BighelpTests/DashboardModelTests \
+  -only-testing:BighelpUITests/ChatStreamingAnchorUITests \
+  -only-testing:BighelpUITests/ToolDisclosureUITests
 ```
 
 The baseline executed 267 Swift Testing cases and ten XCTest UI cases. Counts
@@ -143,7 +143,7 @@ line; an XCTest wrapper reporting zero tests is not the Swift Testing result.
 An unselected/zero-test run does not validate the change.
 
 For Shortcuts or shared session persistence changes, also run
-`LoopdyShortcutServiceTests`, `LoopdyAppIntentContractTests`, `LoopdyAppReadinessTests`, `SessionCatalogStoreTests`,
+`BighelpShortcutServiceTests`, `BighelpAppIntentContractTests`, `BighelpAppReadinessTests`, `SessionCatalogStoreTests`,
 `DemoRepositoryTests`, `ReferenceDeliveryAcceptanceTests` and `ShellFeatureStoreTests`.
 Include `testTypingAndScrollingWithTwoActiveLongChats` in the UI pass. It exercises
 the real feature store and repository while a second prepared chat retains 1,000
@@ -161,14 +161,14 @@ bash or zsh, using the same simulator and DerivedData variables:
 
 ```sh
 chat_stress_args=(
-  -project Loopdy.xcodeproj -scheme Loopdy -configuration Release
+  -project Bighelp.xcodeproj -scheme Bighelp -configuration Release
   SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG ENABLE_TESTABILITY=YES ONLY_ACTIVE_ARCH=YES
   -destination "platform=iOS Simulator,id=$CHAT_SIMULATOR_ID"
   -derivedDataPath "$CHAT_DERIVED_DATA" -parallel-testing-enabled NO
-  -only-testing:LoopdyTests/ChatTimelineRenderPartitionTests
-  -only-testing:LoopdyUITests/ChatStreamingAnchorUITests/testExpandedLongToolStreamKeepsMainThreadResponsive
-  -only-testing:LoopdyUITests/ChatStreamingAnchorUITests/testLongToolStreamKeepsMainThreadResponsive
-  -only-testing:LoopdyUITests/ChatStreamingAnchorUITests/testShortToolStreamKeepsMainThreadResponsive
+  -only-testing:BighelpTests/ChatTimelineRenderPartitionTests
+  -only-testing:BighelpUITests/ChatStreamingAnchorUITests/testExpandedLongToolStreamKeepsMainThreadResponsive
+  -only-testing:BighelpUITests/ChatStreamingAnchorUITests/testLongToolStreamKeepsMainThreadResponsive
+  -only-testing:BighelpUITests/ChatStreamingAnchorUITests/testShortToolStreamKeepsMainThreadResponsive
 )
 xcodebuild build-for-testing "${chat_stress_args[@]}" && \
 xcodebuild test-without-building "${chat_stress_args[@]}"
@@ -196,28 +196,22 @@ or `ToolDisclosureUITests`; run them explicitly for relevant chat changes.
 
 ## Hermes plugin
 
-The installable Hermes plugin is tracked under `plugins/loopdy` in this
-repository. Install the published repository path with:
+The Hermes plugin lives in its own repository,
+[promptclickrun/bighelp-plugin](https://github.com/promptclickrun/bighelp-plugin).
+Install it with:
 
 ```sh
-hermes plugins install promptclickrun/loopdy-ios/plugins/loopdy --enable
+hermes plugins install promptclickrun/bighelp-plugin --enable
 ```
 
-For a committed local checkout, install that exact Git content with:
-
-```sh
-hermes plugins install "file://$PWD#plugins/loopdy" --enable
-```
-
-Hermes' file installer reads committed Git content. Run the plugin suite and
-Plugin Doctor before publishing a new plugin version; do not copy caches,
-generated bytecode, credentials, or local Hermes data into `plugins/loopdy`.
+The app pins the plugin revision it expects in `Bighelp/Info.plist`
+(`BighelpNotificationPluginRevision`).
 
 ## Internal release automation
 
 Before shipping persistence or catch-up changes, run `SessionCatalogStoreTests`,
 `ShellFeatureStoreTests`, and
-`LoopdyLaunchTests/testOpeningHomeWithCompletedHistoryAndQueuedDeliveryRemainsResponsive`.
+`BighelpLaunchTests/testOpeningHomeWithCompletedHistoryAndQueuedDeliveryRemainsResponsive`.
 The idle Home fixture measures queued final answers and subagent rosters with no
 active turn. Passing active-stream tests alone does not cover this path. Retain
 the metric attachment and exact before/after source identity; see
@@ -245,7 +239,7 @@ bin/fastlane ios deploy_testflight notes:"What to test"
 ```
 
 The lane asks App Store Connect for the next build number, updates
-`project.yml`, regenerates `Loopdy.xcodeproj`, archives and uploads the app,
+`project.yml`, regenerates `Bighelp.xcodeproj`, archives and uploads the app,
 waits for processing, and adds the build to every internal TestFlight group.
 Use `build_number:97` to override automatic numbering.
 The lane prevents concurrent releases on one machine. CI systems running on
@@ -259,7 +253,7 @@ bin/fastlane ios release_check
 bin/fastlane ios release_check build_number:97
 ```
 
-Install the exact current Git commit of the Loopdy plugin and restart Hermes:
+Install the exact current Git commit of the bighelp plugin and restart Hermes:
 
 ```sh
 bin/fastlane ios hermes_plugin
@@ -286,7 +280,7 @@ fixture content synthetic and never copy production data into tests.
 ## Runtime configuration
 
 The optional notification service uses an HTTPS origin supplied through the
-`LoopdyLinkBaseURL` Info.plist setting. URL validation rejects embedded
+`BighelpLinkBaseURL` Info.plist setting. URL validation rejects embedded
 credentials and non-origin path/query/fragment components.
 
 Configure Apple capabilities for:
@@ -299,7 +293,7 @@ Configure Apple capabilities for:
 Use local build settings or secret-management systems for environment-specific
 values. Never commit:
 
-- Cloudflare API tokens
+- Cloud service API tokens
 - APNs keys or certificates
 - Signing certificates or provisioning profiles
 - Private host credentials
@@ -310,7 +304,7 @@ values. Never commit:
 The checked-in project contains the publisher's signing identifiers. External
 contributors should substitute their own development team, bundle identifiers,
 associated-domain entitlement, and Keychain access group. Fixture-mode simulator
-development does not require access to Loopdy's production Cloudflare or Apple
+development does not require access to bighelp's production cloud or Apple
 credentials.
 
 ## Adding a feature
@@ -323,7 +317,7 @@ Use this pattern:
 4. Implement the native Hermes or local client.
 5. Create an `@Observable` feature model/store.
 6. Add a SwiftUI view that receives the model.
-7. Compose it in `LoopdyAppComposition` or `ShellFeatureStore`.
+7. Compose it in `BighelpAppComposition` or `ShellFeatureStore`.
 8. Add focused unit tests and, where appropriate, UI tests.
 
 Keep transport models separate from UI models. Validate every untrusted
@@ -341,7 +335,7 @@ Local JSON repositories are schema-versioned. When changing a persisted model:
 
 ## Protocol changes
 
-Multiple independently deployed components implement Loopdy Link.
+Multiple independently deployed components implement bighelp Link.
 Protocol changes require compatibility tests for:
 
 - Strict payload validation and bounds
@@ -371,8 +365,7 @@ Before merging a feature:
 - Are logs redacted?
 - Are production and fixture paths both tested?
 
-Update `docs/ARCHITECTURE.md`, `docs/CLOUDFLARE_INFRASTRUCTURE.md`, and
-`docs/SECURITY_AND_PRIVACY.md` whenever any checklist answer changes.
+Update `docs/ARCHITECTURE.md` whenever any checklist answer changes.
 
 ## Code organization
 
@@ -440,7 +433,7 @@ into issues, chat, or logs):
 
 The API key must access your App Store Connect app (see `APP_STORE_APP_ID` in
 `fastlane/Fastfile`) and permit Xcode provisioning for your team
-(`LOOPDY_DEVELOPMENT_TEAM`). Configure at least one
+(`BIGHELP_DEVELOPMENT_TEAM`). Configure at least one
 internal TestFlight group. A downloaded `.cer` alone cannot sign; the matching
 private key is required. If the only copy is on an unavailable Mac, recover an
 existing signing backup or use the optional [one-time CI signing setup](CI_SIGNING.md)
@@ -450,7 +443,7 @@ explicit manual confirmation. It installs the supplied identity in a temporary k
 and deletes temporary signing files when finished. It uses the committed
 Fastlane bundle and needs no preconfigured `asc` login on the runner.
 
-Wiki folder registration also requires deploying the updated Loopdy Hermes
+Wiki folder registration also requires deploying the updated bighelp Hermes
 plugin that advertises `wiki.connect`. The iOS workflow does not update or restart
 an unrelated host. Deploy the committed plugin on the authorized host with the
 existing plugin release procedure, then verify `hermes plugins doctor loopdy
@@ -467,7 +460,7 @@ Use [Hermes Bot Mode](HERMES_BOT_MODE.md) as the current runtime contract. Keep
 its Link client, room-store and ChatModel integration suites green. Include
 pending-send recovery, canonical event IDs, cursor/authority checks, explicit
 Stop, failed-task retry and task-specific approvals. A direct-chat fixture is not
-proof of native Hermes room execution or of the Loopdy Native harness.
+proof of native Hermes room execution or of the bighelp Native harness.
 
 The UI gate includes default/AX XXXL suggested prompts, root content clearance
 in portrait/landscape/accessibility sizes, Wiki navigation, Hosts/Connected
@@ -480,7 +473,7 @@ from immediate selection. Preserve the chat performance gate alongside this work
 For composer ownership or account recovery changes, run these actual suites:
 `ReferenceDeliveryAcceptanceTests`, `ReferenceNativeEditorAcceptanceTests`,
 `ReferenceHubTests`, `ChatModelTests`, `ShellFeatureStoreTests`,
-`LoopdyLinkAccountStoreTests` and `LoopdyAppReadinessTests`. Confirm the selectors
+`BighelpLinkAccountStoreTests` and `BighelpAppReadinessTests`. Confirm the selectors
 execute tests. Preserve failure evidence before fixing the implementation.
 
 The mounted reference tests must retain ordinary text through provider loss,
@@ -497,16 +490,15 @@ Native row alongside an existing phone and Hermes host. Verify that v1 returns
 its supported kinds and that all persisted rows, grants and schema are unchanged.
 Do not fix this by revoking devices, changing keys or coercing Native to Hermes.
 After deployment, verify the live signed account profile and device list; source
-tests alone do not establish successful iPhone sign-in. See
-[the account catalog incident](ACCOUNT_CATALOG_COMPATIBILITY.md).
+tests alone do not establish successful iPhone sign-in.
 
-Run `LoopdyLaunchTests/testQuickWorkspaceCompactNavigationKeepsMenusAndPreviewRowsVisible`
-and `LoopdyLaunchTests/testQuickWorkspaceCapsPinnedPreviewAndOpensAllAgentsRoute`
+Run `BighelpLaunchTests/testQuickWorkspaceCompactNavigationKeepsMenusAndPreviewRowsVisible`
+and `BighelpLaunchTests/testQuickWorkspaceCapsPinnedPreviewAndOpensAllAgentsRoute`
 for drawer changes. Inspect their screenshots as well as geometry and hit-target
 assertions. Keep navigation before the bounded pinned-agent preview and sessions;
 verify the full Agents route remains reachable with more pins than the preview.
 
-For scheduler compatibility, run the Loopdy plugin contract, workspace-control
+For scheduler compatibility, run the bighelp plugin contract, workspace-control
 and portability suites with the installed Hermes source on `PYTHONPATH`, followed
 by the official plugin doctor. The installed-module cron test must cover all seven
 workers. A read-only live list can verify integration without creating or running

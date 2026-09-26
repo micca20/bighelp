@@ -45,10 +45,10 @@ You need a Mac with a current Xcode (Swift 6) and
 brew install xcodegen
 cp Config/Local.xcconfig.example Config/Local.xcconfig   # add your Apple Team ID
 xcodegen generate
-open Loopdy.xcodeproj
+open Bighelp.xcodeproj
 ```
 
-Run the **Loopdy** scheme. Loopdy was bighelp's original name, and the code
+Run the **bighelp** scheme. bighelp was bighelp's original name, and the code
 still uses it. `Config/Local.xcconfig` is git-ignored. Simulator builds work
 with it empty. To run on a real iPhone, change the bundle IDs and app groups in
 `project.yml` to ones your Apple team owns.
@@ -63,7 +63,7 @@ with it empty. To run on a real iPhone, change the bundle IDs and app groups in
 **Tests:**
 
 ```sh
-xcodebuild test -project Loopdy.xcodeproj -scheme Loopdy \
+xcodebuild test -project Bighelp.xcodeproj -scheme Bighelp \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
@@ -71,12 +71,11 @@ xcodebuild test -project Loopdy.xcodeproj -scheme Loopdy \
 
 | Path | What it is |
 |---|---|
-| `Loopdy/` | The iPhone app |
-| `LoopdyWatch/` | The Apple Watch app |
-| `LoopdyLiveActivity/`, `LoopdyNotificationService/` | Live Activities and notifications |
-| `LoopdyTests/`, `LoopdyUITests/` | Unit and UI tests |
+| `Bighelp/` | The iPhone app |
+| `BighelpWatch/` | The Apple Watch app |
+| `BighelpLiveActivity/`, `BighelpNotificationService/` | Live Activities and notifications |
+| `BighelpTests/`, `BighelpUITests/` | Unit and UI tests |
 | `Design/AvatarKit/` | Avatar artwork and the tools that export it |
-| `plugins/loopdy/` | A copy of the Hermes plugin (the current version lives in bighelp-plugin) |
 
 The look and feel is described in [DESIGN.md](DESIGN.md).
 

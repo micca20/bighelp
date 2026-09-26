@@ -14,7 +14,7 @@ and removed subagents on the main thread. The sampled launch had no active
 sessions in its saved catalog: 62 records, 185 messages, and 2,938 tool/activity
 events, in a 6.9 MB file.
 
-A nearby memory report lists Loopdy at approximately 690 MiB. Loopdy was **not**
+A nearby memory report lists bighelp at approximately 690 MiB. bighelp was **not**
 the jetsam victim. This does not establish a leak or a memory-limit termination.
 The watchdog stack alone does not identify an infinite loop or an OS defect.
 Treat these as app investigation evidence, not an iOS-version explanation.
@@ -44,7 +44,7 @@ Treat these as app investigation evidence, not an iOS-version explanation.
 discovery/termination, exact persisted readback, and SwiftUI observation during
 catch-up. `ShellFeatureStoreTests` covers automatic dashboard reload coalescing.
 
-`LoopdyLaunchTests/testOpeningHomeWithCompletedHistoryAndQueuedDeliveryRemainsResponsive`
+`BighelpLaunchTests/testOpeningHomeWithCompletedHistoryAndQueuedDeliveryRemainsResponsive`
 launches Home with 62 synthetic completed chats and 3,000 retained tool events,
 then delivers 120 historical answers and 120 start/end subagent rosters through
 the production feature store. It starts no chat. The probe samples the app's
