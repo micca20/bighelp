@@ -1,0 +1,122 @@
+import Observation
+
+enum ConversationActivationSource: Sendable {
+    case newChat
+    case quickSwitch
+    case sessions
+    case fork
+}
+
+@MainActor
+@Observable
+final class AppState {
+    var selectedTab: AppTab = .sessions
+    var path: [AppRoute] = []
+    private(set) var activeConversationID: String?
+    private(set) var pendingVoiceConversationID: String?
+    /// Text a board "Ask" or "Discuss" leaves in the next new chat's composer.
+    var pendingComposerText: String?
+    /// A chat picked from the full chat list keeps Back to that list. The Chat
+    /// tab's own chat (auto-opened, ☰ › New chat, the switcher) gets ☰ and the
+    /// tab bar. Both use the big-avatar header.
+    var chatOpenedFromList = false
+
+    /// The drawer reflects the destination on screen, while `selectedTab`
+    /// deliberately retains the root to return to when a pushed route closes.
+    var drawerSelectedTab: AppTab? {
+        path.isEmpty ? selectedTab : nil
+    }
+
+    func select(_ tab: AppTab) {
+        switch tab {
+        case .home, .inbox:
+            selectedTab = .workspace
+            path = [.workspaceActivity]
+            return
+        default:
+            selectedTab = tab
+        }
+        // Root tabs are destinations, not another level in the current route.
+        // Clearing the path prevents a stale pushed chat/session from winning
+        // the NavigationStack presentation after a tab or drawer selection.
+        path.removeAll()
+    }
+
+    func open(_ route: AppRoute) {
+        path.append(route)
+    }
+
+    func openSessions() {
+        select(.sessions)
+    }
+
+    func openScheduledTasks() {
+        select(.scheduledTasks)
+    }
+
+    func openLoopdyLinkDevices() {
+        path = [.loopdyLinkDevices]
+    }
+
+    func openInbox() {
+        select(.inbox)
+    }
+
+    func activateConversation(id: String, source: ConversationActivationSource) {
+        let route = AppRoute.chat(conversationID: id)
+        switch source {
+        case .newChat, .quickSwitch:
+            if case .chat = path.last {
+                path.removeLast()
+            }
+            path.append(route)
+        case .sessions, .fork:
+            path.append(route)
+        }
+        activeConversationID = id
+    }
+
+    func requestVoiceMode(for conversationID: String) {
+        pendingVoiceConversationID = conversationID
+    }
+
+    func resetForHostBoundary() {
+        // Paired-device controls belong to the account and remain useful after
+        // selecting a host (for example, Set as Primary). Host-owned routes do not.
+        let showsOnlyAccountDevices = !path.isEmpty && path.allSatisfy { route in
+            switch route {
+            case .loopdyLinkDevices, .loopdyLinkDevice, .workspaceConnections: true
+            default: false
+            }
+        }
+        if !showsOnlyAccountDevices {
+            selectedTab = .sessions
+        }
+        if !showsOnlyAccountDevices { path.removeAll() }
+        activeConversationID = nil
+        pendingVoiceConversationID = nil
+        pendingComposerText = nil
+        chatOpenedFromList = false
+    }
+
+    func resetForAccountBoundary() {
+        selectedTab = .sessions
+        path.removeAll()
+        activeConversationID = nil
+        pendingVoiceConversationID = nil
+        pendingComposerText = nil
+        chatOpenedFromList = false
+    }
+
+    func consumeComposerText() -> String? {
+        defer { pendingComposerText = nil }
+        return pendingComposerText
+    }
+
+    @discardableResult
+    func consumeVoiceRequest(for conversationID: String) -> Bool {
+        guard pendingVoiceConversationID == conversationID else { return false }
+        pendingVoiceConversationID = nil
+        return true
+    }
+}

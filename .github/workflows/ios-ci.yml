@@ -1,0 +1,243 @@
+name: iOS build and tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      full_suite:
+        description: Run the expensive complete phone/iPad matrix
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      full_suite:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wiki-host:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 5bd439d3ed4ae5f099857813383389dcd0ab4369
+          path: .ci/hermes
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare the real Hermes test environment
+        run: |
+          python3 -m venv .ci/hermes/venv
+          .ci/hermes/venv/bin/python -m pip install cryptography==46.0.0 PyYAML==6.0.3 httpx==0.28.1 python-dotenv==1.2.2 PyJWT==2.13.0 zstandard==0.25.0
+      - name: Verify authenticated Wiki operations and macOS filesystem boundaries
+        run: |
+          set -o pipefail
+          export HERMES_HOME="$RUNNER_TEMP/wiki-hermes-home"
+          export TMPDIR=/tmp
+          export PYTHONPATH="$GITHUB_WORKSPACE/.ci/hermes:$GITHUB_WORKSPACE/plugins/loopdy:$GITHUB_WORKSPACE/plugins/loopdy/tests"
+          .ci/hermes/venv/bin/python -m unittest \
+            test_wiki_integration test_wiki_service test_wiki_wire \
+            test_workspace_control.WorkspaceControllerTests.test_every_wire_operation_has_one_explicit_backend_handler \
+            -v 2>&1 | tee "$RUNNER_TEMP/wiki-tests.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wiki-host-evidence
+          path: ${{ runner.temp }}/wiki-tests.log
+          retention-days: 7
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: ${{ inputs.full_suite && 180 || 35 }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        suite: ${{ fromJSON(inputs.full_suite && '["native","ui-0","ui-1","ui-2","ui-3","ui-ipad"]' || '["release-smoke"]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect toolchain and generate project
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate
+      - name: Choose the assigned simulator family
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '--json']))['devices']
+          family = 'iPad' if os.environ['TEST_SUITE'] == 'ui-ipad' else 'iPhone'
+          candidates = [{**device, 'runtime': runtime} for runtime, group in devices.items() if '.iOS-' in runtime for device in group if device['name'].startswith(family)]
+          if not candidates:
+              raise SystemExit(f'No available {family} simulator on this runner; device-family fallback is not allowed')
+          if family == 'iPad':
+              # Prefer a full-size tablet on the newest available iOS runtime.
+              candidates.sort(key=lambda device: (
+                  tuple(int(part) for part in device['runtime'].split('.iOS-')[-1].split('-')),
+                  any(size in device['name'] for size in ('13-inch', '12.9-inch')),
+                  device['name'],
+              ), reverse=True)
+          selected = candidates[0]
+          diagnostics = Path(os.environ['RUNNER_TEMP']) / 'test-diagnostics'
+          diagnostics.mkdir(parents=True, exist_ok=True)
+          metadata = {'suite': os.environ['TEST_SUITE'], 'requestedFamily': family, 'device': selected}
+          (diagnostics / 'device.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          print(json.dumps(metadata, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(f"Simulator: {selected['name']} ({selected['runtime']}, {selected['udid']})\n\n")
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('SIMULATOR_ID=' + selected['udid'] + '\n')
+          PY
+      - name: Boot the test simulator
+        timeout-minutes: 5
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build and run iOS tests
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          set -o pipefail
+          selectors=()
+          if [[ "$TEST_SUITE" == "release-smoke" ]]; then
+            python3 scripts/ci_release_validation.py selectors > "$RUNNER_TEMP/ui-test-selectors.txt"
+            while IFS= read -r selector; do selectors+=("$selector"); done < "$RUNNER_TEMP/ui-test-selectors.txt"
+          elif [[ "$TEST_SUITE" == "native" ]]; then
+            selectors=(-only-testing:LoopdyTests)
+          elif [[ "$TEST_SUITE" == "references" ]]; then
+            selectors=(
+              -only-testing:LoopdyUITests/AccountNameUITests
+              -only-testing:LoopdyUITests/ChatBuild2UITests
+              -only-testing:LoopdyUITests/ReferenceHubUITests
+            )
+          else
+            python3 scripts/ci_ui_test_shard.py "$TEST_SUITE" > "$RUNNER_TEMP/ui-test-selectors.txt"
+            while IFS= read -r selector; do selectors+=("$selector"); done < "$RUNNER_TEMP/ui-test-selectors.txt"
+          fi
+          mkdir -p "$RUNNER_TEMP/test-diagnostics"
+          printf '%s\n' "${selectors[@]}" > "$RUNNER_TEMP/test-diagnostics/selectors.txt"
+          printf 'Test suite: %s\n' "$TEST_SUITE" >> "$GITHUB_STEP_SUMMARY"
+          xcodebuild test \
+            -project Loopdy.xcodeproj -scheme Loopdy \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/LoopdyDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/LoopdyTests.xcresult" \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 240 \
+            -maximum-test-execution-time-allowance 300 \
+            "${selectors[@]}" \
+            CODE_SIGN_IDENTITY=- 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Record exact source and completed release regressions
+        if: ${{ success() && matrix.suite == 'release-smoke' }}
+        run: |
+          python3 scripts/ci_release_validation.py receipt \
+            --log "$RUNNER_TEMP/xcodebuild.log" \
+            --output "$RUNNER_TEMP/ios-validation-receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && matrix.suite == 'release-smoke' }}
+        with:
+          name: ios-validation-receipt
+          path: ${{ runner.temp }}/ios-validation-receipt.json
+          retention-days: 7
+      - name: Export readable failure evidence
+        if: always()
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          if [[ -d "$RUNNER_TEMP/LoopdyTests.xcresult" ]]; then
+            mkdir -p "$RUNNER_TEMP/test-diagnostics"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/LoopdyTests.xcresult" > "$RUNNER_TEMP/test-diagnostics/summary.json"
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/LoopdyTests.xcresult" --output-path "$RUNNER_TEMP/test-diagnostics/attachments" --only-failures
+          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          diagnostics = Path(os.environ['RUNNER_TEMP']) / 'test-diagnostics'
+          paths = [diagnostics / 'summary.json']
+          if os.environ['TEST_SUITE'] != 'native':
+              # Only exported failed UI-test plaintext, never binary evidence
+              # or arbitrary workspace files. Keep logs bounded and readable.
+              paths.extend(sorted((diagnostics / 'attachments').rglob('*.txt'))[:20])
+          for path in paths:
+              if not path.is_file() or path.is_symlink():
+                  continue
+              with path.open(errors='replace') as source:
+                  content = source.read(30001)
+              print(f'\n--- {path.relative_to(diagnostics)} ---')
+              print(content[:30000])
+              if len(content) > 30000:
+                  print('[truncated after 30000 characters]')
+          PY
+      - name: Verify every assigned iPad test ran without skips
+        if: ${{ always() && matrix.suite == 'ui-ipad' }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/test-diagnostics"
+          python3 scripts/ci_ui_test_shard.py ui-ipad --verify-log "$RUNNER_TEMP/xcodebuild.log" | tee "$RUNNER_TEMP/test-diagnostics/ipad-coverage.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-diagnostics-${{ matrix.suite }}
+          path: ${{ runner.temp }}/test-diagnostics
+          retention-days: 7
+      - name: Preserve test evidence and generated project
+        if: ${{ failure() || cancelled() || inputs.full_suite }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-evidence-${{ matrix.suite }}
+          path: |
+            ${{ runner.temp }}/LoopdyTests.xcresult
+            ${{ runner.temp }}/xcodebuild.log
+            Loopdy.xcodeproj
+          retention-days: 7
+  release-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release evidence reuse and assigned regressions
+        run: python3 -m unittest discover -s scripts -p 'test_ci_release_validation.py' -v
+      - name: Validate release lane syntax
+        run: |
+          ruby -c fastlane/Fastfile
+          ruby -c fastlane/SigningSetup.rb
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Load the committed Fastlane bundle
+        env:
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+        run: bundle exec fastlane lanes
+      - name: Check availability of signing inputs
+        if: github.workflow == 'iOS build and tests'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os
+          names = ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY', 'IOS_DISTRIBUTION_P12_BASE64', 'IOS_DISTRIBUTION_P12_PASSWORD']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              for name in names:
+                  line = name + ': ' + ('configured' if os.environ.get(name) else 'missing')
+                  print(line)
+                  summary.write(line + '\n\n')
+          PY

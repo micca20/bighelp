@@ -1,0 +1,76 @@
+manifest_version: 1
+name: loopdy
+label: Loopdy
+kind: platform
+version: "2.14.9"
+license: Apache-2.0
+description: >
+  Native authenticated Hermes workspace controls, media voice, approvals, and
+  Generative UI. Hermes owns chat routing and session state. Optional notifications
+  and Live Activities can use cloud delivery independently of native chat.
+author: Loopdy contributors
+config_schema:
+  direct:
+    type: dict
+    default: {enabled: false, origin: "", port: 0}
+    description: >
+      Retained legacy paired-transport preferences. The production plugin does
+      not start this listener. Connect the app to the authenticated Hermes
+      Tailscale address instead; no cloud pairing or public URL is required.
+optional_env:
+  - LOOPDY_HOME_TARGET
+  - LOOPDY_WORKSPACE_GIT_CONFIG
+  - LOOPDY_APNS_TEAM_ID
+  - LOOPDY_APNS_KEY_ID
+  - LOOPDY_APNS_TOPIC
+  - LOOPDY_APNS_ENVIRONMENT
+  - LOOPDY_APNS_KEY_PATH
+  - LOOPDY_LINK_BASE_URL
+  - LOOPDY_LINK_DEVICE_ID
+  - LOOPDY_LINK_AUTHORIZATION_EPOCH
+  - LOOPDY_LINK_SIGNING_PRIVATE_KEY
+  - LOOPDY_LINK_AGREEMENT_PRIVATE_KEY
+  - LOOPDY_LINK_ACCOUNT_KEY
+provides_hooks:
+  # Only baseline hooks belong here: older Hermes validates these names before use.
+  # on_room_member_activity is registered when the runtime advertises it.
+  - pre_approval_request
+  - pre_llm_call
+  - post_llm_call
+  - post_api_request
+  - on_session_reset
+  # pre_tool_call is a legacy fallback only; modern hosts use tool_request.
+  - post_tool_call
+  - on_session_end
+  - subagent_start
+  - subagent_stop
+  - kanban_task_claimed
+  - kanban_task_completed
+  - kanban_task_blocked
+provides_tools:
+  - iphone_health
+  - iphone_calendar
+  - iphone_reminders
+  - loopdy_render_summary
+  - loopdy_render_metrics
+  - loopdy_render_list
+  - loopdy_render_timeline
+  - loopdy_render_weather_forecast
+  - loopdy_render_sports_game
+  - loopdy_render_stock_quote
+  - loopdy_render_chart
+  - loopdy_render_dashboard
+  - loopdy_render_form
+  - loopdy_await_form_response
+  - loopdy_render_card
+  - loopdy_render_checklist
+  - loopdy_render_selection
+  - loopdy_render_automation
+  - loopdy_search_card_templates
+  - loopdy_get_card_template
+  - loopdy_render_card_template
+  - loopdy_react_to_message
+platforms:
+  - linux
+  - macos
+  - windows

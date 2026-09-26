@@ -1,0 +1,89 @@
+import Foundation
+import SwiftUI
+import Testing
+@testable import Loopdy
+
+/// Settings › Colors: the page and bubble picks reach the live theme and the
+/// widgets.
+@MainActor
+struct AppearanceChoicesTests {
+    private func theme(_ scheme: ColorScheme, light: LoopdyLightBackground = .cream,
+                       dark: LoopdyDarkBackground = .graphite, bubble: LoopdyBubbleColor? = nil,
+                       contrast: ColorSchemeContrast = .standard) -> LoopdyTheme {
+        LoopdyTheme.resolve(
+            appearance: LoopdyAppearanceContext(appearance: scheme == .dark ? .dark : .light, themeID: .loopdy,
+                                                lightBackground: light, darkBackground: dark, bubbleColor: bubble),
+            colorScheme: scheme, contrast: contrast)
+    }
+
+    @Test func pageColorsFollowTheLightAndDarkPicks() {
+        #expect(theme(.light, light: .cream).canvasHex.uppercased() == "FFF9F5")
+        #expect(theme(.light, light: .paper).canvasHex.uppercased() == "FFFFFF")
+        #expect(theme(.dark, dark: .graphite).canvasHex.uppercased() == "1C1C1F")
+        #expect(theme(.dark, dark: .black).canvasHex.uppercased() == "000000")
+        // A light pick never changes dark mode, and the other way round.
+        #expect(theme(.dark, light: .paper).canvasHex == theme(.dark, light: .cream).canvasHex)
+        #expect(theme(.light, dark: .black).canvasHex == theme(.light, dark: .graphite).canvasHex)
+    }
+
+    @Test func bubbleColorsDriveTheActionColor() {
+        let ember = theme(.light)
+        #expect(theme(.light, bubble: .lavender).actionHex == ember.actionHex)
+        for bubble in LoopdyBubbleColor.allCases where bubble != .lavender {
+            let light = theme(.light, bubble: bubble)
+            #expect(light.actionHex != ember.actionHex, "\(bubble) should change the bubble color")
+            #expect(!light.actionForegroundHex.isEmpty)
+        }
+    }
+
+    @Test func highContrastKeepsItsOwnPages() {
+        #expect(theme(.light, light: .cream, contrast: .increased).canvasHex
+                == theme(.light, light: .paper, contrast: .increased).canvasHex)
+    }
+
+    @Test func widgetsGetTheSameColors() {
+        let extras = LoopdyWidgetExtras()
+        extras.update(appearance: LoopdyAppearanceContext(appearance: .system, themeID: .loopdy,
+                                                          lightBackground: .paper, darkBackground: .black,
+                                                          bubbleColor: .teal))
+        #expect(extras.lightPalette?.canvasHex.uppercased() == "FFFFFF")
+        #expect(extras.darkPalette?.canvasHex.uppercased() == "000000")
+        #expect(extras.lightPalette?.accentHex == theme(.light, light: .paper, bubble: .teal).actionHex)
+    }
+}
+
+@MainActor
+struct LoopdyAgentWidgetDataTests {
+    @Test func agentLinksOpenTheAgentHomeTabs() {
+        for tab in ["chat", "feed", "ideas", "goals", "apps"] {
+            #expect(LoopdyIncomingURLRoute.parse(LoopdyWidgetSnapshot.agentURL(tab)) == .agent(tab: tab))
+        }
+        #expect(LoopdyIncomingURLRoute.parse(URL(string: "loopdy://agent/elsewhere")!) == .agent(tab: "chat"))
+    }
+
+    @Test func olderSnapshotsStillDecode() throws {
+        let json = #"{"defaultAgentID":"default","defaultAgentName":"Juno","generatedAt":1800000000,"#
+            + #""sessions":[{"id":"a","title":"T","agentName":"Juno","status":"Replied","isRunning":false,"updatedAt":1800000000}],"#
+            + #""tasks":[]}"#
+        let snapshot = try JSONDecoder.loopdyWidget.decode(LoopdyWidgetSnapshot.self, from: Data(json.utf8))
+        #expect(snapshot.sessions.first?.agentID == nil)
+        #expect(snapshot.feed == nil && snapshot.lightPalette == nil)
+        #expect(snapshot.agentPose == nil)
+    }
+
+    @Test func theAgentWidgetShowsTheDefaultAgentsWork() {
+        var snapshot = LoopdyWidgetSnapshot.preview
+        #expect(snapshot.agentPose == .coding)
+        #expect(snapshot.agentRunningSession?.id == "a")
+        snapshot.sessions = snapshot.sessions.map { session in
+            var copy = session
+            copy.activity = nil
+            return copy
+        }
+        // Running without a known kind of work still reads as thinking.
+        #expect(snapshot.agentPose == .thinking)
+        snapshot.sessions = []
+        #expect(snapshot.agentPose == nil)
+        #expect(snapshot.agentDisplayName == "Juno")
+    }
+}

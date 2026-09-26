@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "type": "workspace.result",
+  "requestId": "home-contract-request",
+  "operation": "dashboard.load",
+  "status": "completed",
+  "payload": {
+    "events": [
+      {
+        "eventId": "delegation.completed:a1eb516b42a77359cd89ab7dfdfa0bc2",
+        "type": "delegation.completed",
+        "profile": "default",
+        "sessionId": "contract-user",
+        "approvalId": null,
+        "detail": {
+          "title": "Review accessibility",
+          "child_session_id": "contract-child",
+          "parent_session_id": "contract-user",
+          "delegation_id": "contract-delegation"
+        },
+        "createdAt": 1788716570,
+        "isRead": false,
+        "isPinned": false
+      },
+      {
+        "eventId": "job.completed:968a12b95c9e51b48332cc75d2df7a2d",
+        "type": "job.completed",
+        "profile": "default",
+        "sessionId": "cron_contract-job_20260906_120000",
+        "approvalId": null,
+        "detail": {
+          "turn_id": "contract-cron-turn",
+          "job_id": "contract-job",
+          "task_id": "contract-job"
+        },
+        "createdAt": 1788716570,
+        "isRead": false,
+        "isPinned": false
+      },
+      {
+        "eventId": "session.completed:45f35effc41a5520d103404edd7e6319",
+        "type": "session.completed",
+        "profile": "default",
+        "sessionId": "contract-user",
+        "approvalId": null,
+        "detail": {
+          "turn_id": "contract-user-turn"
+        },
+        "createdAt": 1788716570,
+        "isRead": false,
+        "isPinned": false
+      }
+    ]
+  },
+  "sentAt": 1788716570
+}

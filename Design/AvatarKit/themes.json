@@ -1,0 +1,426 @@
+{
+  "states": [
+    "idle",
+    "listening",
+    "thinking",
+    "waiting",
+    "talking",
+    "happy",
+    "sleeping"
+  ],
+  "themes": {
+    "original": {
+      "name": "Original",
+      "colors": {}
+    },
+    "midnight": {
+      "name": "Midnight",
+      "colors": {
+        "primary": "#5A6CFF",
+        "secondary": "#AEB8FF",
+        "accent": "#FFD166",
+        "background": "#1C2045",
+        "ink": "#0F1130"
+      }
+    },
+    "neon": {
+      "name": "Neon",
+      "colors": {
+        "primary": "#FF3EA5",
+        "secondary": "#7CF7FF",
+        "accent": "#F9F871",
+        "background": "#1A0B2E",
+        "ink": "#13071F"
+      }
+    },
+    "sunset": {
+      "name": "Sunset",
+      "colors": {
+        "primary": "#FF7A45",
+        "secondary": "#FFC36B",
+        "accent": "#9B5DE5",
+        "background": "#FFE6D6",
+        "ink": "#3A1B2F"
+      }
+    },
+    "forest": {
+      "name": "Forest",
+      "colors": {
+        "primary": "#3E9B5E",
+        "secondary": "#BCE4AE",
+        "accent": "#F2C14E",
+        "background": "#E4F2E0",
+        "ink": "#1E3326"
+      }
+    },
+    "ocean": {
+      "name": "Ocean",
+      "colors": {
+        "primary": "#2383E2",
+        "secondary": "#A3D3FF",
+        "accent": "#FFB547",
+        "background": "#E2F1FF",
+        "ink": "#0F2A45"
+      }
+    },
+    "royal": {
+      "name": "Royal",
+      "colors": {
+        "primary": "#7B52D6",
+        "secondary": "#E3CCFF",
+        "accent": "#FFC53D",
+        "background": "#F2EAFF",
+        "ink": "#25123F"
+      }
+    },
+    "bubblegum": {
+      "name": "Bubblegum",
+      "colors": {
+        "primary": "#FF8AB3",
+        "secondary": "#FFDCE9",
+        "accent": "#5FCBFF",
+        "background": "#FFF0F6",
+        "ink": "#3D1F2E"
+      }
+    },
+    "mono": {
+      "name": "Mono",
+      "colors": {
+        "primary": "#7A7A86",
+        "secondary": "#D8D8DF",
+        "accent": "#FF5A5F",
+        "background": "#EFEFF3",
+        "ink": "#18181C"
+      }
+    }
+  },
+  "faceOptions": {
+    "eyes": [
+      "round",
+      "dot",
+      "pill",
+      "square",
+      "lidded",
+      "visor",
+      "cyclops"
+    ],
+    "mouth": [
+      "smile",
+      "cat",
+      "flat",
+      "fang",
+      "none"
+    ],
+    "accessory": [
+      "none",
+      "antenna",
+      "sprout",
+      "halo",
+      "crown",
+      "bow",
+      "headset"
+    ]
+  },
+  "characters": [
+    {
+      "id": "lobster",
+      "name": "Pinch",
+      "role": "Lobster",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#E8553E",
+        "secondary": "#FFC3A9",
+        "accent": "#FFD166",
+        "background": "#FFEAE3"
+      }
+    },
+    {
+      "id": "messenger",
+      "name": "Aeria",
+      "role": "Winged messenger",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#5B6CFF",
+        "secondary": "#3B2B55",
+        "accent": "#FFC94A",
+        "background": "#E8EBFF"
+      }
+    },
+    {
+      "id": "dog",
+      "name": "Biscuit",
+      "role": "Dog",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#E5A45F",
+        "secondary": "#8C5A3B",
+        "accent": "#E5484D",
+        "background": "#FFF1DF"
+      }
+    },
+    {
+      "id": "cat",
+      "name": "Miso",
+      "role": "Cat",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#F29A4A",
+        "secondary": "#FFE3C8",
+        "accent": "#3FBFA0",
+        "background": "#FFF0E2"
+      }
+    },
+    {
+      "id": "zeus",
+      "name": "Bolt",
+      "role": "Sky king",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#3D5AFE",
+        "secondary": "#EEF0F9",
+        "accent": "#FFC53D",
+        "background": "#E3E8FF"
+      }
+    },
+    {
+      "id": "robot",
+      "name": "Rivet",
+      "role": "Robot",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#7B8CFF",
+        "secondary": "#D5DBFF",
+        "accent": "#3DF5C8",
+        "background": "#E6E9FF"
+      }
+    },
+    {
+      "id": "owl",
+      "name": "Sage",
+      "role": "Owl",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#8E6CD1",
+        "secondary": "#F1E8FF",
+        "accent": "#FFB02E",
+        "background": "#F0EAFF"
+      }
+    },
+    {
+      "id": "octopus",
+      "name": "Inky",
+      "role": "Octopus",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#FF6F91",
+        "secondary": "#FFD1DC",
+        "accent": "#5CE1E6",
+        "background": "#FFEAF0"
+      }
+    },
+    {
+      "id": "fox",
+      "name": "Kit",
+      "role": "Fox",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#F2743B",
+        "secondary": "#FFF4E8",
+        "accent": "#2EC4B6",
+        "background": "#FFEBDD"
+      }
+    },
+    {
+      "id": "dragon",
+      "name": "Ember",
+      "role": "Baby dragon",
+      "family": "classic",
+      "face": null,
+      "defaults": {
+        "primary": "#45C486",
+        "secondary": "#E9F9C8",
+        "accent": "#FF8A3D",
+        "background": "#E6F8EE"
+      }
+    },
+    {
+      "id": "orb",
+      "name": "Bop",
+      "role": "Orb bot",
+      "family": "bits",
+      "face": {
+        "eyes": "round",
+        "mouth": "smile",
+        "accessory": "antenna"
+      },
+      "defaults": {
+        "primary": "#FF6B4A",
+        "secondary": "#FFD3C4",
+        "accent": "#FFD23F",
+        "background": "#FFEDE7"
+      }
+    },
+    {
+      "id": "cube",
+      "name": "Blok",
+      "role": "Cube bot",
+      "family": "bits",
+      "face": {
+        "eyes": "visor",
+        "mouth": "flat",
+        "accessory": "headset"
+      },
+      "defaults": {
+        "primary": "#4D7CFE",
+        "secondary": "#BFD0FF",
+        "accent": "#FF7AB6",
+        "background": "#E6EEFF"
+      }
+    },
+    {
+      "id": "wedge",
+      "name": "Wedge",
+      "role": "Wedge bot",
+      "family": "bits",
+      "face": {
+        "eyes": "dot",
+        "mouth": "cat",
+        "accessory": "sprout"
+      },
+      "defaults": {
+        "primary": "#2EC27E",
+        "secondary": "#B8F0D2",
+        "accent": "#FFC43D",
+        "background": "#E3F7EC"
+      }
+    },
+    {
+      "id": "hex",
+      "name": "Hexo",
+      "role": "Hex bot",
+      "family": "bits",
+      "face": {
+        "eyes": "square",
+        "mouth": "smile",
+        "accessory": "crown"
+      },
+      "defaults": {
+        "primary": "#FFAE1F",
+        "secondary": "#FFE6A8",
+        "accent": "#6E5BFF",
+        "background": "#FFF4DD"
+      }
+    },
+    {
+      "id": "drop",
+      "name": "Drip",
+      "role": "Drop bot",
+      "family": "bits",
+      "face": {
+        "eyes": "pill",
+        "mouth": "smile",
+        "accessory": "none"
+      },
+      "defaults": {
+        "primary": "#22B8F0",
+        "secondary": "#BDEBFF",
+        "accent": "#FF8A5B",
+        "background": "#E2F6FF"
+      }
+    },
+    {
+      "id": "capsule",
+      "name": "Tic",
+      "role": "Capsule bot",
+      "family": "bits",
+      "face": {
+        "eyes": "lidded",
+        "mouth": "flat",
+        "accessory": "antenna"
+      },
+      "defaults": {
+        "primary": "#A259FF",
+        "secondary": "#E2CCFF",
+        "accent": "#3BE8B0",
+        "background": "#F1E8FF"
+      }
+    },
+    {
+      "id": "cloud",
+      "name": "Puff",
+      "role": "Cloud bot",
+      "family": "bits",
+      "face": {
+        "eyes": "dot",
+        "mouth": "smile",
+        "accessory": "halo"
+      },
+      "defaults": {
+        "primary": "#9BB0FF",
+        "secondary": "#E4EAFF",
+        "accent": "#FFD166",
+        "background": "#EEF1FF"
+      }
+    },
+    {
+      "id": "ghost",
+      "name": "Boo",
+      "role": "Ghost bot",
+      "family": "bits",
+      "face": {
+        "eyes": "pill",
+        "mouth": "fang",
+        "accessory": "bow"
+      },
+      "defaults": {
+        "primary": "#F4F2FF",
+        "secondary": "#CFC8FF",
+        "accent": "#FF6FB5",
+        "background": "#2B2742"
+      }
+    },
+    {
+      "id": "bloom",
+      "name": "Bloom",
+      "role": "Flower bot",
+      "family": "bits",
+      "face": {
+        "eyes": "round",
+        "mouth": "smile",
+        "accessory": "none"
+      },
+      "defaults": {
+        "primary": "#FF7EB6",
+        "secondary": "#FFE27A",
+        "accent": "#6FD06B",
+        "background": "#FFEAF3"
+      }
+    },
+    {
+      "id": "gem",
+      "name": "Glim",
+      "role": "Gem bot",
+      "family": "bits",
+      "face": {
+        "eyes": "cyclops",
+        "mouth": "none",
+        "accessory": "halo"
+      },
+      "defaults": {
+        "primary": "#19C3B1",
+        "secondary": "#A6F2E8",
+        "accent": "#FF5E7E",
+        "background": "#E1F8F5"
+      }
+    }
+  ]
+}

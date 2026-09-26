@@ -1,0 +1,62 @@
+name: Prepare signing identity
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CREATE NEW DISTRIBUTION CERTIFICATE to create one Apple certificate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loopdy-internal-testflight
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event.repository.private == true && inputs.confirmation == 'CREATE NEW DISTRIBUTION CERTIFICATE'
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Create and encrypt a new distribution identity
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          SIGNING_SETUP_CONFIRMATION: ${{ inputs.confirmation }}
+          LOOPDY_DEVELOPMENT_TEAM: ${{ vars.LOOPDY_DEVELOPMENT_TEAM }}
+          LOOPDY_APP_STORE_APP_ID: ${{ vars.LOOPDY_APP_STORE_APP_ID }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+          FASTLANE_SKIP_ACTION_SUMMARY: '1'
+          FASTLANE_OPT_OUT_USAGE: '1'
+        run: |
+          umask 077
+          mkdir "$RUNNER_TEMP/loopdy-signing-setup"
+          if ! bundle exec fastlane ios ci_prepare_signing > "$RUNNER_TEMP/loopdy-signing-setup/setup.log" 2>&1; then
+            echo "::error::Signing setup failed. Check required secrets, Apple API key permissions and certificate capacity. Review the certificate ID in the run summary before retrying."
+            exit 1
+          fi
+      - name: Download encrypted identity within one day
+        uses: actions/upload-artifact@v4
+        with:
+          name: loopdy-encrypted-signing-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/loopdy-signing-setup/export/distribution.p12
+            ${{ runner.temp }}/loopdy-signing-setup/export/distribution.p12.base64.txt
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/loopdy-signing-setup/setup.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/loopdy-signing-setup"

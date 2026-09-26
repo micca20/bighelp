@@ -1,0 +1,455 @@
+from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import sqlite3
+import tempfile
+import threading
+import unittest
+import uuid
+import hashlib
+from unittest.mock import patch
+from cryptography.hazmat.primitives.asymmetric import ec
+from loopdy_plugin.managed_notifications import ManagedNotifications, ManagedNotificationError, host_request_transcript
+from loopdy_plugin.relay_crypto import b64url_encode, b64url_decode, key_id, public_key_bytes, public_key_from_x963, verify_p1363
+
+
+class ManagedNotificationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.now = 1_800_000_000
+        self.calls = []
+        self.fail_send = False
+        self.grant_id = str(uuid.uuid4())
+        self.service = ManagedNotifications(Path(self.temp.name)/"managed", transport=self.transport,
+            clock=lambda: self.now, session_opener=lambda profile, read, read_only: read(self))
+        avatar = {"mimeType":"image/png","sha256":hashlib.sha256(b"fixture-avatar").hexdigest(),"data":"data:image/png;base64,Zml4dHVyZS1hdmF0YXI="}
+        presentation = patch.object(ManagedNotifications, "_agent_presentation", return_value=("Fixture Agent", avatar))
+        presentation.start()
+        self.addCleanup(presentation.stop)
+        self.grant = dict(grantId=self.grant_id,hostKeyId=self.service.key_id,hostPublicKey=self.service.public_key,
+            authorizationEpoch=1,profile="default",eventTypes=["session.completed","session.failed","scheduled.completed"],
+            createdAt=self.now-10,expiresAt=self.now+3600,revision=1,provider="buzzkit",subscriberScope="account",state="active")
+        self.service.enroll(self.grant_id,str(uuid.uuid4()))
+        self.service.subscribe(self.grant_id,"default","native-session",True)
+        self.calls.clear()
+
+    def tearDown(self):
+        self.service.close()
+        self.temp.cleanup()
+
+    def get_session(self, sid):
+        return {"id":sid,"profile_name":"default"}
+
+    def transport(self, method, path, raw, headers):
+        self.calls.append((method,path,raw,headers))
+        public = public_key_from_x963(b64url_decode(self.service.public_key))
+        signed = host_request_transcript(method,path,self.grant_id,int(headers["x-loopdy-timestamp"]),headers["x-loopdy-nonce"],raw)
+        verify_p1363(public,b64url_decode(headers["x-loopdy-signature"]),signed)
+        if path.endswith("/events"):
+            if self.fail_send: raise ManagedNotificationError("synthetic_unavailable",503)
+            return {"version":1,"status":"accepted","deliveryId":"msg_fixture"}
+        return {"version":1,"grant":self.grant}
+
+    def test_capability_distinguishes_supported_events_from_lazy_producer_load(self):
+        caps=self.service.capabilities()
+        self.assertEqual(set(caps["supportedEventTypes"]), {
+            "session.completed", "session.failed", "approval.required", "clarification.required",
+            "scheduled.completed", "scheduled.failed", "subagent.completed", "subagent.failed",
+        })
+        self.assertFalse(caps["producerCapabilities"]["nativeApproval"])
+        self.assertFalse(caps["producerCapabilities"]["sessionCompletion"])
+        self.service.producer_loaded("default",start_worker=False)
+        self.assertTrue(self.service.capabilities()["producerCapabilities"]["sessionCompletion"])
+        self.assertFalse(self.service.capabilities()["producerCapabilities"]["nativeApproval"])
+        self.service.producer_loaded("default",start_worker=False,approval_hooks_loaded=True)
+        self.assertTrue(self.service.capabilities()["producerCapabilities"]["nativeApproval"])
+        self.service.close()
+        self.assertFalse(self.service.capabilities()["producerCapabilities"]["nativeApproval"])
+
+    def test_one_profile_unload_does_not_stop_the_shared_producer_for_other_profiles(self):
+        self.service.producer_loaded("default", start_worker=False)
+        self.service.producer_loaded("work", start_worker=False)
+
+        self.service.producer_unloaded("default")
+
+        self.assertFalse(self.service.is_closed)
+        self.assertTrue(self.service.capabilities()["producerCapabilities"]["sessionCompletion"])
+        self.service.producer_unloaded("work")
+        self.assertTrue(self.service.is_closed)
+
+    def test_last_unload_retires_before_deferred_close_can_race_a_new_load(self):
+        self.service.producer_loaded("default", start_worker=False)
+        close_entered = threading.Event()
+        allow_close = threading.Event()
+        original_close = self.service.close
+
+        def deferred_close():
+            close_entered.set()
+            allow_close.wait(5)
+            original_close()
+
+        unload = threading.Thread(target=self.service.producer_unloaded, args=("default",))
+        with patch.object(self.service, "close", side_effect=deferred_close):
+            unload.start()
+            try:
+                self.assertTrue(close_entered.wait(5))
+                with self.assertRaisesRegex(ManagedNotificationError, "notification_producer_retired"):
+                    self.service.producer_loaded("work", start_worker=False)
+            finally:
+                allow_close.set()
+                unload.join(5)
+
+        self.assertFalse(unload.is_alive())
+        self.assertTrue(self.service.is_closed)
+        self.assertFalse(self.service.capabilities()["producerCapabilities"]["sessionCompletion"])
+
+    def test_last_unload_recreates_the_process_singleton_for_a_later_plugin_load(self):
+        import loopdy_plugin.managed_notifications as module
+        from hermes_constants import get_hermes_home
+
+        original_home = get_hermes_home()
+        with patch("hermes_constants.get_hermes_home", return_value=Path(self.temp.name)):
+            key = str(Path(self.temp.name) / "plugin-data" / "loopdy" / "managed-notifications")
+            with module._instances_lock:
+                prior = module._instances.pop(key, None)
+            if prior is not None:
+                prior.close()
+            first = module.get_managed_notifications()
+            first.producer_loaded("default", start_worker=False)
+            first.producer_unloaded("default")
+            second = module.get_managed_notifications()
+            try:
+                self.assertIsNot(first, second)
+                self.assertFalse(second.is_closed)
+            finally:
+                second.close()
+                with module._instances_lock:
+                    module._instances.pop(key, None)
+        self.assertEqual(get_hermes_home(), original_home)
+
+    def test_cold_launch_drains_the_exact_persisted_scheduled_completion_request(self):
+        payload = dict(profile="default", session_id="native-session", turn_id="turn-cold",
+                       completed=True, platform="cron")
+        self.service.observe("pre_llm_call", profile="default", session_id="native-session",
+                             turn_id="turn-cold", platform="desktop")
+        self.service.observe("post_llm_call", profile="default", session_id="native-session",
+                             turn_id="turn-cold", assistant_response="Cold launch delivery")
+        self.service.observe("on_session_end", **payload)
+        with sqlite3.connect(self.service.db_path) as db:
+            original = db.execute("SELECT raw FROM pending WHERE state='pending'").fetchone()[0]
+        self.service.close()
+
+        reopened = ManagedNotifications(self.service.directory, transport=self.transport,
+            clock=lambda: self.now, session_opener=lambda profile, read, read_only: read(self))
+        try:
+            reopened.producer_loaded("default", start_worker=False)
+            reopened.drain_pending()
+            with sqlite3.connect(reopened.db_path) as db:
+                row = db.execute("SELECT raw,state FROM pending").fetchone()
+            self.assertEqual(row[0], original)
+            self.assertEqual(row[1], "accepted")
+            self.assertEqual(json.loads(self.calls[-1][2])["content"]["text"], "Cold launch delivery")
+        finally:
+            reopened.close()
+
+    def test_native_chat_completion_queues_the_captured_reply(self):
+        self.service.observe("post_llm_call", profile="default", session_id="native-session",
+                             turn_id="turn-complete", assistant_response="Finished the requested work")
+        self.service.observe("on_session_end", profile="default", session_id="native-session",
+                             turn_id="turn-complete", completed=True, failed=False, platform="desktop")
+
+        with sqlite3.connect(self.service.db_path) as db:
+            raw = db.execute("SELECT raw FROM pending WHERE path='/events'").fetchone()[0]
+        payload = json.loads(raw)
+        self.assertEqual(payload["eventType"], "session.completed")
+        self.assertEqual(payload["content"]["text"], "Finished the requested work")
+
+    def test_native_chat_failure_queues_safe_copy_and_terminal_live_activity(self):
+        diagnostic = (
+            "Traceback (most recent call last): /Users/alice/private/runner.py "
+            "token-like diagnostic: internal-value-must-not-ship"
+        )
+        self.service.observe("pre_llm_call", profile="default", session_id="native-session",
+                             turn_id="turn-failed", platform="desktop")
+        with sqlite3.connect(self.service.db_path) as db:
+            db.execute("INSERT INTO activities(activity_id,grant_id,profile,session_id,session_ref,lease_expires,work_turn,state) VALUES(?,?,?,?,?,?,?,'active')",
+                ("activity-failed", self.grant_id, "default", "native-session", "x" * 43,
+                 self.now + 600, "turn-failed"))
+        self.service.observe("on_session_end", profile="default", session_id="native-session",
+                             turn_id="turn-failed", completed=False, failed=True,
+                             error=diagnostic, platform="desktop")
+
+        with sqlite3.connect(self.service.db_path) as db:
+            event_raw = db.execute("SELECT raw FROM pending WHERE path='/events'").fetchone()[0]
+            activity_raw = db.execute(
+                "SELECT raw FROM pending WHERE activity_id='activity-failed'"
+            ).fetchone()[0]
+        event_payload = json.loads(event_raw)
+        self.assertEqual(event_payload["eventType"], "session.failed")
+        self.assertEqual(event_payload["content"]["text"], "Your agent could not finish")
+        self.assertNotIn(diagnostic, event_raw.decode())
+        activity_payload = json.loads(activity_raw)
+        self.assertEqual(activity_payload["phase"], "failed")
+        self.assertEqual(activity_payload["currentAction"], "Your agent could not finish")
+
+    def test_cold_launch_drains_the_frozen_live_activity_terminal(self):
+        from loopdy_plugin.managed_notifications import session_reference
+
+        reference = session_reference("default", "native-session")
+        original_transport = self.service.transport
+
+        def activity_transport(method, path, raw, headers):
+            if method == "GET" and "/live-activities/" in path:
+                return {"version": 1, "activity": {"grantId": self.grant_id,
+                    "activityId": "cold-activity", "sessionReference": reference,
+                    "status": "active", "leaseExpires": self.now + 600}}
+            if method == "POST" and path.endswith("/updates"):
+                self.calls.append((method, path, raw, headers))
+                return {"version": 1, "status": "accepted", "deliveryId": "activity-delivery"}
+            return original_transport(method, path, raw, headers)
+
+        self.service.transport = activity_transport
+        self.service.observe("pre_llm_call", profile="default", session_id="native-session",
+                             turn_id="turn-live", platform="desktop")
+        self.service.subscribe_activity(self.grant_id, "cold-activity", "default",
+            "native-session", reference, self.now + 600, "turn-live")
+        self.service.observe("on_session_end", profile="default", session_id="native-session",
+                             turn_id="turn-live", completed=True, platform="desktop")
+        with sqlite3.connect(self.service.db_path) as db:
+            original = db.execute("SELECT raw FROM pending WHERE activity_id='cold-activity'").fetchone()[0]
+        self.assertEqual(json.loads(original)["phase"], "completed")
+        self.service.close()
+
+        reopened = ManagedNotifications(self.service.directory, transport=activity_transport,
+            clock=lambda: self.now, session_opener=lambda profile, read, read_only: read(self))
+        try:
+            reopened.producer_loaded("default", start_worker=False)
+            reopened.drain_pending()
+            with sqlite3.connect(reopened.db_path) as db:
+                row = db.execute("SELECT raw,state FROM pending WHERE activity_id='cold-activity'").fetchone()
+            self.assertEqual(row[0], original)
+            self.assertEqual(row[1], "accepted")
+            self.assertTrue(self.calls[-1][1].endswith("/live-activities/cold-activity/updates"))
+        finally:
+            reopened.close()
+
+    def test_cancelled_work_queues_neutral_terminal_without_alert(self):
+        self.service.observe("pre_llm_call",profile="default",session_id="native-session",turn_id="turn-a",platform="desktop")
+        with sqlite3.connect(self.service.db_path) as db:
+            db.execute("INSERT INTO activities(activity_id,grant_id,profile,session_id,session_ref,lease_expires,work_turn,state) VALUES(?,?,?,?,?,?,?,'active')",
+                ("activity-a",self.grant_id,"default","native-session","x"*43,self.now+600,"turn-a"))
+        self.service.observe("on_session_end",profile="default",session_id="native-session",turn_id="turn-a",interrupted=True,platform="desktop")
+        with sqlite3.connect(self.service.db_path) as db:
+            row=db.execute("SELECT raw FROM pending WHERE activity_id='activity-a'").fetchone()
+            self.assertIsNotNone(row)
+            value=json.loads(row[0]);self.assertEqual(value["phase"],"completed");self.assertEqual(value["currentAction"],"Stopped")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM events").fetchone()[0],0)
+
+    def test_late_activity_registration_keeps_original_turn_and_frozen_terminal(self):
+        from loopdy_plugin.managed_notifications import session_reference
+        reference = session_reference("default", "native-session")
+        original_transport = self.service.transport
+        def transport(method, path, raw, headers):
+            if method == "GET" and "/live-activities/" in path:
+                return {"version": 1, "activity": {"grantId": self.grant_id,
+                    "activityId": "late-activity", "sessionReference": reference,
+                    "status": "active", "leaseExpires": self.now + 600}}
+            return original_transport(method, path, raw, headers)
+        self.service.transport = transport
+        self.service.observe("pre_llm_call", profile="default", session_id="native-session", turn_id="original")
+        self.service.observe("on_session_end", profile="default", session_id="native-session", turn_id="original", completed=True)
+        self.service.observe("pre_llm_call", profile="default", session_id="native-session", turn_id="newer")
+        args=(self.grant_id,"late-activity","default","native-session",reference,self.now+600,"original")
+        self.service.subscribe_activity(*args)
+        with sqlite3.connect(self.service.db_path) as db:
+            first=db.execute("SELECT raw FROM pending WHERE activity_id='late-activity'").fetchone()[0]
+            self.assertEqual(json.loads(first)["phase"],"completed")
+            self.assertEqual(db.execute("SELECT work_turn FROM activities").fetchone()[0],"original")
+        self.service.subscribe_activity(*args)
+        with sqlite3.connect(self.service.db_path) as db:
+            self.assertEqual(db.execute("SELECT raw FROM pending WHERE activity_id='late-activity'").fetchone()[0],first)
+        self.assertEqual(self.service.work_snapshot(self.grant_id,"default","native-session")["work"]["turnId"],"newer")
+        with self.assertRaises(ManagedNotificationError):
+            self.service.subscribe_activity(*args[:-1],"invented")
+
+    def test_long_tool_run_refreshes_unchanged_state_inside_the_stale_window(self):
+        self.service.observe("pre_llm_call",profile="default",session_id="native-session",turn_id="turn-long",platform="tui")
+        with sqlite3.connect(self.service.db_path) as db:
+            db.execute("INSERT INTO activities(activity_id,grant_id,profile,session_id,session_ref,lease_expires,work_turn,state) VALUES(?,?,?,?,?,?,?,'active')",
+                ("activity-long",self.grant_id,"default","native-session","x"*43,self.now+3600,"turn-long"))
+        def pending():
+            with sqlite3.connect(self.service.db_path) as db:
+                return [json.loads(raw) for (raw,) in db.execute("SELECT raw FROM pending WHERE activity_id='activity-long'")]
+        self.service.observe("pre_tool_call",profile="default",session_id="native-session",turn_id="turn-long",platform="tui")
+        first=pending()
+        self.assertEqual([update["phase"] for update in first],["using_tool"])
+        self.now+=30
+        self.service.observe("post_tool_call",profile="default",session_id="native-session",turn_id="turn-long",platform="tui")
+        self.assertEqual(pending(),first)  # unchanged and still fresh: no extra push
+        self.now+=31
+        self.service.observe("pre_tool_call",profile="default",session_id="native-session",turn_id="turn-long",platform="tui")
+        refreshed=pending()
+        self.assertEqual(len(refreshed),1)
+        self.assertEqual(refreshed[0]["phase"],"using_tool")
+        self.assertEqual(refreshed[0]["timestamp"],self.now)
+        self.assertEqual(refreshed[0]["expires"],self.now+120)
+
+    def test_cancelled_parent_waits_for_owned_child_before_neutral_terminal(self):
+        self.service.observe("pre_llm_call",profile="default",session_id="native-session",turn_id="parent")
+        self.service.observe("subagent_start",profile="default",parent_session_id="native-session",parent_turn_id="parent",child_session_id="child")
+        self.service.observe("on_session_end",profile="default",session_id="native-session",turn_id="parent",interrupted=True)
+        snapshot=self.service.work_snapshot(self.grant_id,"default","native-session")["work"]
+        self.assertEqual(snapshot["phase"],"delegating")
+        self.assertFalse(snapshot["terminal"])
+        self.service.observe("subagent_stop",profile="default",parent_session_id="native-session",parent_turn_id="later-parent",child_session_id="child")
+        snapshot=self.service.work_snapshot(self.grant_id,"default","native-session")["work"]
+        self.assertEqual(snapshot["phase"],"completed")
+        self.assertEqual(snapshot["outcome"],"cancelled")
+        self.assertTrue(snapshot["terminal"])
+
+    def test_fresh_process_does_not_restore_live_work_from_subscription(self):
+        self.service.observe("pre_llm_call",profile="default",session_id="native-session",turn_id="old")
+        reopened=ManagedNotifications(Path(self.temp.name)/"managed",transport=self.transport,clock=lambda:self.now,
+            session_opener=lambda profile,read,read_only:read(self))
+        try:
+            self.assertIsNone(reopened.work_snapshot(self.grant_id,"default","native-session")["work"])
+        finally:
+            reopened.close()
+
+    def test_current_work_snapshot_is_scoped_and_canonical(self):
+        self.service.observe("pre_llm_call",profile="default",session_id="native-session",turn_id="canonical-turn",platform="desktop")
+        snapshot = self.service.work_snapshot(self.grant_id,"default","native-session")
+        self.assertEqual(snapshot["work"]["turnId"],"canonical-turn")
+        self.assertEqual(snapshot["work"]["sessionId"],"native-session")
+        self.assertEqual(snapshot["work"]["phase"],"thinking")
+        self.assertNotIn("private",repr(snapshot).lower())
+        with self.assertRaises(ManagedNotificationError):
+            self.service.work_snapshot(self.grant_id,"default","unsubscribed")
+
+    def test_one_scheduled_terminal_event_persists_and_retries_identical_rich_payload(self):
+        payload=dict(profile="default",session_id="native-session",turn_id="turn-a",completed=True,platform="cron")
+        self.service.observe("post_llm_call",profile="default",session_id="native-session",turn_id="turn-a",assistant_response="The requested fixture work is complete.")
+        self.service.observe("on_session_end",**payload)
+        self.service.observe("on_session_end",**payload)
+        with sqlite3.connect(self.service.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM events").fetchone()[0],1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM pending").fetchone()[0],1)
+        self.fail_send=True
+        self.service.drain_pending()
+        first=self.calls[-1]
+        self.now+=5
+        self.fail_send=False
+        self.service.drain_pending()
+        second=self.calls[-1]
+        self.assertEqual(first[2],second[2])
+        self.assertNotEqual(first[3]["x-loopdy-nonce"],second[3]["x-loopdy-nonce"])
+        self.assertTrue(json.loads(second[2])["eventId"].startswith(self.grant_id+":"))
+        with sqlite3.connect(self.service.db_path) as db:
+            self.assertEqual(db.execute("SELECT state FROM pending").fetchone()[0],"accepted")
+
+    def test_unsubscribed_other_profile_children_and_cancellation_do_not_alert(self):
+        for change in [dict(session_id="other-session"),dict(profile="other"),dict(platform="subagent"),dict(interrupted=True)]:
+            payload=dict(profile="default",session_id="native-session",turn_id="turn-a",completed=True,platform="desktop")|change
+            self.service.observe("on_session_end",**payload)
+        self.service.drain_pending()
+        self.assertEqual(self.calls,[])
+
+    def test_local_revocation_cancels_pending_and_retains_identity_after_reopen(self):
+        self.service.observe("on_session_end",profile="default",session_id="native-session",turn_id="turn-a",failed=True,platform="desktop")
+        self.service.remove(self.grant_id)
+        self.service.drain_pending()
+        self.assertEqual(self.calls,[])
+        self.service.close()
+        reopened=ManagedNotifications(Path(self.temp.name)/"managed",transport=self.transport,clock=lambda:self.now)
+        try:
+            self.assertEqual(reopened.public_key,self.service.public_key)
+            with self.assertRaises(ManagedNotificationError): reopened.enrollment(self.grant_id)
+        finally: reopened.close()
+
+    def test_vendor_preference_authority_is_not_duplicated_in_plugin_policy(self):
+        self.service.preference_policy=lambda event,device:{"suppression":"quiet_hours","sound":False}
+        payload=dict(profile="default",session_id="native-session",turn_id="turn-a",completed=True,platform="cron")
+        self.service.observe("post_llm_call",profile="default",session_id="native-session",turn_id="turn-a",assistant_response="A real fixture reply")
+        self.service.observe("on_session_end",**payload)
+        self.service.preference_policy=None
+        self.service.observe("on_session_end",**payload)
+        self.service.drain_pending()
+        self.assertEqual(len(self.calls),1)
+        with sqlite3.connect(self.service.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM events").fetchone()[0],1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM pending WHERE state='accepted'").fetchone()[0],1)
+
+if __name__ == "__main__": unittest.main()
+
+
+class DashboardDoubleImportTests(unittest.TestCase):
+    """Hermes' hook loader and the dashboard router import this package under
+    different module names in one process. Both must share the live turn."""
+
+    def setUp(self):
+        import importlib
+        import sys
+        import types
+        from loopdy_plugin import managed_notifications as router_copy
+        self.name = "hermes_plugins_fixture_loopdy"
+        package = types.ModuleType(self.name)
+        package.__path__ = [str(Path(router_copy.__file__).parent)]
+        sys.modules[self.name] = package
+        self.router_module = router_copy
+        self.hook_module = importlib.import_module(self.name + ".managed_notifications")
+        self.temp = tempfile.TemporaryDirectory()
+        home = patch("hermes_constants.get_hermes_home", return_value=Path(self.temp.name))
+        home.start()
+        self.addCleanup(home.stop)
+        self.now = 1_800_000_000
+        self.grant_id = str(uuid.uuid4())
+
+    def tearDown(self):
+        import sys
+        directory = str(Path(self.temp.name) / "plugin-data" / "loopdy" / "managed-notifications")
+        for module in (self.hook_module, self.router_module):
+            instance = module._instances.pop(directory, None)
+            if instance is not None: instance.close()
+        sys.modules[self.router_module._SHARED_OBSERVATIONS].directories.pop(os.path.realpath(directory), None)
+        for name in [name for name in sys.modules if name == self.name or name.startswith(self.name + ".")]:
+            sys.modules.pop(name)
+        self.temp.cleanup()
+
+    def get_session(self, sid):
+        return {"id": sid, "profile_name": "default"}
+
+    def test_router_copy_reads_the_turn_the_hook_copy_observed(self):
+        hooks = self.hook_module.get_managed_notifications()
+        router = self.router_module.get_managed_notifications()
+        self.assertIsNot(type(hooks), type(router))  # two real module copies
+        reference = self.router_module.session_reference("default", "native-session")
+        grant = dict(grantId=self.grant_id, hostKeyId=router.key_id, hostPublicKey=router.public_key,
+            authorizationEpoch=1, profile="default", eventTypes=["session.completed"],
+            createdAt=self.now - 10, expiresAt=self.now + 3600, revision=1, provider="buzzkit",
+            subscriberScope="account", state="active")
+        def transport(method, path, raw, headers):
+            if method == "GET" and "/live-activities/" in path:
+                return {"version": 1, "activity": {"grantId": self.grant_id, "activityId": "phone-activity",
+                    "sessionReference": reference, "status": "active", "leaseExpires": self.now + 600}}
+            return {"version": 1, "grant": grant}
+        for instance in (hooks, router):
+            instance.transport, instance.clock = transport, (lambda: self.now)
+            instance.session_opener = lambda profile, read, read_only: read(self)
+        router.enroll(self.grant_id, str(uuid.uuid4()))
+        router.subscribe(self.grant_id, "default", "native-session", True)
+
+        hooks.observe("pre_llm_call", profile="default", session_id="native-session", turn_id="live-turn", platform="tui")
+        work = router.work_snapshot(self.grant_id, "default", "native-session")["work"]
+        self.assertEqual((work["turnId"], work["phase"], work["terminal"]), ("live-turn", "thinking", False))
+
+        # The phone's registration lands on the router copy; the hook copy's
+        # terminal must still reach that activity through the cloud relay.
+        router.subscribe_activity(self.grant_id, "phone-activity", "default", "native-session",
+                                  reference, self.now + 600, "live-turn")
+        hooks.observe("on_session_end", profile="default", session_id="native-session", turn_id="live-turn",
+                      completed=True, platform="tui")
+        with sqlite3.connect(router.db_path) as db:
+            raw = db.execute("SELECT raw FROM pending WHERE activity_id='phone-activity'").fetchone()[0]
+            self.assertEqual(db.execute("SELECT state FROM activities").fetchone()[0], "terminal_pending")
+        self.assertEqual(json.loads(raw)["phase"], "completed")

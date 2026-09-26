@@ -1,0 +1,263 @@
+import Foundation
+import Testing
+@testable import Loopdy
+
+@MainActor
+struct DirectHermesScheduledTasksClientTests {
+    @Test func allProfilesAreReadIndividuallyWithoutSuppressingFailures() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.profilesList] = [.success(["profiles": .array([
+            .object(["name": .string("research")]), .object(["name": .string("writing")])
+        ])])]
+        transport.responses[.scheduledTasksList] = [
+            .success(["jobs": .array([.object(job())])]),
+            .success(["jobs": .array([.object(job(id: "job-2", profile: "writing"))])])
+        ]
+        let tasks = try await client(transport).list(agentID: nil)
+        #expect(tasks.map(\.agentID) == ["research", "writing"])
+        #expect(transport.calls.map(\.payload) == [
+            ["include_sessions": .boolean(false)], ["profile": .string("research")], ["profile": .string("writing")]
+        ])
+    }
+
+    @Test func failedProfileDoesNotBecomeSuccessfulPartialCatalog() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.profilesList] = [.success(["profiles": .array([
+            .object(["name": .string("research")]), .object(["name": .string("writing")])
+        ])])]
+        transport.responses[.scheduledTasksList] = [.success(["jobs": .array([])]), .failure(.transportUnavailable)]
+        await #expect(throws: WorkspaceClientError.transportUnavailable) { try await client(transport).list(agentID: nil) }
+    }
+
+    @Test func duplicateNativeIDsAcrossProfilesKeepBothRowsAndExactMutationOwner() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.profilesList] = [.success(["profiles": .array([
+            .object(["name": .string("research")]), .object(["name": .string("writing")])
+        ])])]
+        transport.responses[.scheduledTasksList] = [
+            .success(["jobs": .array([.object(job())])]),
+            .success(["jobs": .array([.object(job(profile: "writing"))])])
+        ]
+        let adapter = client(transport)
+        let tasks = try await adapter.list(agentID: nil)
+        #expect(tasks.count == 2)
+        #expect(tasks.allSatisfy { $0.id == "job-1" })
+        #expect(Set(tasks.map(\.identity)).count == 2)
+        #expect(transport.calls.map(\.operation) == [.profilesList, .scheduledTasksList, .scheduledTasksList])
+        #expect(transport.calls[1].payload == ["profile": .string("research")])
+        #expect(transport.calls[2].payload == ["profile": .string("writing")])
+        transport.responses[.scheduledTaskPause] = [.success(job(profile: "writing", enabled: false, state: "paused"))]
+        let updated = try await adapter.setPaused(true, id: "job-1", agentID: "writing")
+        #expect(updated.id == "job-1")
+        #expect(updated.agentID == "writing")
+        #expect(transport.calls.last?.payload == ["profile": .string("writing"), "id": .string("job-1")])
+    }
+
+    @Test func scopedReadRejectsAnotherProfilesTask() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTasksList] = [.success(["jobs": .array([.object(job(profile: "writing"))])])]
+        await #expect(throws: WorkspaceClientError.invalidResponse) { try await client(transport).list(agentID: "research") }
+    }
+
+    @Test func createUsesCanonicalScheduleAndNativeFields() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        transport.responses[.scheduledTaskCreate] = [.success(job())]
+        let result = try await client(transport).create(draft())
+        #expect(result.id == "job-1")
+        #expect(transport.calls.last?.payload == [
+            "profile": .string("research"), "name": .string("Morning brief"), "prompt": .string("Summarize the day."),
+            "schedule": .string("0 8 * * *"), "deliver": .string("local")
+        ])
+        #expect(result.schedule.requestedTimeZoneID == nil)
+    }
+
+    @Test func updateKeepsProfileOutsideNativeUpdatesObject() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        transport.responses[.scheduledTaskUpdate] = [.success(job())]
+        let changes = ScheduledTaskChanges(name: "Morning brief", instructions: "Summarize the day.",
+            schedule: schedule, deliveryTarget: "local")
+        _ = try await client(transport).update(id: "job-1", agentID: "research", changes: changes)
+        #expect(transport.calls.last?.payload["profile"] == .string("research"))
+        #expect(transport.calls.last?.payload["id"] == .string("job-1"))
+        #expect(transport.calls.last?.payload["updates"]?.object?["profile"] == nil)
+        #expect(transport.calls.last?.payload["updates"]?.object?["prompt"] == .string("Summarize the day."))
+    }
+
+    @Test func partialCreateFailureIsNeverRetriedOrReportedAsSuccess() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        transport.responses[.scheduledTaskCreate] = [.failure(.outcomeUnknown)]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) { try await client(transport).create(draft()) }
+        #expect(transport.calls.filter { $0.operation == .scheduledTaskCreate }.count == 1)
+    }
+
+    @Test func mutationRejectsChangedIdentityAndUnappliedContent() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskPause] = [.success(job(id: "other", enabled: false, state: "paused"))]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await client(transport).setPaused(true, id: "job-1", agentID: "research")
+        }
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        var unchanged = job()
+        unchanged["prompt"] = .string("A different instruction")
+        transport.responses[.scheduledTaskCreate] = [.success(unchanged)]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) { try await client(transport).create(draft()) }
+    }
+
+    @Test func pauseMustActuallyBePausedAndResumeMustBeActive() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskPause] = [.success(job())]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await client(transport).setPaused(true, id: "job-1", agentID: "research")
+        }
+        transport.responses[.scheduledTaskResume] = [.success(job(enabled: false, state: "paused"))]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await client(transport).setPaused(false, id: "job-1", agentID: "research")
+        }
+    }
+
+    @Test func runReturnsActualResumedAndCompletedState() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskRun] = [
+            .success(job()),
+            .success(job(enabled: false, state: "completed"))
+        ]
+        let adapter = client(transport)
+        #expect(try await adapter.runNow(id: "job-1", agentID: "research").status == .active)
+        let completed = try await adapter.runNow(id: "job-1", agentID: "research")
+        #expect(completed.status == .completed)
+        #expect(!completed.isPaused)
+        let presentation = ScheduledTaskPresentation(task: completed, agentName: "Research")
+        #expect(!presentation.action(.runNow).isEnabled)
+        #expect(!presentation.action(.pauseOrResume).isEnabled)
+        #expect(!presentation.action(.edit).isEnabled)
+        #expect(presentation.nextRunCopy.contains("Completed"))
+    }
+
+    @Test func failedAndScriptJobsAreNotMisrepresentedAsOrdinaryPromptEdits() throws {
+        var payload = job(state: "error")
+        payload["no_agent"] = .boolean(true)
+        payload["script"] = .string("/private/synthetic-script.sh")
+        let task = try DirectHermesScheduledTaskCodec.task(.object(payload), profile: "research")
+        #expect(task.status == .failed)
+        #expect(task.usesHostManagedExecution)
+        #expect(!String(describing: task).contains("/private/synthetic-script.sh"))
+        let presentation = ScheduledTaskPresentation(task: task, agentName: "Research")
+        #expect(!presentation.action(.edit).isEnabled)
+        #expect(!presentation.action(.duplicate).isEnabled)
+    }
+
+    @Test func implicitHomeDeliveryRequiresServingProfileProof() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        var requested = draft()
+        requested.deliveryTarget = "loopdy"
+        await #expect(throws: WorkspaceClientError.unavailable(.identityContextUnavailable)) {
+            try await client(transport, servingProfile: nil).create(requested)
+        }
+        #expect(!transport.calls.contains { $0.operation == .scheduledTaskCreate })
+    }
+
+    @Test func explicitDeliveryIsNativeCatalogValidatedNotSilentlyReplaced() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets()), .success(targets())]
+        var requested = draft()
+        requested.deliveryTarget = "unknown:channel"
+        await #expect(throws: ScheduledTasksError.invalidDeliveryTarget) { try await client(transport).create(requested) }
+        requested.deliveryTarget = "loopdy:sample-channel"
+        var created = job()
+        created["deliver"] = .string(requested.deliveryTarget)
+        transport.responses[.scheduledTaskCreate] = [.success(created)]
+        let result = try await client(transport, servingProfile: nil).create(requested)
+        #expect(result.deliveryTarget == "loopdy:sample-channel")
+    }
+
+    @Test func deletionRequiresExactProfileReadbackAbsence() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDelete] = [.success(["ok": .boolean(true)])]
+        transport.responses[.scheduledTasksList] = [.success(["jobs": .array([.object(job())])])]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await client(transport).delete(id: "job-1", agentID: "research")
+        }
+        #expect(transport.calls.last?.payload == ["profile": .string("research")])
+    }
+
+    @Test func ownerChangeBeforeMutationDoesNotSend() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskDeliveryTargets] = [.success(targets())]
+        transport.replaceOwnerAfterResponse = true
+        await #expect(throws: WorkspaceClientError.ownerChanged) { try await client(transport).create(draft()) }
+        #expect(transport.calls.map(\.operation) == [.scheduledTaskDeliveryTargets])
+    }
+
+    @Test func missingMutationCapabilityDoesNotProbeByWriting() async throws {
+        let transport = try SchedulerPerformer()
+        transport.allowMutations = false
+        await #expect(throws: WorkspaceClientError.unavailable(.unsupportedOperation)) {
+            try await client(transport).runNow(id: "job-1", agentID: "research")
+        }
+        #expect(transport.calls.isEmpty)
+    }
+
+    @Test func opaqueMutationIdentityMustMatchExactUTF8NotJustCanonicalText() async throws {
+        let transport = try SchedulerPerformer()
+        transport.responses[.scheduledTaskPause] = [.success(job(id: "cafe\u{0301}", enabled: false, state: "paused"))]
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await client(transport).setPaused(true, id: "caf\u{00E9}", agentID: "research")
+        }
+    }
+
+    private var schedule: ScheduleInput { .daily(time: .init(hour: 8, minute: 0), timeZoneID: "UTC") }
+
+    private func draft() -> ScheduledTaskDraft {
+        .init(agentID: "research", name: "Morning brief", instructions: "Summarize the day.", schedule: schedule, deliveryTarget: "local")
+    }
+
+    private func client(_ transport: SchedulerPerformer, servingProfile: String? = "research") -> DirectHermesScheduledTasksClient {
+        .init(workspace: transport, owner: transport.owner!, currentOwner: { transport.owner }, servingProfileID: servingProfile)
+    }
+
+    private func targets() -> [String: LoopdyJSONValue] {
+        ["targets": .array([
+            .object(["id": .string("local"), "name": .string("Local"), "home_target_set": .boolean(true)]),
+            .object(["id": .string("loopdy"), "name": .string("Loopdy"), "home_target_set": .boolean(true)])
+        ])]
+    }
+
+    private func job(id: String = "job-1", profile: String = "research", enabled: Bool = true, state: String = "scheduled") -> [String: LoopdyJSONValue] {
+        ["id": .string(id), "profile": .string(profile), "name": .string("Morning brief"),
+         "prompt": .string("Summarize the day."), "deliver": .string("local"),
+         "schedule": .object(["kind": .string("cron"), "expr": .string("0 8 * * *")]),
+         "schedule_display": .string("0 8 * * *"), "enabled": .boolean(enabled), "state": .string(state),
+         "next_run_at": .null, "last_status": .null, "skills": .array([]), "script": .null, "no_agent": .boolean(false)]
+    }
+}
+
+@MainActor
+private final class SchedulerPerformer: WorkspaceOperationPerforming {
+    struct Call { let operation: WorkspaceOperation; let payload: [String: LoopdyJSONValue] }
+    var owner: WorkspaceOwner?
+    var allowMutations = true
+    var replaceOwnerAfterResponse = false
+    var capabilities: WorkspaceCapabilities {
+        .init(owner: owner, values: allowMutations ? [.schedulesEdit: .available, .schedulesRun: .available] : [:])
+    }
+    var calls: [Call] = []
+    var responses: [WorkspaceOperation: [Result<[String: LoopdyJSONValue], WorkspaceClientError>]] = [:]
+
+    init() throws {
+        owner = .init(authority: try .fixture(id: "scheduler-test"), authenticationGeneration: UUID(), connectionGeneration: UUID())
+    }
+
+    func perform(_ operation: WorkspaceOperation, payload: [String: LoopdyJSONValue], owner: WorkspaceOwner) async throws -> [String: LoopdyJSONValue] {
+        calls.append(.init(operation: operation, payload: payload))
+        guard let response = responses[operation]?.first else { throw WorkspaceClientError.invalidResponse }
+        responses[operation]?.removeFirst()
+        if replaceOwnerAfterResponse {
+            self.owner = .init(authority: owner.authority, authenticationGeneration: UUID(), connectionGeneration: UUID())
+        }
+        return try response.get()
+    }
+}

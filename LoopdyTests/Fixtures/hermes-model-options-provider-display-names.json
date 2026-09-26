@@ -1,0 +1,48 @@
+{
+  "provider": "copilot",
+  "model": "gpt-5.6-sol",
+  "providers": [
+    {
+      "slug": "copilot",
+      "name": "GitHub Copilot",
+      "is_current": true,
+      "is_user_defined": false,
+      "models": ["gpt-5.6-sol"]
+    },
+    {
+      "slug": "copilot-acp",
+      "name": "GitHub Copilot ACP",
+      "is_current": false,
+      "is_user_defined": false,
+      "models": ["copilot-acp"]
+    },
+    {
+      "slug": "copilot-adaptive",
+      "name": "Copilot Adaptive",
+      "is_current": false,
+      "is_user_defined": false,
+      "models": ["gpt-6-astra"]
+    },
+    {
+      "slug": "azure-foundry",
+      "name": "Azure Foundry",
+      "is_current": false,
+      "is_user_defined": false,
+      "models": ["azure-deployment"]
+    },
+    {
+      "slug": "opencode-free",
+      "name": "OpenCode Free",
+      "is_current": false,
+      "is_user_defined": false,
+      "models": ["x-preview-f-free"]
+    },
+    {
+      "slug": "hp-litellm",
+      "name": "litellm",
+      "is_current": false,
+      "is_user_defined": true,
+      "models": ["gpt-5.6-sol"]
+    }
+  ]
+}

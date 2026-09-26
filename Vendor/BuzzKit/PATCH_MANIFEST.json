@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "package": "BuzzKit",
+  "upstream": {
+    "repository": "https://github.com/buzzkit-dev/buzzkit-ios",
+    "version": "1.0.0",
+    "tag": "v1.0.0",
+    "revision": "35e27ed609dcca553378b24a9acb9a024c37cca1",
+    "tree": "95933794ec4452de9a3189e92795d233f4f2c8ac",
+    "license": "MIT",
+    "licenseFile": "LICENSE"
+  },
+  "vendoredScope": [
+    "Package.swift",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "Sources/**",
+    "Tests/**"
+  ],
+  "products": [
+    "BuzzKit",
+    "BuzzKitUI",
+    "BuzzKitNotificationServiceExtension"
+  ],
+  "aggregateHash": {
+    "algorithm": "sha256(sorted UTF-8 relativePath + NUL + lowercase file sha256 + LF)",
+    "upstreamScope": "4ef7da5ffdebf4f973a140918c1a20a9e6425a0207ff69bead4139b8b91f3216",
+    "patchedScope": "6046d789e5ecda5b839b41291f25713346f834e3bccfac12f018479fc95101b1",
+    "fileCount": 60
+  },
+  "patches": [
+    {
+      "id": "awaitable-serialized-push-enrollment",
+      "summary": "Serialize subscription mutations; add awaited exact-response enrollment APIs; and durably fence retired identity while exact provider deletion remains retryable across cancellation, relaunch, and identity switching.",
+      "changedFiles": [
+        {
+          "path": "Sources/BuzzKit/BuzzKit.swift",
+          "upstreamSHA256": "65a14750f45fbe5fd237151d28e53cf5fefc4f9bdb6da99f205b63226762e857",
+          "patchedSHA256": "2c0dd1c4f086e274efd386c01fae1a429594fcfbd4d379ceae11c380a0a820c7"
+        },
+        {
+          "path": "Sources/BuzzKit/Configuration.swift",
+          "upstreamSHA256": "f0de49269de269e7f6a65f2741a4407ffe052df3ade5a6c8e0ca7fd9ff11792f",
+          "patchedSHA256": "ef59cb45f9c39fb00a921cf6bcd355231aaae1a0120782032e0d1621a7543356"
+        },
+        {
+          "path": "Sources/BuzzKit/Events/EventQueue.swift",
+          "upstreamSHA256": "40c99e383eb8aeea7ac6bd5e94560a38714d4f399789949d00254ee0449eab3d",
+          "patchedSHA256": "a6f683aaec284f7cc41eed1988eb160a0e9b3c371301ca9ab11f4025c78aa885"
+        },
+        {
+          "path": "Sources/BuzzKit/ExtensionSupport.swift",
+          "upstreamSHA256": "99a2138bb650950aeebd5946b1c54d3c4d39065f32808e28c4bb42e7f8b7cd80",
+          "patchedSHA256": "afce330a1d2a529a1907acf39cf92f90396cc9d23986fbf4bee4c3b7f3429b2d"
+        },
+        {
+          "path": "Sources/BuzzKit/Identity/IdentityStore.swift",
+          "upstreamSHA256": "bb538460558db3b74be1268395cd3e3aae636800d8bd0a5793716f4c37cb8e5a",
+          "patchedSHA256": "66f7f597d8741b6ae55aa98ffd0a676e9039eb0577c3ef9234d139e9331127c0"
+        },
+        {
+          "path": "Sources/BuzzKit/Networking/ClientAPI.swift",
+          "upstreamSHA256": "9c1f031202312e63fee57f4e364def4b61824451abb48d462846ed08fdd8febe",
+          "patchedSHA256": "df9dce8d23f78abadebdd430e2ddd66bcb66fd5f41c9b58d5ccb0ba7b7339405"
+        },
+        {
+          "path": "Sources/BuzzKit/Networking/HTTPClient.swift",
+          "upstreamSHA256": "43bde2d6656d79b5a47ce03c27c5d6a7786b8c739f468cb2f6276724d238c77e",
+          "patchedSHA256": "31eb04f7c8c1201a5108e5af9c01cafc455ceaadc80a1f7689ecbc46fa5d54f4"
+        },
+        {
+          "path": "Sources/BuzzKit/Push/PushManager.swift",
+          "upstreamSHA256": "6eda43b6e70c06348c6f5d52280e42a130ad94103eea76aa4972be99e2027752",
+          "patchedSHA256": "6ce00723c45834b6c9d377b603acf46efb4a3c6c0ae86842d70864a2b83dbf24"
+        },
+        {
+          "path": "Sources/BuzzKit/Storage/KeyValueStore.swift",
+          "upstreamSHA256": "77bba0c5d46eebcdbf44f8b0782b98ceffcec16e3bb634790462258b08f1ed58",
+          "patchedSHA256": "163a1c203ea2df6370c8f62610c7a4c8fd797ec165be595c8debeef055f7b5e0"
+        },
+        {
+          "path": "Sources/BuzzKit/Support/SerialWorkQueue.swift",
+          "upstreamSHA256": "2d684c190b078505884670a023afc1aa3b5115449a8f2c9b7549e8560c2b80a5",
+          "patchedSHA256": "61c61b9db45c2132ca4414a8b7abb3c916258f457685fd4bfc3d5b254e158637"
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "localPackagePath": "Vendor/BuzzKit",
+    "requiredExactRevision": "35e27ed609dcca553378b24a9acb9a024c37cca1",
+    "notes": "Local package is derived only from the exact released revision above; project.yml and Package.resolved are parent-owned integration files. Parent retained the exact upstream Tests tree because Package.swift declares BuzzKitTests; omitting it makes SwiftPM infer overlapping sources. The only new retirement persistence is a non-secret Boolean in the existing SDK UserDefaults namespace; cleanup continues to use the existing externalId, identityHash, and subscriptionId fields without copying them."
+  }
+}

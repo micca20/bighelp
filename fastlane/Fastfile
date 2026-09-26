@@ -1,0 +1,360 @@
+require "fileutils"
+require "json"
+require "shellwords"
+require "tmpdir"
+require "securerandom"
+require_relative "SigningSetup"
+
+default_platform(:ios)
+
+REPOSITORY_ROOT = File.expand_path("..", __dir__)
+
+# Per-developer values come from the environment (CI repository variables) or
+# from the git-ignored Config/Local.xcconfig that Xcode builds also read.
+def loopdy_setting(env_name, xcconfig_key)
+  value = ENV[env_name].to_s.strip
+  return value unless value.empty?
+
+  path = File.join(REPOSITORY_ROOT, "Config", "Local.xcconfig")
+  return "" unless File.file?(path)
+
+  File.foreach(path) do |line|
+    key, raw = line.sub(%r{//.*}, "").split("=", 2)
+    return raw.strip if raw && key.strip == xcconfig_key && !raw.strip.empty?
+  end
+  ""
+end
+
+def require_release_settings!
+  missing = { "LOOPDY_APP_STORE_APP_ID" => APP_STORE_APP_ID, "LOOPDY_DEVELOPMENT_TEAM" => DEVELOPMENT_TEAM }
+    .select { |_, value| value.empty? }.keys
+  return if missing.empty?
+
+  UI.user_error!("Set #{missing.join(' and ')} in the environment or Config/Local.xcconfig")
+end
+
+APP_STORE_APP_ID = loopdy_setting("LOOPDY_APP_STORE_APP_ID", "LOOPDY_APP_STORE_APP_ID")
+APP_IDENTIFIER = "app.loopdy.mobile"
+DEVELOPMENT_TEAM = loopdy_setting("LOOPDY_DEVELOPMENT_TEAM", "DEVELOPMENT_TEAM")
+PROJECT_PATH = File.join(REPOSITORY_ROOT, "Loopdy.xcodeproj")
+PROJECT_SPEC_PATH = File.join(REPOSITORY_ROOT, "project.yml")
+SCHEME = "Loopdy"
+
+def asc_json(command)
+  output = Actions.sh("asc #{command}", log: false)
+  JSON.parse(output)
+rescue JSON::ParserError => error
+  UI.user_error!("asc returned invalid JSON: #{error.message}")
+end
+
+def active_asc_credentials
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_path = ENV["ASC_KEY_PATH"] || ENV["ASC_PRIVATE_KEY_PATH"]
+
+  if key_id.nil? || issuer_id.nil?
+    status = asc_json("auth status")
+    credentials = Array(status["credentials"])
+    selected = credentials.find { |credential| credential["isDefault"] } || credentials.first
+    UI.user_error!("No App Store Connect API key is configured. Run `asc auth login`.") unless selected
+
+    key_id ||= selected.fetch("keyId")
+    issuer_id ||= Actions.sh("asc auth issuer-id", log: false).strip
+  end
+
+  key_path ||= [
+    File.expand_path("~/.private_keys/AuthKey_#{key_id}.p8"),
+    File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+  ].find { |candidate| File.file?(candidate) }
+
+  UI.user_error!("App Store Connect private key not found for #{key_id}. Set ASC_PRIVATE_KEY_PATH.") unless key_path
+
+  ENV["ASC_KEY_ID"] = key_id
+  ENV["ASC_ISSUER_ID"] = issuer_id
+  ENV["ASC_PRIVATE_KEY_PATH"] = key_path
+
+  {
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_path,
+    duration: 1_200,
+    in_house: false
+  }
+end
+
+def with_release_lock
+  lock_path = File.join(Dir.tmpdir, "loopdy-app-store-#{APP_STORE_APP_ID}.lock")
+  File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
+    locked = lock.flock(File::LOCK_EX | File::LOCK_NB)
+    UI.user_error!("Another Loopdy TestFlight release is already running on this machine.") unless locked
+    yield
+  end
+end
+
+def marketing_version
+  get_version_number(
+    xcodeproj: PROJECT_PATH,
+    target: SCHEME
+  )
+end
+
+def next_build_number(version)
+  payload = asc_json(
+    "builds next-build-number --app #{APP_STORE_APP_ID} " \
+    "--version #{Shellwords.escape(version)} --platform IOS"
+  )
+  Integer(payload.fetch("nextBuildNumber"), 10)
+rescue ArgumentError, KeyError => error
+  UI.user_error!("Could not resolve the next TestFlight build number: #{error.message}")
+end
+
+def resolved_build_number(options, version)
+  override = options[:build_number].to_s.strip
+  return next_build_number(version) if override.empty?
+
+  build_number = Integer(override, 10)
+  UI.user_error!("Build number must be greater than zero.") unless build_number.positive?
+  build_number
+rescue ArgumentError
+  UI.user_error!("Build number must be a positive integer.")
+end
+
+def write_build_number(build_number)
+  source = File.read(PROJECT_SPEC_PATH)
+  matches = source.scan(/CURRENT_PROJECT_VERSION:\s*\d+/)
+  UI.user_error!("Expected five XcodeGen build-number settings, found #{matches.length}.") unless matches.length == 5
+
+  updated = source.gsub(
+    /CURRENT_PROJECT_VERSION:\s*\d+/,
+    "CURRENT_PROJECT_VERSION: #{build_number}"
+  )
+  File.write(PROJECT_SPEC_PATH, updated)
+  sh("xcodegen generate --spec #{Shellwords.escape(PROJECT_SPEC_PATH)}")
+end
+
+def internal_testflight_groups
+  payload = asc_json(
+    "testflight groups list --app #{APP_STORE_APP_ID} " \
+    "--internal --paginate --output json"
+  )
+  groups = Array(payload["data"])
+  UI.user_error!("No internal TestFlight groups are configured.") if groups.empty?
+
+  {
+    automatic: groups.filter_map do |group|
+      attributes = group["attributes"] || {}
+      attributes["name"] if attributes["hasAccessToAllBuilds"]
+    end,
+    assignable: groups.filter_map do |group|
+      attributes = group["attributes"] || {}
+      attributes["name"] unless attributes["hasAccessToAllBuilds"]
+    end
+  }
+end
+
+platform :ios do
+  desc "Verify App Store Connect auth, next build number, and internal TestFlight groups"
+  lane :release_check do |options|
+    require_release_settings!
+    app_store_connect_api_key(**active_asc_credentials)
+    version = marketing_version
+    build_number = resolved_build_number(options, version)
+    groups = internal_testflight_groups
+
+    UI.success(
+      "Ready to ship Loopdy #{version} (#{build_number}) to: " \
+      "#{(groups[:automatic] + groups[:assignable]).join(', ')}"
+    )
+  end
+
+  desc "Build, upload, and distribute the next Loopdy build to every internal TestFlight group"
+  lane :deploy_testflight do |options|
+    require_release_settings!
+    with_release_lock do
+      api_key = app_store_connect_api_key(**active_asc_credentials)
+      version = marketing_version
+      build_number = resolved_build_number(options, version)
+      notes = options[:notes].to_s.strip
+      notes = Actions.sh(
+        "git -C #{Shellwords.escape(REPOSITORY_ROOT)} log -1 --pretty=%s",
+        log: false
+      ).strip if notes.empty?
+
+      write_build_number(build_number)
+
+      output_directory = File.expand_path("../build/fastlane", __dir__)
+      FileUtils.mkdir_p(output_directory)
+      ipa_name = "Loopdy-#{version}-#{build_number}.ipa"
+
+      build_app(
+        project: PROJECT_PATH,
+        scheme: SCHEME,
+        configuration: "Release",
+        clean: true,
+        output_directory: output_directory,
+        output_name: ipa_name,
+        export_method: "app-store",
+        export_options: {
+          manageAppVersionAndBuildNumber: false,
+          signingStyle: "automatic",
+          teamID: DEVELOPMENT_TEAM,
+          uploadSymbols: true
+        },
+        xcargs: "-allowProvisioningUpdates",
+        export_xcargs: "-allowProvisioningUpdates"
+      )
+
+      groups = internal_testflight_groups
+      upload_to_testflight(
+        api_key: api_key,
+        app_identifier: APP_IDENTIFIER,
+        ipa: File.join(output_directory, ipa_name),
+        changelog: notes,
+        groups: groups[:assignable],
+        skip_waiting_for_build_processing: false,
+        skip_submission: true,
+        notify_external_testers: false,
+        distribute_external: false
+      )
+
+      UI.success(
+        "Loopdy #{version} (#{build_number}) is available to internal groups: " \
+        "#{(groups[:automatic] + groups[:assignable]).join(', ')}"
+      )
+    end
+  end
+
+  desc "Create one new encrypted CI signing identity after explicit workflow confirmation"
+  lane :ci_prepare_signing do
+    prepare_ci_signing
+  end
+
+  desc "Build and distribute an internal TestFlight release on a hosted macOS runner"
+  lane :ci_testflight do
+    require_release_settings!
+    required = %w[ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_PATH IOS_DISTRIBUTION_P12_PATH IOS_DISTRIBUTION_P12_PASSWORD RUNNER_TEMP]
+    missing = required.select { |name| ENV[name].to_s.empty? }
+    UI.user_error!("Missing CI signing inputs: #{missing.join(', ')}") unless missing.empty?
+    %w[ASC_PRIVATE_KEY_PATH IOS_DISTRIBUTION_P12_PATH].each do |name|
+      UI.user_error!("Signing file for #{name} is missing") unless File.file?(ENV.fetch(name))
+    end
+
+    keychain = File.join(ENV.fetch("RUNNER_TEMP"), "loopdy-signing.keychain-db")
+    keychain_password = SecureRandom.hex(32)
+    output_directory = File.join(REPOSITORY_ROOT, "build", "testflight")
+    archive_path = File.join(output_directory, "Loopdy.xcarchive")
+    FileUtils.mkdir_p(output_directory)
+    begin
+      create_keychain(path: keychain, password: keychain_password,
+        default_keychain: false, unlock: true, timeout: 0, lock_when_sleeps: false)
+      import_certificate(certificate_path: ENV.fetch("IOS_DISTRIBUTION_P12_PATH"),
+        certificate_password: ENV.fetch("IOS_DISTRIBUTION_P12_PASSWORD"),
+        keychain_path: keychain, keychain_password: keychain_password, log_output: false)
+      api_key = app_store_connect_api_key(**active_asc_credentials)
+      app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+      UI.user_error!("The API key cannot access the expected Loopdy app") unless app && app.id == APP_STORE_APP_ID
+      groups = app.get_beta_groups.select(&:is_internal_group)
+      UI.user_error!("Configure at least one internal TestFlight group before uploading") if groups.empty?
+      version = marketing_version
+      build_number = latest_testflight_build_number(api_key: api_key, app_identifier: APP_IDENTIFIER,
+        version: version, initial_build_number: 0) + 1
+      write_build_number(build_number)
+      signing_certificate = OpenSSL::PKCS12.new(
+        File.binread(ENV.fetch("IOS_DISTRIBUTION_P12_PATH")),
+        ENV.fetch("IOS_DISTRIBUTION_P12_PASSWORD")
+      ).certificate
+      certificate = Spaceship::ConnectAPI::Certificate.all(
+        filter: { certificateType: "DISTRIBUTION" }
+      ).find do |candidate|
+        candidate.valid? && Base64.decode64(candidate.certificate_content) == signing_certificate.to_der
+      end
+      UI.user_error!("The imported distribution identity is not an active certificate on this team") unless certificate
+      provisioning_profiles = {}
+      {
+        "Loopdy" => APP_IDENTIFIER,
+        "LoopdyWatch" => "#{APP_IDENTIFIER}.watchkitapp",
+        "LoopdyNotificationService" => "#{APP_IDENTIFIER}.notification-service",
+        "LoopdyLiveActivity" => "#{APP_IDENTIFIER}.live-activity"
+      }.each do |target, bundle_id|
+        profile_uuid = get_provisioning_profile(api_key: api_key,
+          app_identifier: bundle_id, cert_id: certificate.id,
+          provisioning_name: "Loopdy CI #{bundle_id} #{certificate.id}",
+          ignore_profiles_with_different_name: true,
+          output_path: ENV.fetch("RUNNER_TEMP"), filename: "#{target}.mobileprovision",
+          platform: "ios", skip_certificate_verification: false)
+        UI.user_error!("No App Store profile was resolved for #{bundle_id}") if profile_uuid.to_s.empty?
+        provisioning_profiles[bundle_id] = profile_uuid
+        update_code_signing_settings(path: PROJECT_PATH,
+          use_automatic_signing: false, targets: [target], build_configurations: ["Release"],
+          team_id: DEVELOPMENT_TEAM, code_sign_identity: "Apple Distribution",
+          sdk: target == "LoopdyWatch" ? "watchos*" : "iphoneos*",
+          profile_uuid: profile_uuid, profile_name: lane_context[SharedValues::SIGH_NAME])
+      end
+      ipa_name = "Loopdy-#{version}-#{build_number}.ipa"
+      auth_args = ["-allowProvisioningUpdates", "-authenticationKeyPath", ENV.fetch("ASC_PRIVATE_KEY_PATH"),
+        "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"), "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID")]
+        .map { |value| Shellwords.escape(value) }.join(" ")
+      build_app(project: PROJECT_PATH, scheme: SCHEME, configuration: "Release", clean: true,
+        archive_path: archive_path, output_directory: output_directory, output_name: ipa_name,
+        export_method: "app-store", xcodebuild_formatter: "",
+        export_options: { manageAppVersionAndBuildNumber: false, signingStyle: "manual",
+          provisioningProfiles: provisioning_profiles,
+          teamID: DEVELOPMENT_TEAM, signingCertificate: "Apple Distribution", uploadSymbols: true },
+        xcargs: auth_args + " CODE_SIGN_IDENTITY='Apple Distribution'")
+      sh("codesign --verify --deep --strict #{Shellwords.escape(File.join(archive_path, 'Products/Applications/Loopdy.app'))}")
+      notes = ENV["TESTFLIGHT_NOTES"].to_s.strip
+      notes = "Chat keyboard and References stability, GitHub discovery, and simpler Wiki setup." if notes.empty?
+      upload_to_testflight(api_key: api_key, app_identifier: APP_IDENTIFIER,
+        ipa: File.join(output_directory, ipa_name), changelog: notes,
+        groups: groups.reject(&:has_access_to_all_builds).map(&:id),
+        skip_waiting_for_build_processing: false, wait_processing_timeout_duration: 2_400,
+        skip_submission: false, submit_beta_review: false,
+        notify_external_testers: false, distribute_external: false)
+      build = Spaceship::ConnectAPI::Build.all(app_id: app.id, version: version,
+        build_number: build_number.to_s, platform: "IOS").first
+      internal_state = build&.build_beta_detail&.internal_build_state
+      UI.user_error!("Upload finished but the exact build is not available for internal testing") unless
+        build && ["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].include?(internal_state)
+      groups.reject(&:has_access_to_all_builds).each do |group|
+        UI.user_error!("Build is not assigned to internal group #{group.name}") unless group.fetch_builds.any? { |item| item.id == build.id }
+      end
+      evidence = { version: version, build_number: build_number, app_id: app.id, build_id: build.id,
+        commit: ENV["GITHUB_SHA"], internal_groups: groups.map(&:name), ready_for_internal_testing: true }
+      File.write(File.join(output_directory, "release.json"), JSON.pretty_generate(evidence) + "\n")
+      UI.success("Loopdy #{version} (#{build_number}) is ready in internal TestFlight")
+    ensure
+      delete_keychain(keychain_path: keychain) if File.exist?(keychain)
+    end
+  end
+
+  desc "Install the current committed Loopdy plugin into Hermes and restart the gateway"
+  lane :hermes_plugin do
+    plugin_changes = Actions.sh(
+      "git -C #{Shellwords.escape(REPOSITORY_ROOT)} status --porcelain -- plugins/loopdy",
+      log: false
+    ).strip
+    UI.user_error!("Commit Loopdy plugin changes before deployment.") unless plugin_changes.empty?
+
+    revision = Actions.sh(
+      "git -C #{Shellwords.escape(REPOSITORY_ROOT)} rev-parse HEAD",
+      log: false
+    ).strip
+    source = "file://#{REPOSITORY_ROOT}#plugins/loopdy"
+
+    sh("hermes plugins install #{Shellwords.escape(source)} --ref #{revision} --force --enable")
+    sh("hermes plugins doctor loopdy --ci")
+    sh("hermes gateway restart")
+    sh("hermes gateway status")
+    sh("hermes loopdy link status")
+  end
+
+  desc "Deploy the current Loopdy plugin, then ship the next internal TestFlight build"
+  lane :release do |options|
+    require_release_settings!
+    hermes_plugin
+    deploy_testflight(
+      build_number: options[:build_number],
+      notes: options[:notes]
+    )
+  end
+end

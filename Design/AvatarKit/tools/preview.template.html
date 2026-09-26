@@ -1,0 +1,380 @@
+<title>bighelp Avatar Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F3F4F9; --surface:#FFFFFF; --ink:#1D1A2C; --muted:#646179; --line:#E1E1EB;
+  --chip:#EBECF3; --code:#F6F6FA; --accent:#E8553E;
+  --display:"Baloo 2","Trebuchet MS",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#13121B; --surface:#1C1B27; --ink:#ECEAF6; --muted:#9C99B1; --line:#2D2B3C;
+    --chip:#262535; --code:#171622; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#13121B; --surface:#1C1B27; --ink:#ECEAF6; --muted:#9C99B1; --line:#2D2B3C;
+  --chip:#262535; --code:#171622; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 var(--body);padding-inline:16px}
+.wrap{max-width:1080px;margin:0 auto;padding-block:32px 64px;display:grid;gap:44px}
+h1,h2{font-family:var(--display);font-weight:700;line-height:1.05;margin:0;text-wrap:balance}
+h1{font-size:clamp(34px,5vw,48px);letter-spacing:-.01em}
+h2{font-size:24px}
+p{margin:0}
+.lede{color:var(--muted);max-width:60ch;margin-top:8px;font-size:16px}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+/* studio */
+.studio{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:28px;align-items:start}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:24px;display:grid;justify-items:center;gap:14px}
+.stage-av{width:min(100%,300px);aspect-ratio:1;max-width:100%;touch-action:manipulation}
+.who{text-align:center}
+.who .name{font-family:var(--display);font-size:30px;font-weight:700;line-height:1}
+.who .role{color:var(--muted);font-size:14px}
+.hint{font-size:13px;color:var(--muted);text-align:center}
+.controls{display:grid;gap:24px;align-content:start}
+.group{display:grid;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:7px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.seg .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.5}
+.seg.sm button{padding:5px 11px;font-size:13px}
+.face{display:grid;gap:12px;border:1px dashed var(--line);border-radius:16px;padding:14px}
+.face-row{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:start}
+.face-row>span{font-size:13px;color:var(--muted);padding-top:5px}
+.link{border:0;background:none;padding:0;font-size:13px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.seg button[aria-pressed="true"] .dot{opacity:1;background:var(--accent)}
+.play{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:8px 16px;font-weight:600;font-size:14px}
+.play[disabled]{opacity:.55;cursor:default}
+
+.swatches{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.swatch{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:7px 10px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:500;text-align:left;min-width:0}
+.swatch[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.chip-disc{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;position:relative}
+.chip-disc i{position:absolute;width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1.5px rgba(255,255,255,.7)}
+.chip-disc i:nth-child(1){left:5px;top:12px}.chip-disc i:nth-child(2){left:11px;top:5px}.chip-disc i:nth-child(3){right:5px;top:12px}
+
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.toggle input{width:16px;height:16px;accent-color:var(--ink)}
+
+.code{background:var(--code);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.code-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 6px 6px 8px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:2px}
+.tabs button{border:0;background:none;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--chip);color:var(--ink)}
+.copy{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 10px;font-size:12.5px;font-weight:500}
+pre{margin:0;padding:14px 16px;overflow-x:auto;font:13px/1.6 var(--mono);white-space:pre}
+
+/* lineup */
+.lineup-head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.lineup{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.card{border:1px solid var(--line);background:var(--surface);border-radius:18px;padding:12px 10px 12px;display:grid;justify-items:center;gap:6px;text-align:center}
+.card[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.card .av{width:100%;max-width:150px;aspect-ratio:1}
+.card .n{font-family:var(--display);font-weight:700;font-size:18px;line-height:1}
+.card .r{font-size:12.5px;color:var(--muted)}
+
+/* reference */
+.ref{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.ref .wide{grid-column:1/-1}
+.fam{display:grid;gap:14px}
+.fam+.fam{margin-top:28px}
+.fam-head p{color:var(--muted);font-size:14px;margin-top:4px}
+.ref h2{margin-bottom:12px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+td{padding:9px 10px 9px 0;border-top:1px solid var(--line);vertical-align:top}
+td:first-child{white-space:nowrap}
+code{font:12.5px var(--mono);background:var(--chip);padding:2px 6px;border-radius:6px}
+.tbl{overflow-x:auto}
+
+@media (max-width:860px){
+  .studio{grid-template-columns:minmax(0,1fr)}
+  .ref{grid-template-columns:minmax(0,1fr)}
+  .face-row{grid-template-columns:minmax(0,1fr);gap:6px}
+  .face-row>span{padding-top:0}
+}
+@media (max-width:720px){
+  .lineup{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>bighelp Avatar Kit</h1>
+    <p class="lede">Twenty animated avatars for your agents: ten characters and ten geometric Bits with swappable faces. Pick a colorway and a state; every avatar squishes when tapped and follows your pointer with its eyes.</p>
+  </header>
+
+  <section class="studio" aria-label="Avatar studio">
+    <div class="stage">
+      <div class="stage-av" id="stage-av"></div>
+      <div class="who"><div class="name" id="who-name">Pinch</div><div class="role" id="who-role">Lobster</div></div>
+      <p class="hint">Tap the avatar to poke it</p>
+    </div>
+
+    <div class="controls">
+      <div class="group">
+        <div class="row" style="justify-content:space-between">
+          <span class="eyebrow">State</span>
+          <button class="play" id="play" type="button">Play an agent turn</button>
+        </div>
+        <div class="seg" id="states" role="group" aria-label="State"></div>
+      </div>
+
+      <div class="group" id="face-group" hidden>
+        <div class="row" style="justify-content:space-between">
+          <span class="eyebrow">Face</span>
+          <button class="link" id="face-reset" type="button">Reset to default</button>
+        </div>
+        <div class="face">
+          <div class="face-row"><span>Eyes</span><div class="seg sm" id="opt-eyes" role="group" aria-label="Eyes"></div></div>
+          <div class="face-row"><span>Mouth</span><div class="seg sm" id="opt-mouth" role="group" aria-label="Mouth"></div></div>
+          <div class="face-row"><span>Accessory</span><div class="seg sm" id="opt-accessory" role="group" aria-label="Accessory"></div></div>
+          <label class="toggle"><input type="checkbox" id="cheeks-toggle" checked> Blush cheeks</label>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Colorway</span>
+        <div class="swatches" id="themes" role="group" aria-label="Colorway"></div>
+        <label class="toggle"><input type="checkbox" id="bg-toggle" checked> Show backdrop disc</label>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Use it</span>
+        <div class="code">
+          <div class="code-head">
+            <div class="tabs" role="tablist">
+              <button type="button" role="tab" id="tab-swift" aria-selected="true">SwiftUI</button>
+              <button type="button" role="tab" id="tab-web" aria-selected="false">Web</button>
+            </div>
+            <button class="copy" id="copy" type="button">Copy</button>
+          </div>
+          <pre id="snippet"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Lineup">
+    <div class="fam">
+      <div class="lineup-head">
+        <div class="fam-head"><h2>Characters</h2><p>Hand-drawn personalities with their own motion.</p></div>
+        <span class="eyebrow lineup-meta">Original colorway · idle</span>
+      </div>
+      <div class="lineup" id="lineup-classic"></div>
+    </div>
+    <div class="fam">
+      <div class="lineup-head">
+        <div class="fam-head"><h2>Bits</h2><p>Simple shapes with swappable eyes, mouths and accessories. Select one to edit its face.</p></div>
+        <span class="eyebrow lineup-meta">Original colorway · idle</span>
+      </div>
+      <div class="lineup" id="lineup-bits"></div>
+    </div>
+  </section>
+
+  <section class="ref">
+    <div>
+      <h2>Colorway tokens</h2>
+      <div class="tbl"><table>
+        <tr><td><code>--av-primary</code></td><td>Main body, shell, coat, shape</td></tr>
+        <tr><td><code>--av-secondary</code></td><td>Bellies, muzzles, hair, panels, flower center</td></tr>
+        <tr><td><code>--av-accent</code></td><td>Collars, bolt, iris, visor glow, accessories</td></tr>
+        <tr><td><code>--av-bg</code></td><td>Backdrop disc behind the avatar</td></tr>
+        <tr><td><code>--av-ink</code></td><td>Pupils, mouths, visor, headset, robot screen</td></tr>
+        <tr><td><code>--av-skin</code></td><td>Skin tone for Aeria and Bolt</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h2>States for the agent lifecycle</h2>
+      <div class="tbl"><table>
+        <tr><td><code>idle</code></td><td>Waiting for work. Breathes, blinks, small motion.</td></tr>
+        <tr><td><code>listening</code></td><td>User is typing or the mic is open. Leans in, pulse ring.</td></tr>
+        <tr><td><code>thinking</code></td><td>Reasoning or running tools. Looks up, thought bubble.</td></tr>
+        <tr><td><code>waiting</code></td><td>Blocked on the user, like an approval. Glances around, alert badge.</td></tr>
+        <tr><td><code>talking</code></td><td>Streaming a reply. Mouth moves, body chatters.</td></tr>
+        <tr><td><code>happy</code></td><td>Task finished. Hops, closed-eye smile, sparkles.</td></tr>
+        <tr><td><code>sleeping</code></td><td>Offline or paused. Eyes closed, floating Z's.</td></tr>
+      </table></div>
+    </div>
+    <div class="wide">
+      <h2>Bits face options</h2>
+      <div class="tbl"><table id="face-table"></table></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/*__AVATARS__*/
+</script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var ui = { character: 'lobster', theme: 'original', state: 'idle', bg: true, tab: 'swift', faces: {} };
+  try { Object.assign(ui, JSON.parse(localStorage.getItem('bh-avatar-kit') || '{}')); } catch (e) {}
+  var byId = {}; CHARACTERS.forEach(function (c) { byId[c.id] = c; });
+  if (!THEMES[ui.theme]) ui.theme = 'original';
+  if (STATES.indexOf(ui.state) < 0) ui.state = 'idle';
+  if (!byId[ui.character]) ui.character = 'lobster';
+  if (!ui.faces || typeof ui.faces !== 'object') ui.faces = {};
+  var save = function () { try { localStorage.setItem('bh-avatar-kit', JSON.stringify(ui)); } catch (e) {} };
+  var faceOf = function (id) { return ui.faces[id] || {}; };
+  var isBit = function (id) { return byId[id].family === 'bits'; };
+
+  var stage = mountAvatar($('#stage-av'), { character: ui.character, theme: ui.theme, state: ui.state, background: ui.bg, face: faceOf(ui.character) });
+  var cards = [];
+
+  CHARACTERS.forEach(function (c) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'card'; b.setAttribute('aria-label', c.name + ', ' + c.role);
+    b.innerHTML = '<div class="av"></div><div class="n"></div><div class="r"></div>';
+    b.querySelector('.n').textContent = c.name; b.querySelector('.r').textContent = c.role;
+    var av = mountAvatar(b.querySelector('.av'), { character: c.id, theme: ui.theme, state: ui.state, background: ui.bg, face: faceOf(c.id) });
+    b.addEventListener('click', function () { ui.character = c.id; render(); });
+    $(c.family === 'bits' ? '#lineup-bits' : '#lineup-classic').appendChild(b);
+    cards.push({ id: c.id, el: b, av: av });
+  });
+
+  STATES.forEach(function (s) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.dataset.state = s;
+    b.innerHTML = '<span class="dot"></span>' + s;
+    b.addEventListener('click', function () { stopTurn(); ui.state = s; render(); });
+    $('#states').appendChild(b);
+  });
+
+  // face options
+  var LABEL = { none: 'none' };
+  Object.keys(FACE_OPTIONS).forEach(function (key) {
+    FACE_OPTIONS[key].forEach(function (v) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.dataset.key = key; b.dataset.value = v; b.textContent = LABEL[v] || v;
+      b.addEventListener('click', function () {
+        var f = Object.assign({}, faceOf(ui.character)); f[key] = v;
+        ui.faces[ui.character] = f; render();
+      });
+      $('#opt-' + key).appendChild(b);
+    });
+  });
+  $('#cheeks-toggle').addEventListener('change', function (e) {
+    var f = Object.assign({}, faceOf(ui.character)); f.cheeks = e.target.checked;
+    ui.faces[ui.character] = f; render();
+  });
+  $('#face-reset').addEventListener('click', function () { delete ui.faces[ui.character]; render(); });
+  $('#face-table').innerHTML = Object.keys(FACE_OPTIONS).map(function (k) {
+    return '<tr><td><code>' + k + '</code></td><td>' + FACE_OPTIONS[k].map(function (v) { return '<code>' + v + '</code>'; }).join(' ') + '</td></tr>';
+  }).join('') + '<tr><td><code>cheeks</code></td><td><code>true</code> <code>false</code></td></tr>';
+
+  Object.keys(THEMES).forEach(function (k) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'swatch'; b.dataset.theme = k;
+    b.innerHTML = '<span class="chip-disc"><i></i><i></i><i></i></span><span>' + THEMES[k].name + '</span>';
+    b.addEventListener('click', function () { ui.theme = k; render(); });
+    $('#themes').appendChild(b);
+  });
+
+  $('#bg-toggle').checked = ui.bg;
+  $('#bg-toggle').addEventListener('change', function (e) { ui.bg = e.target.checked; render(); });
+
+  function colorsFor(themeKey) {
+    var d = byId[ui.character].defaults, t = THEMES[themeKey].colors;
+    return { primary: t.primary || d.primary, secondary: t.secondary || d.secondary, accent: t.accent || d.accent, background: t.background || d.background };
+  }
+
+  function currentFace() {
+    var def = byId[ui.character].face, f = faceOf(ui.character);
+    return { eyes: f.eyes || def.eyes, mouth: f.mouth || def.mouth, accessory: f.accessory || def.accessory, cheeks: f.cheeks !== false };
+  }
+
+  var SWIFT_NONE = { mouth: 'hidden', accessory: 'bare' };
+  function snippet() {
+    var bits = isBit(ui.character), def = bits && byId[ui.character].face, cur = bits && currentFace();
+    var changed = bits ? Object.keys(FACE_OPTIONS).filter(function (k) { return cur[k] !== def[k]; }) : [];
+    if (ui.tab === 'swift') {
+      var faceArg = '';
+      if (bits && (changed.length || !cur.cheeks)) {
+        var parts = changed.map(function (k) { return k + ': .' + (cur[k] === 'none' ? SWIFT_NONE[k] : cur[k]); });
+        if (!cur.cheeks) parts.push('cheeks: false');
+        faceArg = ',\n    face: .init(' + parts.join(', ') + ')';
+      }
+      return 'AgentAvatarView(.' + ui.character + ', colors: .' + ui.theme + faceArg + ', state: .' + ui.state +
+        (ui.bg ? '' : ', showsBackground: false') + ')\n    .frame(width: 96, height: 96)';
+    }
+    var faceJs = '';
+    if (bits && (changed.length || !cur.cheeks)) {
+      var fp = changed.map(function (k) { return k + ": '" + cur[k] + "'"; });
+      if (!cur.cheeks) fp.push('cheeks: false');
+      faceJs = '\n  face: { ' + fp.join(', ') + ' },';
+    }
+    return "import { mountAvatar } from './avatars.js';\n\nconst avatar = mountAvatar(el, {\n  character: '" + ui.character +
+      "',\n  theme: '" + ui.theme + "',\n  state: '" + ui.state + "'," + faceJs + (ui.bg ? '' : '\n  background: false,') +
+      "\n});\n\n// later: avatar.setState('talking')";
+  }
+
+  function render() {
+    var c = byId[ui.character];
+    if (stage.element.getAttribute('data-character') !== ui.character) stage.setCharacter(ui.character, faceOf(ui.character));
+    else stage.setFace(Object.assign({ eyes: null, mouth: null, accessory: null, cheeks: null }, faceOf(ui.character)));
+    stage.setTheme(ui.theme); stage.setState(ui.state); stage.setBackground(ui.bg);
+    $('#who-name').textContent = c.name; $('#who-role').textContent = c.role;
+    cards.forEach(function (k) {
+      k.av.setTheme(ui.theme); k.av.setState(ui.state); k.av.setBackground(ui.bg);
+      k.av.setFace(Object.assign({ eyes: null, mouth: null, accessory: null, cheeks: null }, faceOf(k.id)));
+      k.el.setAttribute('aria-pressed', String(k.id === ui.character));
+    });
+    document.querySelectorAll('#states button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.state === ui.state)); });
+    $('#face-group').hidden = !isBit(ui.character);
+    if (isBit(ui.character)) {
+      var cur = currentFace();
+      document.querySelectorAll('.face .seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(cur[b.dataset.key] === b.dataset.value)); });
+      $('#cheeks-toggle').checked = cur.cheeks;
+    }
+    document.querySelectorAll('#themes .swatch').forEach(function (b) {
+      var col = colorsFor(b.dataset.theme), disc = b.querySelector('.chip-disc'), dots = disc.querySelectorAll('i');
+      disc.style.background = col.background;
+      dots[0].style.background = col.secondary; dots[1].style.background = col.primary; dots[2].style.background = col.accent;
+      b.setAttribute('aria-pressed', String(b.dataset.theme === ui.theme));
+    });
+    document.documentElement.style.setProperty('--accent', colorsFor(ui.theme).primary);
+    document.querySelectorAll('.lineup-meta').forEach(function (m) { m.textContent = THEMES[ui.theme].name + ' colorway · ' + ui.state; });
+    $('#tab-swift').setAttribute('aria-selected', String(ui.tab === 'swift'));
+    $('#tab-web').setAttribute('aria-selected', String(ui.tab === 'web'));
+    $('#snippet').textContent = snippet();
+    save();
+  }
+
+  var timers = [];
+  function stopTurn() { timers.forEach(clearTimeout); timers = []; $('#play').disabled = false; }
+  $('#play').addEventListener('click', function () {
+    stopTurn(); $('#play').disabled = true;
+    var seq = [['listening', 0], ['thinking', 1800], ['waiting', 3800], ['thinking', 6000], ['talking', 7600], ['happy', 10600], ['idle', 12600]];
+    seq.forEach(function (s) {
+      timers.push(setTimeout(function () { ui.state = s[0]; render(); if (s[0] === 'idle') $('#play').disabled = false; }, s[1]));
+    });
+  });
+
+  $('#tab-swift').addEventListener('click', function () { ui.tab = 'swift'; render(); });
+  $('#tab-web').addEventListener('click', function () { ui.tab = 'web'; render(); });
+  $('#copy').addEventListener('click', function () {
+    var btn = this, text = $('#snippet').textContent;
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+    var fallback = function () {
+      var r = document.createRange(); r.selectNodeContents($('#snippet'));
+      var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = 'Selected';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1400);
+    };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  });
+
+  render();
+})();
+</script>

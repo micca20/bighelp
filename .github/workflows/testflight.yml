@@ -1,0 +1,95 @@
+name: Internal TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What to test
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loopdy-internal-testflight
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Require the merged main branch
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v4
+      - name: Prepare signing files
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          names = ['ASC_PRIVATE_KEY', 'ASC_KEY_ID', 'ASC_ISSUER_ID', 'IOS_DISTRIBUTION_P12_BASE64', 'IOS_DISTRIBUTION_P12_PASSWORD']
+          missing = [name for name in names if not os.environ.get(name)]
+          if missing:
+              raise SystemExit('Configure repository Actions secrets: ' + ', '.join(missing))
+          root = Path(os.environ['RUNNER_TEMP'])
+          files = {
+              'ASC_PRIVATE_KEY_PATH': ('loopdy-auth.p8', os.environ['ASC_PRIVATE_KEY'].encode()),
+              'IOS_DISTRIBUTION_P12_PATH': ('loopdy-distribution.p12', base64.b64decode(os.environ['IOS_DISTRIBUTION_P12_BASE64'], validate=True)),
+          }
+          for name, (filename, data) in files.items():
+              path = root / filename
+              with open(path, 'wb', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+                  output.write(data)
+              with open(os.environ['GITHUB_ENV'], 'a') as output:
+                  output.write(name + '=' + str(path) + '\n')
+          PY
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Write per-developer settings
+        env:
+          LOOPDY_DEVELOPMENT_TEAM: ${{ vars.LOOPDY_DEVELOPMENT_TEAM }}
+          LOOPDY_APP_STORE_APP_ID: ${{ vars.LOOPDY_APP_STORE_APP_ID }}
+          BUZZKIT_CLIENT_KEY: ${{ vars.BUZZKIT_CLIENT_KEY }}
+        run: |
+          test -n "$LOOPDY_DEVELOPMENT_TEAM" && test -n "$LOOPDY_APP_STORE_APP_ID" || {
+            echo "::error::Set the LOOPDY_DEVELOPMENT_TEAM and LOOPDY_APP_STORE_APP_ID repository variables."; exit 1; }
+          printf 'DEVELOPMENT_TEAM = %s\nLOOPDY_APP_STORE_APP_ID = %s\nBUZZKIT_CLIENT_KEY = %s\n' \
+            "$LOOPDY_DEVELOPMENT_TEAM" "$LOOPDY_APP_STORE_APP_ID" "$BUZZKIT_CLIENT_KEY" > Config/Local.xcconfig
+      - name: Generate Xcode project
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate
+      - name: Archive, upload, and verify internal distribution
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          TESTFLIGHT_NOTES: ${{ inputs.notes }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+        run: bundle exec fastlane ios ci_testflight
+      - name: Preserve signed package and release receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loopdy-testflight-${{ github.run_number }}
+          path: |
+            build/testflight/*.ipa
+            build/testflight/*.dSYM.zip
+            build/testflight/release.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/loopdy-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/loopdy-auth.p8" "$RUNNER_TEMP/loopdy-distribution.p12"

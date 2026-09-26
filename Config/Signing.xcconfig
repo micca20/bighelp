@@ -1,0 +1,11 @@
+// Per-developer signing and service keys.
+//
+// Copy Config/Local.xcconfig.example to Config/Local.xcconfig and fill in your
+// own values. Local.xcconfig is git-ignored. Without it the app still builds
+// for the simulator; device builds need a team, and notifications through
+// BuzzKit stay off until a client key is set.
+
+DEVELOPMENT_TEAM =
+BUZZKIT_CLIENT_KEY =
+
+#include? "Local.xcconfig"

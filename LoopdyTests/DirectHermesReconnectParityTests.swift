@@ -1,0 +1,78 @@
+import Foundation
+import Testing
+@testable import Loopdy
+
+@MainActor
+struct DirectHermesReconnectParityTests {
+    @Test func capabilityBooleanIsRequiredAndFalsePreservesReads() throws {
+        let invalid: [LoopdyJSONValue] = [.object([:]), .object(["per_session_exclusive_submit": .string("true")])]
+        for value in invalid {
+            #expect(throws: WorkspaceClientError.self) { try DirectHermesCapabilityManifest.decode(value) }
+        }
+        let no = try DirectHermesCapabilityManifest.decode(.object(["per_session_exclusive_submit": .boolean(false)]))
+        #expect(!no.supportedOperations.contains(.chatSend))
+        #expect(no.supportedOperations.contains(.sessionsRead))
+        #expect(no.supportedOperations.contains(.approvalsRespond))
+        let yes = try DirectHermesCapabilityManifest.decode(.object([
+            "per_session_exclusive_submit": .boolean(true), "future": .boolean(true)]))
+        #expect(yes.supportedOperations.contains(.chatSend))
+    }
+
+    @Test func resumeUsesDurableIdentityWithoutPromptSubmission() throws {
+        let parameters = DirectHermesReleaseContract.resumeParameters(profile: "research", storedID: "saved")
+        #expect(parameters["session_id"] == .string("saved"))
+        #expect(parameters["profile"] == .string("research"))
+        #expect(parameters["close_on_disconnect"] == .boolean(false))
+        #expect(parameters["omit_messages"] == .boolean(true))
+        #expect(parameters["text"] == nil)
+        let result = try DirectHermesReleaseContract.decodeResumedSession(.object([
+            "session_id": .string("replacement-runtime"), "stored_session_id": .string("compaction-successor"),
+            "info": .object([:]), "running": .boolean(false)
+        ]), profile: "research")
+        #expect(result.runtimeID == "replacement-runtime")
+        #expect(result.storedID == "compaction-successor")
+    }
+
+    @Test func conflictingResumeAliasesAndForeignProfileAreRejected() throws {
+        let conflicting: LoopdyJSONValue = .object(["session_id": .string("runtime"),
+            "stored_session_id": .string("saved"), "session_key": .string("different"), "info": .object([:])])
+        #expect(throws: WorkspaceClientError.self) {
+            try DirectHermesReleaseContract.decodeResumedSession(conflicting, profile: "research")
+        }
+        let foreign: LoopdyJSONValue = .object(["session_id": .string("runtime"),
+            "stored_session_id": .string("saved"), "info": .object(["profile_name": .string("other")])])
+        #expect(throws: WorkspaceClientError.self) {
+            try DirectHermesReleaseContract.decodeResumedSession(foreign, profile: "research")
+        }
+    }
+
+    @Test func globalReclaimRevokesOnlyExactOwnerAndStaleActions() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = ReconnectParityRPC()
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "research",
+            runtimeID: "runtime", storedID: "saved", title: "Chat", epoch: "epoch", drafts: .init(root: root))
+        let actions = client.sessionActions
+        client.receive(.init(type: "session.reclaimed", sessionID: nil, payload: [
+            "session_id": .string("other"), "stored_session_id": .string("saved"), "reason": .string("reassigned")], sequence: nil))
+        #expect(client.connected)
+        client.receive(.init(type: "session.reclaimed", sessionID: nil, payload: [
+            "session_id": .string("runtime"), "stored_session_id": .string("saved"), "reason": .string("reassigned")], sequence: nil))
+        #expect(!client.connected)
+        #expect(client.needsRecovery)
+        #expect(!client.isReadyForSubmission)
+        await #expect(throws: (any Error).self) { _ = try await actions.status() }
+        #expect(rpc.calls.isEmpty)
+    }
+}
+
+@MainActor
+private final class ReconnectParityRPC: DirectHermesRPC {
+    var onEvent: ((DirectHermesEvent) -> Void)?
+    var calls: [String] = []
+    func request(_ method: String, params: [String: LoopdyJSONValue]) async throws -> LoopdyJSONValue {
+        calls.append(method)
+        throw DirectHermesError.invalidResponse
+    }
+    func disconnect() async {}
+}

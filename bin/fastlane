@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+if command -v bundle >/dev/null 2>&1 && ruby -e 'exit RUBY_VERSION.to_i >= 3 ? 0 : 1'; then
+  exec bundle exec fastlane "$@"
+fi
+
+for candidate in \
+  /opt/homebrew/opt/ruby/bin/bundle \
+  /usr/local/opt/ruby/bin/bundle
+do
+  if [ -x "$candidate" ]; then
+    exec "$candidate" exec fastlane "$@"
+  fi
+done
+
+echo "Fastlane requires Ruby 3.0 or newer. Install Ruby, then run bundle install." >&2
+exit 1

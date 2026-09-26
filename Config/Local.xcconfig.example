@@ -1,0 +1,10 @@
+// Copy to Config/Local.xcconfig (git-ignored) and fill in your values.
+
+// Your Apple Developer Team ID (Xcode › Settings › Accounts).
+DEVELOPMENT_TEAM = ABCDE12345
+
+// Optional: BuzzKit publishable client key (bk_pk_…) for push notifications.
+BUZZKIT_CLIENT_KEY =
+
+// App Store Connect app ID, used only by the fastlane release lanes.
+LOOPDY_APP_STORE_APP_ID = 

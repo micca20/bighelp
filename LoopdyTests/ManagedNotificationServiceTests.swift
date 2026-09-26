@@ -1,0 +1,730 @@
+import BuzzKit
+import CryptoKit
+import Foundation
+import Testing
+import UserNotifications
+@testable import Loopdy
+
+@MainActor struct ManagedNotificationServiceTests {
+    @Test func localErasureAwaitsInjectedRetirementAfterGrantRevocation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        try fixture.service.removeLocalEnrollment(host: fixture.host)
+        fixture.provider.onRetirement = {
+            #expect(fixture.account.grant?.state == "revoked")
+            #expect(!fixture.ledger.enrollments.isEmpty)
+            await Task.yield()
+        }
+        try await fixture.service.eraseNotificationIdentity()
+        #expect(fixture.provider.retirements == 1)
+        #expect(fixture.ledger.enrollments.isEmpty)
+    }
+
+    @Test func localErasureWithoutHostGrantsDoesNotRequireProviderReadiness() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try await fixture.service.eraseNotificationIdentity()
+        #expect(fixture.provider.retirements == 1)
+        #expect(fixture.provider.registrationRequirements.isEmpty)
+        #expect(fixture.provider.registrations == 0)
+        #expect(fixture.account.requests.isEmpty)
+        #expect(fixture.ledger.enrollments.isEmpty)
+    }
+
+    @Test func refreshUsesReadOnlyProviderStatusWhileEnrollmentRequiresCurrentRegistrationReadback() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.refreshNotificationRuntime()
+        #expect(fixture.provider.registrationRequirements == [false])
+        #expect(fixture.provider.registrations == 0)
+        #expect(fixture.account.postBodies.isEmpty)
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        #expect(fixture.provider.registrationRequirements == [false, true])
+        #expect(fixture.provider.registrations == 1)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+    }
+
+    @Test func linkedHostEnrollmentBindsTheDedicatedNotificationInstallation() async throws {
+        let fixture = try Fixture(notificationDeviceID: "fixture-notification-installation")
+        defer { fixture.cleanup() }
+
+        let result = try await fixture.service.enroll(
+            host: fixture.host,
+            connection: fixture.connection,
+            isCurrent: { true }
+        )
+
+        guard case .enabled = result else {
+            Issue.record("Linked host enrollment did not enable")
+            return
+        }
+        #expect(fixture.host.notificationBinding?.deviceID == "fixture-notification-installation")
+        #expect(fixture.host.notificationScope != fixture.host.accountScope)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.accountID
+                == "fixture-notification-installation")
+        #expect(fixture.bindingRequests == 1,
+                "Enrollment must explicitly bind the active installation to current Link account authority")
+    }
+
+    @Test func explicitSetupReplacesRevokedProviderIdentityAndCompletesEnrollment() async throws {
+        let original = UUID().uuidString.lowercased()
+        let fixture = try Fixture(notificationDeviceID: original)
+        defer { fixture.cleanup() }
+        fixture.provider.identifyErrors = [
+            LoopdyManagedNotificationSetupError(
+                stage: .providerIdentity,
+                code: "notification_credentials_revoked"
+            ),
+        ]
+
+        let result = try await fixture.service.enroll(
+            host: fixture.host,
+            connection: fixture.connection,
+            isCurrent: { true }
+        )
+
+        guard case .enabled = result else {
+            Issue.record("Enrollment did not recover the revoked provider identity")
+            return
+        }
+        #expect(fixture.provider.identifiedDeviceIDs.count == 2)
+        #expect(fixture.provider.identifiedDeviceIDs[0] == original)
+        #expect(fixture.provider.identifiedDeviceIDs[1] != original)
+        #expect(fixture.host.notificationBinding?.deviceID == fixture.provider.identifiedDeviceIDs[1])
+    }
+
+    @Test func foregroundRecoveryReconfirmsExistingInstallationWakeBinding() async throws {
+        let fixture = try Fixture(notificationDeviceID: "fixture-notification-installation")
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(
+            host: fixture.host, connection: fixture.connection, isCurrent: { true }
+        )
+
+        _ = try await fixture.service.refreshNotificationIdentity()
+
+        #expect(fixture.bindingRequests == 2,
+                "An upgraded enrolled device must establish the mapping without requiring re-enrollment")
+    }
+
+    @Test func currentSubscriptionReadbackFailurePreventsGrantAndLedgerEnablement() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.provider.readinessError = DirectHermesError.invalidResponse
+
+        do {
+            _ = try await fixture.service.enroll(
+                host: fixture.host,
+                connection: fixture.connection,
+                isCurrent: { true }
+            )
+            Issue.record("Enrollment must require provider confirmation of the current subscription")
+        } catch let error as LoopdyManagedNotificationSetupError {
+            #expect(error.stage == .providerReadiness)
+        }
+
+        #expect(fixture.provider.registrations == 1)
+        #expect(fixture.provider.registrationRequirements == [true])
+        #expect(fixture.account.postBodies.isEmpty)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled != true)
+        #expect(!fixture.hostAPI.sawPinnedClaim)
+    }
+
+    @Test func deniedPermissionStopsBeforeRegistrationOrHostMutation() async throws {
+        let fixture = try Fixture(permissionGranted: false)
+        defer { fixture.cleanup() }
+        do {
+            _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+            Issue.record("Denied permission must stop setup")
+        } catch let error as LoopdyManagedNotificationSetupError {
+            #expect(error.stage == .notificationPermission)
+        }
+        #expect(fixture.provider.registrations == 0)
+        #expect(fixture.account.postBodies.isEmpty)
+        #expect(!fixture.hostAPI.sawPinnedClaim)
+    }
+
+    @Test func notificationCompositionRecoversAndInstallsHooksOnlyOnce() throws {
+        let fixture = try Fixture(independent: true)
+        defer { fixture.cleanup() }
+        let account = compositionAccount()
+        var priorAccountCalls = 0
+        account.onCredentialsWillChange = { priorAccountCalls += 1 }
+        var apnsInstalls = 0
+        var openInstalls = 0
+        var attempts = 0
+        let composition = LoopdyManagedNotificationComposition(
+            isFixture: false, registry: fixture.registry, account: account,
+            applicationHooks: .init(installAPNSToken: { _ in apnsInstalls += 1 },
+                                    installAPNSFailure: { _ in },
+                                    installWake: { _ in },
+                                    installManagedOpen: { _ in openInstalls += 1 }),
+            makeIntegration: {
+                attempts += 1
+                if attempts == 1 { throw DirectHermesError.secureStorageUnavailable }
+                return LoopdyManagedNotificationIntegration(service: fixture.service)
+            }
+        )
+        #expect(composition.service == nil)
+        #expect(fixture.registry.notificationSetup != nil)
+        #expect(composition.loadFailureKind == .protectedStorageUnavailable)
+        #expect(composition.retryAfterProtectedDataBecomesAvailable())
+        #expect(composition.service === fixture.service)
+        #expect(fixture.registry.notificationSetupError == nil)
+        for _ in 0..<4 { #expect(composition.retryAfterForeground()) }
+        #expect(attempts == 2)
+        #expect(composition.rootHookInstallationCount == 1)
+        #expect(apnsInstalls == 1 && openInstalls == 1)
+        let owner = try #require(composition.captureOwner())
+        account.onCredentialsWillChange()
+        #expect(priorAccountCalls == 1)
+        fixture.registry.bind(deviceID: "replacement-account", authorizationEpoch: 2)
+        #expect(composition.isCurrent(owner), "Link identity changes do not retire an independent host")
+        fixture.registry.useLinkedWorkspace()
+        #expect(!composition.isCurrent(owner))
+    }
+
+    @Test func revokedCredentialsRetryReidentifiesWithFreshCredentials() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.provider.identifyErrors = [
+            LoopdyManagedNotificationSetupError(stage: .providerIdentity, code: "notification_credentials_revoked")
+        ]
+        let result = try await fixture.service.enroll(
+            host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        guard case .enabled = result else {
+            Issue.record("Enrollment must succeed after the revoked-credential retry")
+            return
+        }
+        #expect(fixture.provider.identifiedDeviceIDs.count == 2,
+                "The first identify must fail revoked, the retry must identify with replacement credentials")
+        #expect(Set(fixture.provider.identifiedDeviceIDs).count == 2,
+                "The retry must use fresh credentials, not the revoked ones")
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+    }
+
+    @Test func notificationCompositionInstallsLinkWakeAndFailureHooks() async throws {
+        let fixture = try Fixture(independent: true)
+        defer { fixture.cleanup() }
+        var wakeHandler: LoopdyLinkWakeCenter.Handler?
+        var failureHandler: LoopdyAPNSTokenHookCenter.FailureHandler?
+        let composition = LoopdyManagedNotificationComposition(
+            isFixture: false, registry: fixture.registry, account: compositionAccount(),
+            applicationHooks: .init(
+                installAPNSToken: { _ in },
+                installAPNSFailure: { failureHandler = $0 },
+                installWake: { wakeHandler = $0 },
+                installManagedOpen: { _ in }),
+            makeIntegration: { LoopdyManagedNotificationIntegration(service: fixture.service) }
+        )
+        #expect(composition.rootHookInstallationCount == 1)
+        #expect(failureHandler != nil,
+                "The APNs failure hook must be installed so didFailToRegister reaches the runtime")
+        let handler = try #require(wakeHandler, "The Link wake handler must be installed")
+        // Route a real wake payload through the center: a handled wake must no
+        // longer report .failed.
+        let center = LoopdyLinkWakeCenter()
+        center.install(handler)
+        let result = await center.receive([
+            "aps": ["content-available": 1],
+            "loopdy_link": ["version": 2, "type": "wake", "frameId": "fixture_frame_0001"]
+        ])
+        #expect(result == .noData)
+    }
+
+    @Test func wakeDuringRealProviderRegistrationDoesNotReidentifyEnrollment() async throws {
+        let sdk = WakeSDK()
+        let runtime = LoopdyBuzzKitRuntime(testingSDK: sdk)
+        let fixture = try Fixture(independent: true, providerOverride: runtime)
+        defer { fixture.cleanup() }
+        fixture.service.activityRuntime = LoopdyManagedNativeActivityRuntime(
+            service: fixture.service, environment: .sandbox, topic: "app.loopdy.mobile")
+        var wake: LoopdyLinkWakeCenter.Handler?
+        let composition = LoopdyManagedNotificationComposition(
+            isFixture: false, registry: fixture.registry, account: compositionAccount(),
+            applicationHooks: .init(installAPNSToken: { _ in }, installAPNSFailure: { _ in },
+                installWake: { wake = $0 }, installManagedOpen: { _ in }),
+            makeIntegration: { LoopdyManagedNotificationIntegration(service: fixture.service) })
+        let handler = try #require(wake)
+        sdk.onRegister = {
+            runtime.noteAPNSToken(Data([1, 2]))
+            let hasNewData = try await handler()
+            #expect(hasNewData == false)
+        }
+        let result = try await composition.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        guard case .enabled = result else { Issue.record("Wake interrupted explicit enrollment"); return }
+        #expect(sdk.identifications == 1, "A wake cannot reset the in-flight provider generation")
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+    }
+
+    @Test func failedNotificationCompositionHasBoundedAutomaticAndExplicitRetry() async throws {
+        let fixture = try Fixture(independent: true)
+        defer { fixture.cleanup() }
+        let composition = LoopdyManagedNotificationComposition(
+            isFixture: false, registry: fixture.registry, account: compositionAccount(),
+            maximumAutomaticAttempts: 3,
+            applicationHooks: .init(installAPNSToken: { _ in }, installAPNSFailure: { _ in },
+                                    installWake: { _ in }, installManagedOpen: { _ in }),
+            makeIntegration: { throw DirectHermesError.savedConnectionInvalid }
+        )
+        for _ in 0..<5 { _ = composition.retryAfterForeground() }
+        #expect(composition.constructionAttemptCount == 3)
+        #expect(composition.loadFailureKind == .savedStateRejected)
+        await #expect(throws: (any Error).self) {
+            _ = try await composition.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        }
+        #expect(composition.constructionAttemptCount == 4)
+        #expect(composition.service == nil)
+        #expect(fixture.account.requests.isEmpty)
+        #expect(fixture.ledger.enrollments.isEmpty)
+    }
+
+    private func compositionAccount() -> LoopdyLinkAccountStore {
+        LoopdyLinkAccountStore(
+            api: LoopdyLinkAPI(baseURL: nil, transport: NoNetworkTransport()),
+            passkeys: LoopdyLinkUnavailablePasskeyAuthorizer(), vault: LoopdyLinkMemoryCredentialVault(),
+            deviceName: "Composition fixture", deviceKind: .phone
+        )
+    }
+
+    @Test func openingChatBeforeNotificationOptInIsANoOp() async throws {
+        let fixture = try Fixture(independent: true)
+        defer { fixture.cleanup() }
+        #expect(throws: (any Error).self) { try fixture.service.credentials(for: fixture.host) }
+        let rpc = UnenrolledChatRPC()
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: fixture.host.principalIdentity,
+            profile: "default", runtimeID: "runtime", storedID: "saved", title: "Chat", epoch: "epoch",
+            drafts: .init(root: fixture.root.appending(path: "drafts")))
+        defer { client.suspend() }
+        let model = ChatModel(conversationID: "saved", client: client)
+        let chat = DirectHermesChat(id: "saved", client: client, model: model)
+        try await fixture.service.onChatOpened(host: fixture.host, chat: chat)
+        #expect(fixture.account.requests.isEmpty)
+        #expect(rpc.requests.isEmpty)
+        #expect(fixture.registry.notificationSetupError == nil)
+    }
+
+    @MainActor private final class UnenrolledChatRPC: DirectHermesRPC {
+        var onEvent: ((DirectHermesEvent) -> Void)?
+        var requests: [String] = []
+        func request(_ method: String, params: [String: LoopdyJSONValue]) async throws -> LoopdyJSONValue {
+            requests.append(method)
+            throw DirectHermesError.invalidResponse
+        }
+        func disconnect() async {}
+    }
+
+    @Test func explicitNotificationEnrollmentNeverChangesIndependentChatAuthority() async throws {
+        let fixture = try Fixture(independent: true)
+        defer { fixture.cleanup() }
+        let selected = fixture.registry.selectedHostID
+        let generation = fixture.registry.generation
+        #expect(throws: (any Error).self) { try fixture.service.credentials(for: fixture.host) }
+        #expect(fixture.account.requests.isEmpty)
+        let result = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        guard case .enabled = result else { Issue.record("Optional enrollment failed"); return }
+        let updated = try #require(fixture.registry.selectedHost)
+        #expect(updated.accountID == nil)
+        #expect(fixture.registry.accountID == nil)
+        #expect(fixture.registry.connectionMode == .independent)
+        #expect(fixture.registry.selectedHostID == selected)
+        #expect(fixture.registry.generation == generation)
+        #expect(fixture.ledger.record(host: updated, profile: "default")?.enabled == true)
+        fixture.service.retireForAccountBoundary()
+        #expect(fixture.registry.selectedHostID == selected)
+        #expect(fixture.registry.connectionMode == .independent)
+    }
+    @Test func enrollmentPersistsGrantBeforeClaimAndVerifiesReadbackWithoutLinkChat() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let result = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        guard case .enabled = result else { Issue.record("Enrollment not enabled"); return }
+        #expect(fixture.hostAPI.sawPinnedClaim)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.grant?.eventTypes == ManagedNotificationValidation.eventTypes.sorted())
+        #expect(fixture.account.postBodies.count == 1)
+        #expect(!fixture.account.requests.contains { $0.contains("socket") || $0.contains("pairing") })
+    }
+
+    @Test func approvalCapableHostRequestsAndPinsExplicitApprovalAuthority() async throws {
+        let fixture = try Fixture(approvalSupported: true)
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let body = try #require(fixture.account.postBodies.first)
+        let intent = try JSONDecoder().decode(LoopdyManagedGrantIntent.self, from: body)
+        #expect(Set(intent.eventTypes) == ManagedNotificationValidation.eventTypes)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.grant?.eventTypes.contains("approval.required") == true)
+    }
+
+    @Test func addingHostCapabilityDoesNotUpgradeExistingGrant() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        fixture.hostAPI.supportedEvents.append("future.unknown")
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        #expect(fixture.account.postBodies.count == 1)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.grant?.eventTypes == ManagedNotificationValidation.eventTypes.sorted())
+    }
+
+    @Test func partialHostCapabilitiesCannotClaimFullNotificationReadiness() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.hostAPI.supportedEvents = ["session.completed", "session.failed"]
+        let result = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        guard case .prerequisitesRequired = result else { Issue.record("Partial host cannot enroll all categories"); return }
+        #expect(fixture.account.postBodies.isEmpty)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled != true)
+    }
+
+    @Test func cloudCannotExpandApprovalBeyondRequestedAuthority() async throws {
+        let fixture = try Fixture(approvalSupported: true)
+        defer { fixture.cleanup() }
+        fixture.account.eventTypesOverride = ManagedNotificationValidation.eventTypes.sorted() + ["private.unsupported"]
+        do {
+            _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+            Issue.record("Expanded grant must be rejected")
+        } catch {}
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.grant == nil)
+    }
+
+    @Test func firstChatSubscribesBeforeLazyProducersHaveRun() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.hostAPI.producerLoaded = false
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let client = try DirectHermesConversationClient(rpc: IdleRPC(), hostIdentity: fixture.host.principalIdentity,
+            profile: "default", runtimeID: "runtime", storedID: "stored", title: "Fixture", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: fixture.root.appending(path: "drafts")))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        try await fixture.service.onChatOpened(host: fixture.host, chat: DirectHermesChat(id: client.conversationID, client: client, model: model))
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.subscriptions.contains("stored") == true)
+    }
+
+    @Test(arguments: [false, true])
+    func independentChatSubscribesUsingItsNativeAuthorityOnlyAfterOptIn(dashboard: Bool) async throws {
+        let fixture = try Fixture(independent: true, dashboard: dashboard)
+        defer { fixture.cleanup() }
+        try fixture.registry.credentialVault(for: fixture.host).save(fixture.connection)
+        let authority = try dashboard
+            ? WorkspaceAuthority.dashboard(endpointIdentity: fixture.connection.endpoint.identity)
+            : WorkspaceAuthority.direct(endpointIdentity: fixture.connection.endpoint.identity,
+                providerID: "basic", userID: "person")
+        let owner = WorkspaceOwner(authority: authority, authenticationGeneration: UUID(), connectionGeneration: UUID())
+        let coordinate = try WorkspaceSessionCoordinate(owner: owner, profileID: "default", sessionID: "native-chat",
+            storedSessionID: "stored", runtimeSessionID: "runtime")
+        let client = try DirectHermesConversationClient(rpc: IdleRPC(), hostIdentity: authority.cacheScopeID,
+            profile: "default", runtimeID: "runtime", storedID: "stored", title: "Fixture", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: fixture.root.appending(path: "drafts")), workspaceSession: coordinate)
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        let chat = DirectHermesChat(id: client.conversationID, client: client, model: model)
+        #expect(fixture.service.ownsChat(host: fixture.host, client: client))
+        #expect(fixture.account.requests.isEmpty)
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let boundHost = try #require(fixture.registry.hosts.first)
+        try await fixture.service.onChatOpened(host: boundHost, chat: chat)
+        #expect(fixture.ledger.record(host: boundHost, profile: "default")?.subscriptions.contains("stored") == true)
+        #expect(fixture.registry.connectionMode == .independent)
+        #expect(fixture.registry.hosts.first?.accountID == nil)
+    }
+
+    @MainActor private final class IdleRPC: DirectHermesRPC {
+        var onEvent: ((DirectHermesEvent) -> Void)?
+        func request(_ method: String, params: [String: LoopdyJSONValue]) async throws -> LoopdyJSONValue {
+            throw DirectHermesError.notConnected
+        }
+        func disconnect() async {}
+    }
+
+    @Test func lostCreateReceiptRecoversFromListWithoutSecondCreate() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.account.loseFirstCreate = true
+        do { _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true }); Issue.record("Expected lost reply") }
+        catch {}
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.creationBody != nil)
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        #expect(fixture.account.postBodies.count == 1)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+    }
+
+    @Test func hostRemovalPersistsRevocationBeforeDeletingTrust() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        try fixture.service.removeLocalEnrollment(host: fixture.host)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.revokePending == true)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == false)
+        try await fixture.service.reconcilePendingRevocations()
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.revokePending == false)
+        #expect(fixture.account.grant?.state == "revoked")
+    }
+
+    @MainActor private final class Account: LoopdyManagedNotificationAccountAPI {
+        var eventTypesOverride: [String]?
+        var grant: LoopdyManagedGrant?
+        var postBodies: [Data] = []
+        var requests: [String] = []
+        var loseFirstCreate = false
+        let template: LoopdyManagedGrant
+        init(_ template: LoopdyManagedGrant) { self.template = template }
+        func managedNotificationRequest(path: String, method: String, body: Data?, credentials: LoopdyManagedNotificationCredentials) async throws -> LoopdyJSONValue {
+            requests.append(path)
+            if path == LoopdyManagedNotificationService.root + "/buzzkit/identity" {
+                return .object(["version": .integer(2), "identity": .object([
+                    "externalId": .string("notify_" + String(repeating: "a", count: 43)),
+                    "identityHash": .string(String(repeating: "b", count: 64))])])
+            }
+            if path == LoopdyManagedNotificationService.root + "/buzzkit/status" {
+                return .object(["version": .integer(2), "readiness": .object([
+                    "configured": .boolean(true),
+                    "pushCredentials": .array([.object(["environment": .string("sandbox"), "status": .string("active")])]),
+                    "subscriber": .object(["identified": .boolean(true), "verified": .boolean(true),
+                        "activeIOSPushEnvironments": .array([.string("sandbox")]),
+                        "currentDevice": .object(["matched": .boolean(true), "environment": .string("sandbox"),
+                            "enabled": .boolean(true), "active": .boolean(true), "subscriptionId": .string("wake-subscription")])]),
+                    "topicSlugs": .array(LoopdyBuzzKitTopic.allCases.map { .string($0.rawValue) })])])
+            }
+            if method == "POST" {
+                postBodies.append(try #require(body))
+                let intent = try JSONDecoder().decode(LoopdyManagedGrantIntent.self, from: #require(body))
+                grant = LoopdyManagedGrant(grantId: template.grantId, instanceId: template.instanceId, hostKeyId: template.hostKeyId, hostPublicKey: template.hostPublicKey,
+                    authorizationEpoch: template.authorizationEpoch, profile: template.profile, eventTypes: eventTypesOverride ?? template.eventTypes,
+                    createdAt: intent.expiresAt - 2_592_000, expiresAt: intent.expiresAt, revision: 1,
+                    provider: "buzzkit", subscriberScope: template.subscriberScope, state: "active")
+                if loseFirstCreate { loseFirstCreate = false; throw DirectHermesError.disconnected(outcomeUnknown: true) }
+            }
+            if method == "DELETE", let value = grant {
+                grant = LoopdyManagedGrant(grantId: value.grantId, instanceId: value.instanceId, hostKeyId: value.hostKeyId, hostPublicKey: value.hostPublicKey,
+                    authorizationEpoch: value.authorizationEpoch, profile: value.profile,
+                    eventTypes: value.eventTypes, createdAt: value.createdAt, expiresAt: value.expiresAt, revision: value.revision+1,
+                    provider: "buzzkit", subscriberScope: "account", state: "revoked")
+            }
+            if method == "GET" { return .object(["version":.integer(1),"grants":.array(try [grant].compactMap{$0}.map(Self.value))]) }
+            return .object(["version":.integer(1),"grant":try Self.value(#require(grant))])
+        }
+        static func value(_ grant: LoopdyManagedGrant) throws -> LoopdyJSONValue {
+            try JSONDecoder().decode(LoopdyJSONValue.self, from: JSONEncoder().encode(grant))
+        }
+    }
+    @MainActor private final class Host: DirectHostNotificationServing {
+        let account: Account; let trust: LoopdyNotificationHostTrustStore
+        var sawPinnedClaim = false
+        var hasPersistedGrant: () -> Bool = { false }
+        var producerLoaded = true
+        var supportedEvents = ManagedNotificationValidation.eventTypes.sorted()
+        init(_ account: Account, _ trust: LoopdyNotificationHostTrustStore) { self.account=account;self.trust=trust }
+        func request(_ suffix: String, method: String, body: [String: LoopdyJSONValue]?, isCurrent: @escaping @MainActor () -> Bool) async throws -> LoopdyJSONValue {
+            guard isCurrent() else { throw DirectHermesError.secureStorageChanged }
+            if suffix == "/capabilities" { return .object(["version":.integer(1),"hostKeyId":.string(account.template.hostKeyId),
+                "hostPublicKey":.string(account.template.hostPublicKey),"managedEnrollmentSupported":.boolean(true),
+                "supportedEventTypes":.array(supportedEvents.map(LoopdyJSONValue.string)),
+                "richLiveActivitySupported":.boolean(true),
+                "producerCapabilities":.object(["sessionCompletion":.boolean(producerLoaded),"sessionFailure":.boolean(producerLoaded),"richLiveActivity":.boolean(producerLoaded),"nativeApproval":.boolean(supportedEvents.contains("approval.required")),"nativeClarification":.boolean(false)])]) }
+            if suffix.hasSuffix("/sessions"), let body {
+                let profile = try #require(body["profile"]?.string)
+                let session = try #require(body["sessionId"]?.string)
+                return .object(["version":.integer(1),"grantId":.string(account.template.grantId),
+                    "profile":.string(profile),"sessionId":.string(session),"enabled":.boolean(true),
+                    "sessionReference":.string(ManagedNotificationValidation.sessionReference(profile:profile,session:session))])
+            }
+            if suffix == "/enroll" { sawPinnedClaim = hasPersistedGrant() }
+            return .object(["version":.integer(1),"grant":try Account.value(#require(account.grant))])
+        }
+    }
+    @MainActor private final class Provider: LoopdyManagedNotificationProvider {
+        var retirements = 0
+        var onRetirement: (@MainActor () async -> Void)?
+        func retireIdentityForLocalErasure() async {
+            retirements += 1
+            await onRetirement?()
+        }
+        var registrations = 0
+        var registrationRequirements: [Bool] = []
+        var readinessError: (any Error)?
+        var identifyErrors: [any Error] = []
+        var identifiedDeviceIDs: [String] = []
+        func identify(accountAPI: any LoopdyManagedNotificationAccountAPI, credentials: LoopdyManagedNotificationCredentials) async throws {
+            identifiedDeviceIDs.append(credentials.deviceID)
+            if !identifyErrors.isEmpty { throw identifyErrors.removeFirst() }
+        }
+        func registerCurrentDevice() async throws { registrations += 1 }
+        func refreshProviderReadiness(accountAPI: any LoopdyManagedNotificationAccountAPI,
+                                      credentials: LoopdyManagedNotificationCredentials,
+                                      requiringCurrentRegistration: Bool) async throws -> LoopdyBuzzKitProviderReadiness {
+            registrationRequirements.append(requiringCurrentRegistration)
+            return try await refreshProviderReadiness(accountAPI: accountAPI, credentials: credentials)
+        }
+        func refreshProviderReadiness(accountAPI: any LoopdyManagedNotificationAccountAPI, credentials: LoopdyManagedNotificationCredentials) async throws -> LoopdyBuzzKitProviderReadiness {
+            if let readinessError { throw readinessError }
+            return .init(configured: true, pushCredentials: [.init(environment: "sandbox", status: "active", validatedAt: nil, lastError: nil)],
+                  subscriber: .init(identified: true, verified: true, activeIOSPushEnvironments: ["sandbox"],
+                    currentDevice: .init(matched: true, environment: "sandbox", enabled: true, active: true, subscriptionId: "fixture-subscription")),
+                  topicSlugs: LoopdyBuzzKitTopic.allCases.map(\.rawValue))
+        }
+    }
+    @MainActor private final class WakeSDK: LoopdyAwaitableBuzzKitSDK {
+        var isConfigured = true
+        var externalID = ""
+        var identifications = 0
+        var onRegister: (@MainActor () async throws -> Void)?
+        func identify(_ externalId: String, identityHash: String) { externalID = externalId; identifications += 1 }
+        func identifyAndWait(_ externalId: String, identityHash: String) async throws { identify(externalId, identityHash: identityHash) }
+        func logout() {}
+        func logoutAndWait() async throws {}
+        func notificationPermission() async -> UNAuthorizationStatus { .authorized }
+        func registerForPush() async throws { try await onRegister?() }
+        func registerPushSubscription(deviceToken: Data) async throws -> BuzzKit.PushSubscriptionRegistration {
+            .init(id: "wake-subscription", externalId: externalID,
+                endpoint: deviceToken.map { String(format: "%02x", $0) }.joined(), environment: .sandbox)
+        }
+        func migrateLegacyPreferences() async throws {}
+        func observeActivities() {}
+    }
+
+    @MainActor private final class MemoryIdentityVault: LoopdyNotificationIdentityVault {
+        var value: LoopdyNotificationIdentityLoad = .none
+        func load() throws -> LoopdyNotificationIdentityLoad { value }
+        func save(_ record: LoopdyNotificationIdentityRecord) throws { value = .current(record) }
+        func delete() throws { value = .none }
+    }
+    @MainActor private final class NoNetworkTransport: LoopdyLinkHTTPTransport {
+        private(set) var bindingRequests = 0
+
+        func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+            if request.httpMethod == "POST",
+               request.url?.path == LoopdyNotificationBrokerClient.bootstrapPath,
+               let requestBody = request.httpBody,
+               let object = try JSONSerialization.jsonObject(with: requestBody) as? [String: Any],
+               let installationID = object["installationId"] as? String,
+               let url = request.url,
+               let response = HTTPURLResponse(url: url, statusCode: 201, httpVersion: nil, headerFields: nil) {
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "version": 2,
+                    "credential": [
+                        "scope": "notification-only",
+                        "installationId": installationID,
+                        "authorizationEpoch": 1,
+                    ],
+                ])
+                return (body, response)
+            }
+            if request.httpMethod == "DELETE",
+               request.url?.path == LoopdyManagedNotificationService.root + "/buzzkit/identity",
+               request.value(forHTTPHeaderField: "x-loopdy-device-id") == "fixture-mobile",
+               let url = request.url,
+               let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) {
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "version": 1,
+                    "identity": ["scope": "account", "state": "revoked"],
+                ])
+                return (body, response)
+            }
+            if request.httpMethod == "POST",
+               request.url?.path == "/v1/notifications/installations/current/account-binding",
+               request.value(forHTTPHeaderField: "x-loopdy-notification-installation") != nil,
+               request.value(forHTTPHeaderField: "x-loopdy-account-device-id") == "fixture-mobile",
+               let requestBody = request.httpBody,
+               let object = try JSONSerialization.jsonObject(with: requestBody) as? [String: Any],
+               object["version"] as? Int == 1,
+               let grantID = object["grantId"] as? String,
+               let url = request.url,
+               let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) {
+                bindingRequests += 1
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "version": 2,
+                    "binding": ["installationId": request.value(
+                        forHTTPHeaderField: "x-loopdy-notification-installation"
+                    )!, "grantId": grantID, "state": "active"],
+                ])
+                return (body, response)
+            }
+            if request.httpMethod == "DELETE",
+               request.url?.path == LoopdyNotificationBrokerClient.currentInstallationPath,
+               let installationID = request.value(forHTTPHeaderField: "x-loopdy-notification-installation"),
+               let url = request.url,
+               let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) {
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "version": 2,
+                    "installation": ["installationId": installationID, "state": "revoked"],
+                ])
+                return (body, response)
+            }
+            Issue.record("Unexpected network request in isolated notification fixture")
+            throw DirectHermesError.invalidResponse
+        }
+    }
+    @MainActor private final class Fixture {
+        let root: URL; let registry: LoopdyHostRegistry; private let storedHost: LoopdyConfiguredHost
+        var host: LoopdyConfiguredHost { registry.hosts.first { $0.id == storedHost.id } ?? storedHost }
+        let connection: DirectHermesSavedConnection; let ledger: LoopdyManagedNotificationLedger
+        let trust: LoopdyNotificationHostTrustStore; let service: LoopdyManagedNotificationService
+        let account: Account; let hostAPI: Host
+        private let notificationTransport: NoNetworkTransport
+        var bindingRequests: Int { notificationTransport.bindingRequests }
+        let provider = Provider()
+        init(approvalSupported: Bool = false, independent: Bool = false, dashboard: Bool = false,
+             permissionGranted: Bool = true, notificationDeviceID: String? = nil,
+             providerOverride: (any LoopdyManagedNotificationProvider)? = nil) throws {
+            root=FileManager.default.temporaryDirectory.appending(path:UUID().uuidString)
+            let vault=LoopdyLinkMemoryCredentialVault()
+            let credentials=LoopdyLinkRuntimeCredentials(deviceID:"fixture-mobile",authorizationEpoch:1,signingPrivateKey:P256.Signing.PrivateKey(),accountKey:Data(repeating:8,count:32))
+            try vault.save(credentials)
+            registry=LoopdyHostRegistry(root:root.appending(path:"hosts"),keychainService:"app.loopdy.test."+UUID().uuidString)
+            registry.bind(deviceID:credentials.deviceID,authorizationEpoch:1)
+            if independent { registry.useIndependentWorkspace() }
+            let endpoint=try DirectHermesEndpoint(address:"https://host.example")
+            connection = dashboard
+                ? DirectHermesSavedConnection(endpoint: endpoint, authentication: .dashboardSession(token: "fixture-session", automatic: true))
+                : DirectHermesSavedConnection(endpoint:endpoint,authentication:.bearer(accessToken:UUID().uuidString,refreshToken:nil,expiresAt:nil),provider:"basic",userID:"person")
+            let host=LoopdyConfiguredHost(id:UUID(),accountScope:try #require(registry.accountScope),accountID:independent ? nil : credentials.deviceID,endpoint:endpoint,principalIdentity:connection.identity,name:"Host", connectionMode: independent ? .independent : nil)
+            storedHost = host
+            struct Snapshot: Encodable { let version:Int; let hosts:[LoopdyConfiguredHost];let selected:UUID? }
+            let hostRoot = root.appending(path: independent ? "hosts-independent" : "hosts")
+            try FileManager.default.createDirectory(at:hostRoot,withIntermediateDirectories:true)
+            try JSONEncoder().encode(Snapshot(version: independent ? 2 : 1,hosts:[host],selected:host.id)).write(to:hostRoot.appending(path:host.accountScope+".json"))
+            registry.retryLoading()
+            registry.workspace(for:host).selectedProfile="default"
+            let hostKey=P256.Signing.PrivateKey().publicKey.x963Representation
+            let hostKeyID=LoopdyNotificationBase64URL.encode(Data(SHA256.hash(data:hostKey)))
+            let template=LoopdyManagedGrant(grantId:UUID().uuidString.lowercased(),instanceId:host.hostConnectionID.lowercased(),hostKeyId:hostKeyID,hostPublicKey:LoopdyNotificationBase64URL.encode(hostKey),
+                authorizationEpoch:1,profile:"default",eventTypes:ManagedNotificationValidation.eventTypes.sorted(),
+                createdAt:1_800_000_000,expiresAt:1_800_010_000,revision:1,provider:"buzzkit",subscriberScope:"notification-instance",state:"active")
+            account=Account(template)
+            trust=LoopdyNotificationHostTrustStore(accessGroup:nil,service:"app.loopdy.test.trust."+UUID().uuidString)
+            let hostClient=Host(account,trust)
+            // All four notification categories are required by the current enrollment contract.
+            hostAPI=hostClient
+            ledger=try LoopdyManagedNotificationLedger(root:root.appending(path:"ledger"))
+            let localLedger = ledger
+            let localHostID = host.id
+            let localRegistry = registry
+            hostClient.hasPersistedGrant = {
+                guard let current = localRegistry.hosts.first(where: { $0.id == localHostID }) else { return false }
+                return localLedger.record(host: current, profile: "default")?.grant != nil
+            }
+            let noNetwork = NoNetworkTransport()
+            notificationTransport = noNetwork
+            let broker = LoopdyNotificationBrokerClient(
+                legacyAPI: LoopdyLinkAPI(
+                    baseURL: URL(string: "https://link.loopdy.app"),
+                    transport: noNetwork,
+                    managedNotificationTransport: noNetwork
+                ),
+                transport: noNetwork
+            )
+            let identityVault = MemoryIdentityVault()
+            identityVault.value = .current(.active(.init(
+                authority: .notificationOnly,
+                deviceID: notificationDeviceID ?? credentials.deviceID,
+                authorizationEpoch: credentials.authorizationEpoch,
+                signingPrivateKey: credentials.signingPrivateKey
+            )))
+            let identity = LoopdyNotificationIdentityCoordinator(vault: identityVault, legacyVault: vault, broker: broker)
+            service=LoopdyManagedNotificationService(identity:identity,api:account,requestPermission:{permissionGranted},registry:registry,ledger:ledger,
+                activityKeys:LoopdyManagedActivityKeychain(service:"app.loopdy.test.activities."+UUID().uuidString),hostClient:{_ in hostClient},now:{Date(timeIntervalSince1970:1_800_000_100)},buzzKit:providerOverride ?? provider)
+        }
+        func cleanup(){ try? trust.removeAll(); registry.bind(deviceID:nil,authorizationEpoch:nil); try? FileManager.default.removeItem(at:root) }
+    }
+}
