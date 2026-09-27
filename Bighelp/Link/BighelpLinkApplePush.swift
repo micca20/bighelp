@@ -301,7 +301,10 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        // Stay quiet for the chat you're already looking at; the reply is on screen.
+        let thread = notification.request.content.threadIdentifier
+        if await BighelpVisibleChats.shared.isShowing(thread: thread) { return [] }
+        return [.banner, .list, .sound]
     }
 
     nonisolated func userNotificationCenter(

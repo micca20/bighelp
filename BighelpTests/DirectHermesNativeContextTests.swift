@@ -179,6 +179,40 @@ struct DirectHermesNativeContextTests {
         }
     }
 
+    @Test func hostRestartIsOnlyRequestedFromAPluginThatAdvertisesIt() async throws {
+        let owner = try owner()
+        let http = HTTP()
+        var features = ["native-context-v1", "serving-profile-v1"]
+        http.handler = { request, guardValue in
+            if guardValue != nil { return try self.response(request, body: ["restarting": .boolean(true)]) }
+            return try self.response(request, body: self.context(features: features))
+        }
+        let client = DirectHermesNativePluginClient(http: http, owner: owner, currentOwner: { owner })
+        await #expect(throws: WorkspaceClientError.unavailable(.unsupportedOperation)) { try await client.restartHost() }
+        #expect(http.calls.count == 1)
+
+        features.append(DirectHermesNativePluginClient.hostRestartFeature)
+        try await client.restartHost()
+        let restart = try #require(http.calls.last)
+        #expect(restart.request.path == "/api/plugins/loopdy/native/host/restart")
+        #expect(restart.request.method == .post)
+        #expect(restart.request.body == ["confirm": .boolean(true)])
+        #expect(restart.guardValue?.etag == etag)
+    }
+
+    @Test func hostRestartThatIsNotAcknowledgedIsAnError() async throws {
+        let owner = try owner()
+        let http = HTTP()
+        http.handler = { request, guardValue in
+            if guardValue != nil { return try self.response(request, body: ["restarting": .boolean(false)]) }
+            return try self.response(request, body: self.context(features: [
+                "native-context-v1", "serving-profile-v1", DirectHermesNativePluginClient.hostRestartFeature,
+            ]))
+        }
+        let client = DirectHermesNativePluginClient(http: http, owner: owner, currentOwner: { owner })
+        await #expect(throws: (any Error).self) { try await client.restartHost() }
+    }
+
     @Test func contextGuardRejectsUnboundedOrMalformedHeaders() {
         for value in ["sha256:" + String(repeating: "a", count: 64), "\"sha256:bad\"", etag + "\r\nx: y"] {
             #expect(throws: WorkspaceClientError.invalidResponse) { try DirectHermesNativeRequestGuard(etag: value) }

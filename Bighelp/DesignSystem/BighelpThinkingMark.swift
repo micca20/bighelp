@@ -1,57 +1,26 @@
 import Foundation
 import SwiftUI
 
-/// Pure animation values for one deterministic frame of the branded thinking mark.
-/// Tests can resolve an exact cycle phase without hosting a TimelineView.
+/// One deterministic frame of the working blob: how far each lobe reaches, how
+/// far the shape has turned and how full it breathes. Tests resolve exact
+/// frames without hosting a TimelineView.
 struct BighelpThinkingMarkPhasePresentation: Equatable, Sendable {
-    let normalizedPhase: Double
-    let primaryStreakPhase: Double
-    let secondaryStreakPhase: Double
-    let highlightOpacity: Double
-    let warmBurstOpacity: Double
+    static let lobeCount = 6
 
-    static let quiet = Self(
-        normalizedPhase: 0,
-        primaryStreakPhase: 0.18,
-        secondaryStreakPhase: 0.68,
-        highlightOpacity: 0,
-        warmBurstOpacity: 0.28
-    )
+    /// Radius of each lobe as a fraction of the resting radius.
+    let lobes: [Double]
+    let rotation: Double
+    let breath: Double
 
-    static func resolve(cyclePhase: Double) -> Self {
-        let phase = normalized(cyclePhase)
-        let shimmer = 0.72 + 0.22 * (0.5 + 0.5 * sin(phase * .pi * 4))
-        let burstDistance = circularDistance(from: phase, to: 0.78)
-        let burstProgress = max(0, 1 - burstDistance / 0.085)
-        let easedBurst = burstProgress * burstProgress * (3 - 2 * burstProgress)
+    static let quiet = Self(lobes: Array(repeating: 1, count: lobeCount), rotation: 0, breath: 1)
 
-        return Self(
-            normalizedPhase: phase,
-            primaryStreakPhase: phase,
-            secondaryStreakPhase: normalized(phase + 0.47),
-            highlightOpacity: shimmer,
-            warmBurstOpacity: 0.10 + 0.90 * easedBurst
-        )
-    }
-
-    static func resolve(
-        time: TimeInterval,
-        scenario: BighelpThinkingOrbScenario,
-        speed: Double
-    ) -> Self {
-        let effectiveSpeed = max(0, speed) * scenario.thinkingMarkSpeed
-        let phase = time * effectiveSpeed / 6.4 + scenario.thinkingMarkPhaseOffset
-        return resolve(cyclePhase: phase)
-    }
-
-    private static func normalized(_ value: Double) -> Double {
-        let remainder = value.truncatingRemainder(dividingBy: 1)
-        return remainder >= 0 ? remainder : remainder + 1
-    }
-
-    private static func circularDistance(from lhs: Double, to rhs: Double) -> Double {
-        let distance = abs(lhs - rhs)
-        return min(distance, 1 - distance)
+    static func resolve(time: TimeInterval, scenario: BighelpThinkingOrbScenario, speed: Double) -> Self {
+        let t = time * max(0, speed) * scenario.thinkingMarkSpeed + scenario.thinkingMarkPhaseOffset * 10
+        let lobes = (0..<lobeCount).map { index -> Double in
+            let offset = Double(index) * 2 * .pi / Double(lobeCount)
+            return 1 + 0.085 * sin(t * 2.1 + offset * 2) + 0.045 * sin(t * 3.3 - offset * 3)
+        }
+        return Self(lobes: lobes, rotation: t * 0.35, breath: 0.95 + 0.05 * sin(t * 1.6))
     }
 }
 
@@ -66,11 +35,13 @@ enum BighelpThinkingMarkAnimationPolicy {
     }
 }
 
-/// The canonical bighelp alpha silhouette, animated by light traveling along
-/// its asymmetric stem and two lobes. The asset remains the only visible mask.
+/// bighelp's working indicator: a small glossy blob in the accent color that
+/// gently morphs while work runs, like the agents' own blob avatars. Still,
+/// hidden, background and Reduce Motion states draw one quiet round orb.
 struct BighelpThinkingMark: View {
     enum Layout: Sendable {
         case square
+        /// Kept for callers sized by line height; the blob is square either way.
         case markHeight
     }
 
@@ -84,27 +55,21 @@ struct BighelpThinkingMark: View {
     var tint: Color? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
+    @BighelpThemeReader private var theme: BighelpTheme
 
     var body: some View {
         Group {
             if shouldAnimate {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                    renderedMark(
-                        phase: .resolve(
-                            time: timeline.date.timeIntervalSinceReferenceDate,
-                            scenario: scenario,
-                            speed: speed
-                        )
-                    )
+                    blob(.resolve(time: timeline.date.timeIntervalSinceReferenceDate, scenario: scenario, speed: speed))
                 }
             } else {
-                renderedMark(phase: .quiet)
+                blob(.quiet)
             }
         }
-        .frame(width: containerSize.width, height: containerSize.height)
+        .frame(width: displaySize, height: displaySize)
         .fixedSize(horizontal: true, vertical: true)
         .onAppear { isVisible = true }
         .onDisappear { isVisible = false }
@@ -123,111 +88,57 @@ struct BighelpThinkingMark: View {
         )
     }
 
-    private var containerSize: CGSize {
-        switch layout {
-        case .square:
-            CGSize(width: displaySize, height: displaySize)
-        case .markHeight:
-            CGSize(
-                width: displaySize * BighelpThinkingMarkGeometry.assetAspectRatio,
-                height: displaySize
-            )
-        }
-    }
-
-    private var baseColor: Color {
+    /// The accent by default; black or white when it sits on a filled button.
+    private var fill: Color {
         if let tint { return tint }
         switch surface {
-        case .automatic:
-            return colorScheme == .dark ? .white : .black
-        case .light:
-            return .black
-        case .dark:
-            return .white
+        case .automatic: return theme.action
+        case .light: return .black
+        case .dark: return .white
         }
     }
 
-    private func renderedMark(phase: BighelpThinkingMarkPhasePresentation) -> some View {
-        ZStack {
-            markMask
-                .foregroundStyle(baseColor.opacity(0.52))
-
-            GeometryReader { geometry in
-                let imageRect = BighelpThinkingMarkGeometry.imageRect(in: geometry.size)
-                let trackWidth = max(1.1, imageRect.width * 0.072)
-                let dash = [imageRect.width * 0.18, imageRect.width * 0.53]
-                let travel = (dash[0] + dash[1]) * 5
-
-                BighelpThinkingMarkTrack()
-                    .stroke(
-                        Color.white.opacity(phase.highlightOpacity * 0.28),
-                        style: StrokeStyle(
-                            lineWidth: trackWidth * 1.9,
-                            lineCap: .round,
-                            lineJoin: .round,
-                            dash: dash,
-                            dashPhase: -CGFloat(phase.primaryStreakPhase) * travel
-                        )
-                    )
-                    .blur(radius: max(0.45, trackWidth * 0.34))
-
-                BighelpThinkingMarkTrack()
-                    .stroke(
-                        LinearGradient(
-                            colors: tint.map { [$0.opacity(0.65), .white, $0, $0.opacity(0.75)] }
-                                ?? [.cyan, .white, .purple, .pink],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ).opacity(phase.highlightOpacity),
-                        style: StrokeStyle(
-                            lineWidth: trackWidth,
-                            lineCap: .round,
-                            lineJoin: .round,
-                            dash: dash,
-                            dashPhase: -CGFloat(phase.primaryStreakPhase) * travel
-                        )
-                    )
-
-                BighelpThinkingMarkTrack()
-                    .stroke(
-                        (tint ?? Color(red: 1, green: 0.76, blue: 0.20))
-                            .opacity(phase.highlightOpacity * 0.48),
-                        style: StrokeStyle(
-                            lineWidth: trackWidth * 0.72,
-                            lineCap: .round,
-                            lineJoin: .round,
-                            dash: dash,
-                            dashPhase: -CGFloat(phase.secondaryStreakPhase) * travel
-                        )
-                    )
-            }
-            .mask(markAlphaMask)
-
-            if let tint {
-                markMask
-                    .foregroundStyle(tint)
-                    .opacity(phase.warmBurstOpacity)
-            } else {
-                Image("BighelpMarkColor")
-                    .resizable()
-                    .scaledToFit()
-                    .opacity(phase.warmBurstOpacity)
-            }
+    private func blob(_ phase: BighelpThinkingMarkPhasePresentation) -> some View {
+        let fill = fill
+        return Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) / 2 * 0.86 * phase.breath
+            let shape = BighelpWorkingBlobPath.path(center: center, radius: radius,
+                                                    lobes: phase.lobes, rotation: phase.rotation)
+            context.fill(shape, with: .linearGradient(
+                Gradient(colors: [fill.opacity(0.78), fill]),
+                startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: size.width, y: size.height)))
+            // Gloss, like the agents' orbs and the Ember mark's shine.
+            let shine = CGRect(x: center.x - radius * 0.62, y: center.y - radius * 0.66,
+                               width: radius * 0.72, height: radius * 0.44)
+            context.fill(Path(ellipseIn: shine), with: .color(.white.opacity(0.42)))
         }
-        .compositingGroup()
     }
+}
 
-    private var markMask: some View {
-        Image("BighelpMarkColor")
-            .resizable()
-            .renderingMode(.template)
-            .scaledToFit()
-    }
-
-    private var markAlphaMask: some View {
-        Image("BighelpMarkColor")
-            .resizable()
-            .scaledToFit()
+/// A smooth closed curve through one point per lobe (Catmull-Rom as cubic Béziers).
+enum BighelpWorkingBlobPath {
+    static func path(center: CGPoint, radius: CGFloat, lobes: [Double], rotation: Double) -> Path {
+        let count = lobes.count
+        guard count >= 3 else { return Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
+                                                               width: radius * 2, height: radius * 2)) }
+        let points = (0..<count).map { index -> CGPoint in
+            let angle = rotation + Double(index) * 2 * .pi / Double(count)
+            let reach = radius * CGFloat(lobes[index])
+            return CGPoint(x: center.x + reach * CGFloat(cos(angle)), y: center.y + reach * CGFloat(sin(angle)))
+        }
+        var path = Path()
+        path.move(to: points[0])
+        for index in 0..<count {
+            let p0 = points[(index - 1 + count) % count], p1 = points[index]
+            let p2 = points[(index + 1) % count], p3 = points[(index + 2) % count]
+            let k: CGFloat = 1.0 / 6.0
+            path.addCurve(to: p2,
+                          control1: CGPoint(x: p1.x + (p2.x - p0.x) * k, y: p1.y + (p2.y - p0.y) * k),
+                          control2: CGPoint(x: p2.x - (p3.x - p1.x) * k, y: p2.y - (p3.y - p1.y) * k))
+        }
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -258,65 +169,5 @@ private extension BighelpThinkingOrbScenario {
         case .waiting: 0.49
         case .shaping: 0.56
         }
-    }
-}
-
-private enum BighelpThinkingMarkGeometry {
-    static let assetAspectRatio: CGFloat = 269 / 200
-
-    static func imageRect(in size: CGSize) -> CGRect {
-        let availableAspectRatio = size.width / max(size.height, 0.001)
-        if availableAspectRatio > assetAspectRatio {
-            let width = size.height * assetAspectRatio
-            return CGRect(x: (size.width - width) / 2, y: 0, width: width, height: size.height)
-        }
-
-        let height = size.width / assetAspectRatio
-        return CGRect(x: 0, y: (size.height - height) / 2, width: size.width, height: height)
-    }
-}
-
-/// A motion guide only. The canonical asset alpha is always applied afterward,
-/// so this path can illuminate the mark but can never replace its silhouette.
-private struct BighelpThinkingMarkTrack: Shape {
-    func path(in rect: CGRect) -> Path {
-        let imageRect = BighelpThinkingMarkGeometry.imageRect(in: rect.size)
-        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(
-                x: imageRect.minX + imageRect.width * x,
-                y: imageRect.minY + imageRect.height * y
-            )
-        }
-
-        var path = Path()
-        path.move(to: point(0.142, 0.08))
-        path.addLine(to: point(0.142, 0.48))
-        path.addCurve(
-            to: point(0.36, 0.77),
-            control1: point(0.142, 0.72),
-            control2: point(0.25, 0.85)
-        )
-        path.addCurve(
-            to: point(0.60, 0.43),
-            control1: point(0.45, 0.70),
-            control2: point(0.50, 0.54)
-        )
-        path.addCurve(
-            to: point(0.91, 0.61),
-            control1: point(0.73, 0.29),
-            control2: point(0.91, 0.40)
-        )
-        path.addCurve(
-            to: point(0.60, 0.77),
-            control1: point(0.91, 0.82),
-            control2: point(0.72, 0.89)
-        )
-        path.addLine(to: point(0.38, 0.46))
-        path.addCurve(
-            to: point(0.142, 0.50),
-            control1: point(0.27, 0.32),
-            control2: point(0.16, 0.36)
-        )
-        return path
     }
 }

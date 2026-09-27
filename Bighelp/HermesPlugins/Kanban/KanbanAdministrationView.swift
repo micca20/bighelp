@@ -442,6 +442,7 @@ private struct HermesKanbanBulkEditor: View {
     @State private var providerOverride = ""
     @State private var modelOverride = ""
     @State private var clearsModelOverride = false
+    @State private var isModelPickerPresented = false
     @State private var changesReasoning = false
     @State private var reasoningEffort = "none"
     @State private var clearsReasoningEffort = false
@@ -481,15 +482,18 @@ private struct HermesKanbanBulkEditor: View {
                 if changesModel {
                     Toggle("Clear model override", isOn: $clearsModelOverride)
                     if !clearsModelOverride {
-                        Picker("Provider", selection: $providerOverride) {
-                            Text("Select provider").tag("")
-                            ForEach(store.modelProviders) { Text($0.label).tag($0.slug) }
+                        BighelpModelChoiceRow(
+                            providerID: providerOverride,
+                            providerName: store.modelProviders.first(where: {
+                                $0.slug.utf8.elementsEqual(providerOverride.utf8)
+                            })?.label ?? providerOverride,
+                            modelID: modelOverride,
+                            emptyTitle: "Choose a model",
+                            isEnabled: !store.modelProviders.isEmpty
+                        ) {
+                            isModelPickerPresented = true
                         }
-                        .onChange(of: providerOverride) { _, _ in modelOverride = "" }
-                        Picker("Model", selection: $modelOverride) {
-                            Text("Select model").tag("")
-                            ForEach(modelsForSelectedProvider, id: \.self) { Text($0).tag($0) }
-                        }
+                        .accessibilityIdentifier("kanban.bulk.model")
                     }
                 }
                 Toggle("Change reasoning override", isOn: $changesReasoning)
@@ -542,6 +546,31 @@ private struct HermesKanbanBulkEditor: View {
         }
         .navigationTitle("Bulk Tasks")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isModelPickerPresented) {
+            // The chat's model picker; the override is applied when the bulk change is reviewed.
+            BighelpModelPickerSheet(
+                title: "Model override",
+                scopeLabel: "Selected tasks",
+                providers: store.modelProviders.map(BighelpLinkModelProvider.init(kanban:)),
+                currentProviderID: modelOverride.isEmpty ? nil : providerOverride,
+                currentModelID: modelOverride.isEmpty ? nil : modelOverride,
+                isLoading: false,
+                isApplying: false,
+                errorMessage: nil,
+                onClearError: {},
+                onRetry: nil,
+                onSelect: { _, _ in },
+                applyTitle: "Use this model",
+                defaultModelTitle: "No model chosen",
+                onApply: { draft in
+                    guard let providerID = draft.providerID, let modelID = draft.modelID else { return }
+                    providerOverride = providerID
+                    modelOverride = modelID
+                    isModelPickerPresented = false
+                }
+            )
+            .presentationDetents([.large])
+        }
     }
 
     private func isSelected(_ id: String) -> Bool {
@@ -553,9 +582,6 @@ private struct HermesKanbanBulkEditor: View {
         if selected { selectedIDs.append(id) }
     }
 
-    private var modelsForSelectedProvider: [String] {
-        store.modelProviders.first(where: { $0.slug.utf8.elementsEqual(providerOverride.utf8) })?.models ?? []
-    }
 }
 
 @MainActor

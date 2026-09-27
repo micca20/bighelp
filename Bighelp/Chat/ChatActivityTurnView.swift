@@ -113,12 +113,8 @@ struct ChatActivityTurnView: View {
                 case .generatedMedia(let event):
                     GeneratedMediaCard(event: event)
                 case .thinking(let event):
+                    // Quiet, like interim messages: the answer is what stands out.
                     ChatActivityRow(event: event, onDisclosureChange: onDisclosureChange)
-                        .padding(BighelpTokens.space12)
-                        .background(
-                            Color(uiColor: .secondarySystemBackground),
-                            in: .rect(cornerRadius: BighelpTokens.radius16)
-                        )
                 case .workTrail(let workTrail):
                     ChatWorkTrailCard(
                         turn: workTrail,

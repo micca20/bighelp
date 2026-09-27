@@ -130,6 +130,17 @@ import Testing
         #expect(discovery.endpoint.baseURL.port == 9119)
     }
 
+    @Test func aBarePrivateAddressUsesHTTPOnlyWhenAllowed() throws {
+        let vpn = try HostAddressInput.endpoint(address: "10.8.0.5:9119", port: "", allowPrivateHTTP: true)
+        #expect(vpn.baseURL.absoluteString == "http://10.8.0.5:9119")
+        let lan = try HostAddressInput.endpoint(address: "hermes.lan", port: "9119", allowPrivateHTTP: true)
+        #expect(lan.baseURL.absoluteString == "http://hermes.lan:9119")
+        // Without the switch, or for a public name, or when https:// is typed, TLS stays.
+        #expect(try HostAddressInput.endpoint(address: "10.8.0.5:9119", port: "", allowPrivateHTTP: false).baseURL.scheme == "https")
+        #expect(try HostAddressInput.endpoint(address: "hermes.example.com", port: "", allowPrivateHTTP: true).baseURL.scheme == "https")
+        #expect(try HostAddressInput.endpoint(address: "https://10.8.0.5:9119", port: "", allowPrivateHTTP: true).baseURL.scheme == "https")
+    }
+
     @Test func workspaceHealthDoesNotRequireAProviderLogin() throws {
         try DirectHermesReleaseContract.validateHealth([
             "ok": .boolean(true), "auth_required": .boolean(false), "version": .string("0.21.2")

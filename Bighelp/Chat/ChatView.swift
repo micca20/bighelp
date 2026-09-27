@@ -307,6 +307,7 @@ struct ChatView: View {
         .environment(\.chatActivityDisclosureStore, model.activityDisclosures)
         .onAppear {
             isChatVisible = true
+            BighelpVisibleChats.shared.appeared(model)
             ChatPDFPagesDraftRegistry.mount(model)
             model.nativeSessionResumeProgress.mount()
         }
@@ -365,6 +366,7 @@ struct ChatView: View {
             isForceRefreshing = false
             refreshError = nil
             isChatVisible = false
+            BighelpVisibleChats.shared.disappeared(model)
             ChatPDFPagesDraftRegistry.unmount(model)
             model.nativeSessionResumeProgress.unmount()
             companionAffectionTask?.cancel()

@@ -102,8 +102,7 @@ struct DirectHermesEndpoint: Codable, Equatable, Sendable {
               !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else {
             throw DirectHermesError.invalidEndpoint
         }
-        let addressClass = Self.addressClass(hostname)
-        if scheme == "http", !(allowPrivateHTTP && (addressClass.loopback || addressClass.tailnet)) {
+        if scheme == "http", !(allowPrivateHTTP && Self.isPrivateNetworkHost(hostname)) {
             throw DirectHermesError.plaintextNotAllowed
         }
         parts.scheme = scheme
@@ -143,19 +142,42 @@ struct DirectHermesEndpoint: Codable, Equatable, Sendable {
         }
     }
 
-    private static func addressClass(_ host: String) -> (loopback: Bool, tailnet: Bool) {
+    /// Names that only resolve inside a private network (mDNS, home routers,
+    /// ICANN's reserved .internal, company intranets). Public DNS never serves them.
+    static let privateNameSuffixes = ["local", "lan", "internal", "home.arpa", "intranet", "corp", "localdomain", "private"]
+
+    /// Plain HTTP stays on a network the person controls: this device, home or
+    /// office Wi-Fi, a VPN or Tailscale. Public names and addresses need HTTPS.
+    static func isPrivateNetworkHost(_ host: String) -> Bool {
+        let host = host.lowercased()
+        let addressClass = addressClass(host)
+        if addressClass.loopback || addressClass.privateNetwork { return true }
+        var v4 = in_addr(), v6 = in6_addr()
+        guard inet_pton(AF_INET, host, &v4) != 1, inet_pton(AF_INET6, host, &v6) != 1 else { return false }
+        // A single-label name ("hermes") never leaves the local resolver.
+        if !host.contains(".") { return true }
+        return privateNameSuffixes.contains { host.hasSuffix("." + $0) }
+    }
+
+    private static func addressClass(_ host: String) -> (loopback: Bool, privateNetwork: Bool) {
         var v4 = in_addr()
         if inet_pton(AF_INET, host, &v4) == 1 {
             return withUnsafeBytes(of: v4) { bytes in
-                (bytes[0] == 127, bytes[0] == 100 && (64...127).contains(bytes[1]))
+                let (a, b) = (bytes[0], bytes[1])
+                let privateNetwork = a == 10                       // 10.0.0.0/8 (VPNs, offices)
+                    || (a == 172 && (16...31).contains(b))         // 172.16.0.0/12
+                    || (a == 192 && b == 168)                      // 192.168.0.0/16 (home Wi-Fi)
+                    || (a == 100 && (64...127).contains(b))        // 100.64.0.0/10 (Tailscale, CGNAT)
+                    || (a == 169 && b == 254)                      // link-local
+                return (a == 127, privateNetwork)
             }
         }
         var v6 = in6_addr()
         if inet_pton(AF_INET6, host, &v6) == 1 {
             return withUnsafeBytes(of: v6) { bytes in
                 let loopback = bytes.prefix(15).allSatisfy { $0 == 0 } && bytes[15] == 1
-                let tailnet = Array(bytes.prefix(6)) == [0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0]
-                return (loopback, tailnet)
+                // fc00::/7 unique local (includes Tailscale's fd7a:115c:a1e0::/48).
+                return (loopback, bytes[0] & 0xfe == 0xfc)
             }
         }
         return (false, false)
@@ -284,6 +306,7 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
     case redirectRefused, invalidResponse, messageTooLarge, tooManyRequests, notConnected
     case connectionFailed, tlsRequired, rateLimited, serverUnavailable
     case browserAuthenticationUnavailable, nativeTokenExchangeUncertain
+    case invalidAccessCredentials, cloudflareAccessDenied
     case disconnected(outcomeUnknown: Bool)
     case timedOut(outcomeUnknown: Bool)
     case cancelled(outcomeUnknown: Bool)
@@ -299,7 +322,7 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidEndpoint: "Enter a valid HTTPS host address, optionally with a port and deployment path."
-        case .plaintextNotAllowed: "HTTP requires explicit permission and a literal loopback or Tailscale IP address. Use HTTPS for other hosts."
+        case .plaintextNotAllowed: "HTTP only works for private addresses (home Wi-Fi, a VPN or Tailscale) with Allow HTTP turned on under Advanced connection. Use HTTPS for other hosts."
         case .invalidCredentials: "The host rejected these credentials. Use a provider-issued access token or check your username and password."
         case .authenticationRequired: "Your host session has expired. Sign in again."
         case .unsupportedAuthentication: "This host does not support the selected sign-in method."
@@ -312,11 +335,13 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
         case .secureStorageUnavailable: "The device could not access secure connection storage. Unlock the device and try again."
         case .secureStorageChanged: "The saved host connection changed. Reopen the current connection before continuing."
         case .redirectRefused: "The host redirected the connection. Enter its final HTTPS address instead."
+        case .invalidAccessCredentials: "Enter the Cloudflare Access client ID and client secret from your service token."
+        case .cloudflareAccessDenied: "Cloudflare Access didn't let bighelp through. Check the service token's client ID and secret, and that your Access policy allows it (Service Auth)."
         case .invalidResponse: "The host returned an unsupported or invalid response."
         case .messageTooLarge: "The host message exceeds this client's safe size limit."
         case .tooManyRequests: "Too many host requests are pending. Wait before trying again."
         case .notConnected: "The host is not connected. Reconnect before continuing."
-        case .connectionFailed: "Could not connect to the host. Check its address, Tailscale, and server availability."
+        case .connectionFailed: "Could not connect to the host. Check its address, your VPN or Tailscale, and that Hermes is running."
         case .tlsRequired: "The secure connection could not be verified. Check the host's HTTPS certificate."
         case .rateLimited: "The host is limiting sign-in attempts. Wait before trying again."
         case .serverUnavailable: "The host authentication service is unavailable. Try again later."

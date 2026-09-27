@@ -145,7 +145,8 @@ struct AgentTemplateEditorView: View {
                 set: { model.updateSection($0) }
             ))
             .font(model.selectedSection == .soul ? .body : .system(.body, design: .monospaced))
-            .frame(minHeight: 300)
+            // Long content scrolls inside the box rather than stretching the form.
+            .frame(minHeight: 220, maxHeight: 360)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .accessibilityLabel("\(model.selectedSection.title) template content")

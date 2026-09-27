@@ -168,6 +168,8 @@ struct AgentEditorView: View {
                 }
             }
         }
+        // Starts once for the whole editor, including Advanced. See loadIfNeeded().
+        .task { await runtimeDefaultsModel?.loadIfNeeded() }
         .interactiveDismissDisabled(hasUnsavedChanges || isSaving)
         .onChange(of: photoSelection) { _, selection in
             guard let selection else { return }
@@ -182,30 +184,7 @@ struct AgentEditorView: View {
         // Modal ownership must outlive the lazy sections while a picker is presented.
         .sheet(item: $modelPickerScope) { scope in
             if let defaults = runtimeDefaultsModel {
-                let selection = defaults.draft[scope]
-                BighelpModelPickerSheet(
-                    title: "Choose model",
-                    scopeLabel: scope.title,
-                    providers: defaults.providers,
-                    currentProviderID: selection.providerID,
-                    currentModelID: selection.modelID,
-                    isLoading: false,
-                    isApplying: false,
-                    errorMessage: defaults.errorMessage,
-                    onClearError: defaults.clearError,
-                    onRetry: {
-                        Task { await defaults.refreshProviders() }
-                    },
-                    onSelect: { providerID, modelID in
-                        defaults.selectModel(
-                            providerID: providerID,
-                            modelID: modelID,
-                            for: scope
-                        )
-                    }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                agentModelPicker(defaults: defaults, scope: scope)
             }
         }
         .alert(
@@ -249,6 +228,51 @@ struct AgentEditorView: View {
             Text(runtimeDefaultsModel?.pendingConfirmation?.message ?? "")
         }
         .accessibilityIdentifier(model.isEditing ? "agent.editor.edit" : "agent.editor.create")
+    }
+
+    /// The chat's model picker: choose a model and reasoning level, then apply them
+    /// to this agent's draft. Save still commits them with the rest of the agent.
+    private func agentModelPicker(defaults: AgentRuntimeDefaultsEditorModel, scope: AgentRuntimeScope) -> some View {
+        let selection = defaults.draft[scope]
+        let reasoningUnavailable = defaults.support.reasoningUnavailableReasons[scope]
+        return BighelpModelPickerSheet(
+            title: "Choose model",
+            scopeLabel: scope.title,
+            providers: defaults.providers,
+            currentProviderID: selection.modelID.isEmpty ? nil : selection.providerID,
+            currentModelID: selection.modelID.isEmpty ? nil : selection.modelID,
+            isLoading: false,
+            isApplying: false,
+            errorMessage: defaults.errorMessage,
+            onClearError: defaults.clearError,
+            onRetry: {
+                Task { await defaults.refreshProviders() }
+            },
+            onSelect: { _, _ in },
+            reasoningOptions: reasoningUnavailable == nil
+                ? AgentReasoningOption.all.map {
+                    RuntimeReasoningOption(value: $0.value, label: $0.title, detail: $0.detail,
+                                           isCurrent: $0.value == selection.reasoningEffort)
+                }
+                : [],
+            currentReasoningValue: selection.reasoningEffort,
+            modelUnavailableReason: defaults.support.modelUnavailableReasons[scope],
+            reasoningUnavailableReason: reasoningUnavailable,
+            applyTitle: "Use for this agent",
+            defaultModelTitle: "Default model",
+            onApply: { draft in
+                if let providerID = draft.providerID, let modelID = draft.modelID,
+                   providerID != selection.providerID || modelID != selection.modelID {
+                    defaults.selectModel(providerID: providerID, modelID: modelID, for: scope)
+                }
+                if let reasoning = draft.reasoningValue, reasoning != selection.reasoningEffort {
+                    defaults.selectReasoning(reasoning, for: scope)
+                }
+                if defaults.errorMessage == nil { modelPickerScope = nil }
+            }
+        )
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 
     private var isSaving: Bool {
@@ -706,11 +730,13 @@ struct AgentEditorView: View {
         identifier: String
     ) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+            // A long SOUL scrolls inside its own box instead of stretching the form,
+            // so the sections below it (the agent's model) stay within easy reach.
             TextEditor(text: text)
                 .focused($focusedField, equals: focus)
                 .font(.body)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 140)
+                .frame(minHeight: 140, maxHeight: 260)
                 .overlay(alignment: .topLeading) {
                     if text.wrappedValue.isEmpty {
                         Text(placeholder)

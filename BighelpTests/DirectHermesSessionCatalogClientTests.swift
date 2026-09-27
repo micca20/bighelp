@@ -869,6 +869,41 @@ struct DirectHermesSessionCatalogClientTests {
         #expect(!workspace.calls.contains { $0.operation == .sessionTitle })
     }
 
+    @Test func unconfirmedOrdinaryNewChatDoesNotBlockTheNextOneEvenAfterRestore() async throws {
+        let workspace = try SessionWorkspaceStub()
+        var retained: DirectHermesSessionCreationState?
+        var failCreate = true
+        workspace.handler = { operation, _ in
+            switch operation {
+            case .profilesList: return Self.profiles()
+            case .nativeSessionList: return ["sessions": .array([])]
+            case .sessionCreate:
+                if failCreate { throw WorkspaceClientError.outcomeUnknown }
+                return Self.created(stored: "second")
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let first = Self.client(workspace, sink: { retained = $0 })
+        await #expect(throws: WorkspaceClientError.outcomeUnknown) {
+            try await first.createOrdinarySession(profileID: "alpha")
+        }
+        let saved = try #require(retained)
+        #expect(saved.purpose == .ordinary && saved.phase == .createRequested)
+
+        // The saved unfinished attempt is restored on the next launch, and a new
+        // chat for the same agent still starts.
+        let restored = try JSONDecoder().decode(DirectHermesSessionCreationState.self, from: JSONEncoder().encode(saved))
+        let authority = try #require(workspace.owner?.authority)
+        workspace.owner = WorkspaceOwner(authority: authority, authenticationGeneration: UUID(), connectionGeneration: UUID())
+        let second = Self.client(workspace, sink: { retained = $0 })
+        try second.restoreCreationState(restored)
+        failCreate = false
+        let session = try await second.createOrdinarySession(profileID: "alpha")
+        #expect(session.record.agentIDs == ["alpha"])
+        #expect(retained?.phase == .complete)
+        #expect(workspace.calls.filter { $0.operation == .sessionCreate }.count == 2)
+    }
+
     @Test func titleConflictAdoptsOnlyExactRegistryWinnerWithoutIntroOrSecondCreate() async throws {
         let workspace = try SessionWorkspaceStub()
         var conflict = false

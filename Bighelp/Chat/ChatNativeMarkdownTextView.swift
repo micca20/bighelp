@@ -66,6 +66,7 @@ struct NativeInlineSelectableMarkdownTextView: UIViewRepresentable {
     let onSelect: () -> Void
     let onFork: (() -> Void)?
     let onReact: (() -> Void)?
+    var textScale: CGFloat = 1
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -144,7 +145,8 @@ struct NativeInlineSelectableMarkdownTextView: UIViewRepresentable {
                 codeBackground: UIColor(codeBackground),
                 proseLineSpacing: proseLineSpacing,
                 traitCollection: view.traitCollection,
-                theme: theme
+                theme: theme,
+                textScale: textScale
             )
         )
         guard context.coordinator.renderedText?.isEqual(to: updatedText) != true else { return }

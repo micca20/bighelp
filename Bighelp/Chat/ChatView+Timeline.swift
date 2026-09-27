@@ -227,7 +227,11 @@ extension ChatView {
     }
     private var displayedTranscriptRows: [ChatTurnDisplayRow] {
         ChatCompletedTurnProjection.rows(
-            from: ChatCardTranscriptProjection.removingSupersededLiveCards(from: model.transcriptEntries),
+            from: ChatInterimReplies.marking(
+                ChatCardTranscriptProjection.removingSupersededLiveCards(from: model.transcriptEntries),
+                isSending: model.isSending,
+                isBotMode: model.isBotMode
+            ),
             isSending: model.isSending,
             enabled: foldCompletedTurns,
             activityEvents: model.activityLedger.allEvents

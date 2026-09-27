@@ -134,6 +134,8 @@ final class ModelAdministrationStore {
 
     func cancelAssignmentConfirmation() { pendingConfirmation = nil }
 
+    func clearError() { errorMessage = nil }
+
     func resetAuxiliary() async {
         let request = DirectHermesModelAssignmentRequest(
             scope: .resetAuxiliary, providerID: "auto", modelID: "",
@@ -244,9 +246,7 @@ struct ModelAdministrationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { if store.snapshot == nil { await store.load() } }
         .sheet(item: $assignmentTarget) { target in
-            NavigationStack {
-                ModelAdministrationSelectionView(store: store, target: target)
-            }
+            ModelAdministrationPicker(store: store, target: target) { assignmentTarget = nil }
         }
         .confirmationDialog("Reset every auxiliary assignment?", isPresented: $confirmAuxiliaryReset, titleVisibility: .visible) {
             Button("Reset to Automatic", role: .destructive) { Task { await store.resetAuxiliary() } }
@@ -300,8 +300,19 @@ struct ModelAdministrationView: View {
 
     private func mainModelSection(_ snapshot: DirectHermesModelAdministrationSnapshot) -> some View {
         Section("New chats") {
-            LabeledContent("Effective provider", value: snapshot.info.providerID.isEmpty ? "Not configured" : snapshot.info.providerID)
-            LabeledContent("Effective model", value: snapshot.info.modelID.isEmpty ? "Not configured" : snapshot.info.modelID)
+            BighelpModelChoiceRow(
+                providerID: snapshot.info.providerID,
+                providerName: providerName(snapshot.info.providerID, in: snapshot),
+                modelID: snapshot.info.modelID,
+                emptyTitle: "Not configured",
+                isEnabled: !store.isBusy && !snapshot.providers.isEmpty
+            ) {
+                assignmentTarget = .main
+            }
+            .accessibilityLabel("Choose the profile default model")
+            .accessibilityValue(snapshot.info.modelID.isEmpty ? "Not configured"
+                                : ModelNameCatalogStore.shared.displayName(for: snapshot.info.modelID))
+            .accessibilityIdentifier("models.main")
             if snapshot.info.effectiveContextLength > 0 {
                 LabeledContent("Context", value: snapshot.info.effectiveContextLength.formatted())
             }
@@ -311,9 +322,6 @@ struct ModelAdministrationView: View {
                 Text("Recommended for \(recommendation.providerID): \(recommendation.modelID)")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            Button("Choose profile default") { assignmentTarget = .main }
-                .disabled(store.isBusy || snapshot.providers.isEmpty)
-                .frame(minHeight: BighelpTokens.hitTarget)
             if let onOpenAgentDefaults {
                 Button("Agent runtime defaults", action: onOpenAgentDefaults)
                     .frame(minHeight: BighelpTokens.hitTarget)
@@ -336,22 +344,18 @@ struct ModelAdministrationView: View {
     private func auxiliarySection(_ auxiliary: DirectHermesAuxiliaryModels) -> some View {
         Section {
             ForEach(auxiliary.tasks) { task in
-                Button {
+                let isAutomatic = task.providerID == "auto"
+                BighelpModelChoiceRow(
+                    label: ModelAdministrationAssignmentTarget.auxiliary(task.task).title,
+                    providerID: isAutomatic ? "" : task.providerID,
+                    providerName: isAutomatic ? "Hermes" : providerName(task.providerID, in: store.snapshot),
+                    modelID: isAutomatic ? "" : task.modelID,
+                    emptyTitle: "Automatic",
+                    detail: task.isLocalEndpoint ? "Local endpoint" : nil,
+                    isEnabled: !store.isBusy
+                ) {
                     assignmentTarget = .auxiliary(task.task)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(task.task.replacingOccurrences(of: "_", with: " ").capitalized)
-                            Text(task.providerID == "auto" ? "Automatic" : "\(task.providerID) · \(task.modelID)")
-                                .font(.caption).foregroundStyle(.secondary)
-                            if task.isLocalEndpoint { Text("Local endpoint").font(.caption2).foregroundStyle(.secondary) }
-                        }
-                        Spacer()
-                    }
-                    .contentShape(Rectangle()).frame(minHeight: BighelpTokens.hitTarget)
                 }
-                .buttonStyle(.plain)
-                .disabled(store.isBusy)
                 .accessibilityIdentifier("models.auxiliary.\(task.task)")
             }
             Button("Reset all auxiliary tasks", role: .destructive) { confirmAuxiliaryReset = true }
@@ -374,6 +378,11 @@ struct ModelAdministrationView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func providerName(_ providerID: String, in snapshot: DirectHermesModelAdministrationSnapshot?) -> String {
+        snapshot?.providers.first(where: { $0.id == providerID })?.name
+            ?? (providerID.isEmpty ? "Hermes" : providerID)
     }
 
     private func analyticsSection(_ analytics: DirectHermesModelAnalytics) -> some View {
@@ -399,44 +408,39 @@ struct ModelAdministrationView: View {
     }
 }
 
+/// The chat's model picker for a profile default or an auxiliary task.
 @MainActor
-private struct ModelAdministrationSelectionView: View {
+private struct ModelAdministrationPicker: View {
     let store: ModelAdministrationStore
     let target: ModelAdministrationAssignmentTarget
-    @State private var search = ""
-    @Environment(\.dismiss) private var dismiss
-
-    private var providers: [DirectHermesModelProvider] { store.snapshot?.providers ?? [] }
+    let close: () -> Void
 
     var body: some View {
-        List {
-            currentAssignmentSection
-            ForEach(providers) { provider in
-                let models = provider.models.filter {
-                    !provider.unavailableModels.contains($0)
-                        && (search.isEmpty || $0.localizedCaseInsensitiveContains(search)
-                            || provider.name.localizedCaseInsensitiveContains(search))
-                }
-                if !models.isEmpty {
-                    Section(provider.name) {
-                        ForEach(models, id: \.self) { model in
-                            Button(model) {
-                                Task {
-                                    if await store.assign(providerID: provider.id, modelID: model, target: target) {
-                                        dismiss()
-                                    }
-                                }
-                            }
-                            .disabled(store.isBusy)
-                        }
-                    }
+        let current = currentSelection
+        BighelpModelPickerSheet(
+            title: target == .main ? "Profile default" : target.title,
+            scopeLabel: target == .main
+                ? "New chats on \(store.profileID)"
+                : "Auxiliary task on \(store.profileID)",
+            providers: (store.snapshot?.providers ?? []).map(BighelpLinkModelProvider.init(administration:)),
+            currentProviderID: current?.providerID,
+            currentModelID: current?.modelID,
+            isLoading: store.isLoading && store.snapshot == nil,
+            isApplying: store.operationTitle != nil,
+            errorMessage: store.errorMessage,
+            onClearError: store.clearError,
+            onRetry: { Task { await store.refresh() } },
+            onSelect: { _, _ in },
+            applyTitle: target == .main ? "Save as profile default" : "Save for this task",
+            defaultModelTitle: target == .main ? "Not configured" : "Automatic",
+            onApply: { draft in
+                guard let providerID = draft.providerID, let modelID = draft.modelID else { return }
+                Task {
+                    if await store.assign(providerID: providerID, modelID: modelID, target: target) { close() }
                 }
             }
-        }
-        .navigationTitle(target.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, prompt: "Search models")
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        )
+        .presentationDetents([.large])
         .confirmationDialog(
             "Confirm model cost?", isPresented: Binding(
                 get: { store.pendingConfirmation != nil },
@@ -444,42 +448,42 @@ private struct ModelAdministrationSelectionView: View {
             ), titleVisibility: .visible
         ) {
             Button("Confirm assignment") {
-                Task { if await store.confirmAssignment() { dismiss() } }
+                Task { if await store.confirmAssignment() { close() } }
             }
             Button("Cancel", role: .cancel) { store.cancelAssignmentConfirmation() }
         } message: {
             Text(store.pendingConfirmation?.message ?? "Review this model assignment before continuing.")
         }
+        .accessibilityIdentifier("models.picker")
     }
 
-    @ViewBuilder
-    private var currentAssignmentSection: some View {
-        if let snapshot = store.snapshot {
-            Section("Current") {
-                switch target {
-                case .main:
-                    LabeledContent("Provider", value: snapshot.info.providerID.isEmpty ? "Not configured" : snapshot.info.providerID)
-                    LabeledContent("Model", value: snapshot.info.modelID.isEmpty ? "Not configured" : snapshot.info.modelID)
-                case .auxiliary(let taskName):
-                    if let task = snapshot.auxiliary?.tasks.first(where: { $0.task == taskName }) {
-                        if task.providerID == "auto" {
-                            LabeledContent("Routing", value: "Automatic")
-                        } else {
-                            LabeledContent("Provider", value: task.providerID)
-                            LabeledContent("Model", value: task.modelID)
-                        }
-                    }
-                }
-            }
+    private var currentSelection: (providerID: String, modelID: String)? {
+        guard let snapshot = store.snapshot else { return nil }
+        switch target {
+        case .main:
+            guard !snapshot.info.modelID.isEmpty else { return nil }
+            return (snapshot.info.providerID, snapshot.info.modelID)
+        case .auxiliary(let taskName):
+            guard let task = snapshot.auxiliary?.tasks.first(where: { $0.task == taskName }),
+                  task.providerID != "auto", !task.modelID.isEmpty else { return nil }
+            return (task.providerID, task.modelID)
         }
     }
 }
 
 @MainActor
 private struct ModelAdministrationMoAView: View {
+    /// A reference or aggregator model being chosen in the shared picker.
+    private enum SlotTarget: Identifiable, Hashable {
+        case reference(preset: Int, index: Int)
+        case aggregator(preset: Int)
+        var id: Self { self }
+    }
+
     let store: ModelAdministrationStore
     @State private var configuration: DirectHermesMoAConfiguration
     @State private var confirmSave = false
+    @State private var slotTarget: SlotTarget?
     @Environment(\.dismiss) private var dismiss
 
     init(store: ModelAdministrationStore, initial: DirectHermesMoAConfiguration) {
@@ -523,7 +527,8 @@ private struct ModelAdministrationMoAView: View {
                     }
                     ForEach(configuration.presets[presetIndex].referenceModels.indices, id: \.self) { referenceIndex in
                         DisclosureGroup("Reference \(referenceIndex + 1)") {
-                            moaSlotEditor(slot: $configuration.presets[presetIndex].referenceModels[referenceIndex], allowsDisable: true)
+                            moaSlotEditor(slot: $configuration.presets[presetIndex].referenceModels[referenceIndex],
+                                          target: .reference(preset: presetIndex, index: referenceIndex), allowsDisable: true)
                             if configuration.presets[presetIndex].referenceModels.count > 1 {
                                 Button("Remove reference", role: .destructive) {
                                     configuration.presets[presetIndex].referenceModels.remove(at: referenceIndex)
@@ -541,7 +546,8 @@ private struct ModelAdministrationMoAView: View {
                     }
                     .disabled(providers.isEmpty || configuration.presets[presetIndex].referenceModels.count >= 32)
                     DisclosureGroup("Aggregator") {
-                        moaSlotEditor(slot: $configuration.presets[presetIndex].aggregator, allowsDisable: false)
+                        moaSlotEditor(slot: $configuration.presets[presetIndex].aggregator,
+                                      target: .aggregator(preset: presetIndex), allowsDisable: false)
                     }
                 }
             }
@@ -558,6 +564,9 @@ private struct ModelAdministrationMoAView: View {
         }
         .navigationTitle("Mixture of Agents")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $slotTarget) { target in
+            slotPicker(target)
+        }
         .confirmationDialog("Save all MoA preset assignments?", isPresented: $confirmSave, titleVisibility: .visible) {
             Button("Save") {
                 let submitted = configuration
@@ -570,23 +579,67 @@ private struct ModelAdministrationMoAView: View {
     }
 
     @ViewBuilder
-    private func moaSlotEditor(slot: Binding<DirectHermesMoAModelSlot>, allowsDisable: Bool) -> some View {
+    private func moaSlotEditor(slot: Binding<DirectHermesMoAModelSlot>, target: SlotTarget, allowsDisable: Bool) -> some View {
         if allowsDisable { Toggle("Use this reference", isOn: slot.isEnabled) }
-        Picker("Provider", selection: slot.providerID) {
-            ForEach(providers) { Text($0.name).tag($0.id) }
+        BighelpModelChoiceRow(
+            providerID: slot.wrappedValue.providerID,
+            providerName: providers.first(where: { $0.id == slot.wrappedValue.providerID })?.name
+                ?? slot.wrappedValue.providerID,
+            modelID: slot.wrappedValue.modelID,
+            emptyTitle: "Choose a model",
+            isEnabled: !providers.isEmpty
+        ) {
+            slotTarget = target
         }
-        .onChange(of: slot.wrappedValue.providerID) { _, providerID in
-            guard let provider = providers.first(where: { $0.id == providerID }),
-                  !provider.models.contains(slot.wrappedValue.modelID),
-                  let model = provider.models.first else { return }
-            slot.wrappedValue.modelID = model
-        }
-        Picker("Model", selection: slot.modelID) {
-            if let provider = providers.first(where: { $0.id == slot.wrappedValue.providerID }) {
-                ForEach(provider.models.filter { !provider.unavailableModels.contains($0) }, id: \.self) {
-                    Text($0).tag($0)
+    }
+
+    /// The chat's model picker for one reference or aggregator slot. The choice is
+    /// saved with the rest of the presets when you review and save.
+    private func slotPicker(_ target: SlotTarget) -> some View {
+        let slot = self.slot(target)
+        return BighelpModelPickerSheet(
+            title: "Choose model",
+            scopeLabel: {
+                switch target {
+                case .reference(let preset, let index): "\(configuration.presets[preset].name) · Reference \(index + 1)"
+                case .aggregator(let preset): "\(configuration.presets[preset].name) · Aggregator"
                 }
+            }(),
+            providers: providers.map(BighelpLinkModelProvider.init(administration:)),
+            currentProviderID: slot?.providerID,
+            currentModelID: slot?.modelID,
+            isLoading: false,
+            isApplying: false,
+            errorMessage: nil,
+            onClearError: {},
+            onRetry: nil,
+            onSelect: { _, _ in },
+            applyTitle: "Use this model",
+            onApply: { draft in
+                guard let providerID = draft.providerID, let modelID = draft.modelID else { return }
+                switch target {
+                case .reference(let preset, let index):
+                    configuration.presets[preset].referenceModels[index].providerID = providerID
+                    configuration.presets[preset].referenceModels[index].modelID = modelID
+                case .aggregator(let preset):
+                    configuration.presets[preset].aggregator.providerID = providerID
+                    configuration.presets[preset].aggregator.modelID = modelID
+                }
+                slotTarget = nil
             }
+        )
+        .presentationDetents([.large])
+    }
+
+    private func slot(_ target: SlotTarget) -> DirectHermesMoAModelSlot? {
+        switch target {
+        case .reference(let preset, let index):
+            guard configuration.presets.indices.contains(preset),
+                  configuration.presets[preset].referenceModels.indices.contains(index) else { return nil }
+            return configuration.presets[preset].referenceModels[index]
+        case .aggregator(let preset):
+            guard configuration.presets.indices.contains(preset) else { return nil }
+            return configuration.presets[preset].aggregator
         }
     }
 }

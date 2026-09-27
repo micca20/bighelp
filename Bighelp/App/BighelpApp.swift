@@ -217,6 +217,18 @@ struct BighelpApp: App {
         WindowGroup {
             if isInjectedUnitTestHost {
                 Color.clear
+            } else if isModelsPageFixture {
+                #if DEBUG && targetEnvironment(simulator)
+                ModelAdministrationFixture.rootView()
+                #endif
+            } else if isPluginUpdateFixture {
+                #if DEBUG && targetEnvironment(simulator)
+                HostPluginUpdateFixture.rootView()
+                #endif
+            } else if isSecureInputFixture {
+                #if DEBUG && targetEnvironment(simulator)
+                DirectHermesSecurePromptFixture.rootView()
+                #endif
             } else {
             @Bindable var navigation = nativeWorkspaces.current?.appState ?? appState
             let native = nativeWorkspaces.current
@@ -407,6 +419,30 @@ struct BighelpApp: App {
             }
             }
         }
+    }
+
+    private var isModelsPageFixture: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(ModelAdministrationFixture.launchArgument)
+        #else
+        false
+        #endif
+    }
+
+    private var isPluginUpdateFixture: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(HostPluginUpdateFixture.launchArgument)
+        #else
+        false
+        #endif
+    }
+
+    private var isSecureInputFixture: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(DirectHermesSecurePromptFixture.launchArgument)
+        #else
+        false
+        #endif
     }
 
     private var isInjectedUnitTestHost: Bool {

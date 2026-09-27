@@ -713,18 +713,19 @@ final class DirectHermesPromptStore {
             guard let requestID = request.params["request_id"]?.string,
                   !requestID.isEmpty, requestID.utf8.count <= 4_096,
                   let choicesValue = request.params["choices"]?.array,
-                  !choicesValue.isEmpty, choicesValue.count <= 4 else {
+                  !choicesValue.isEmpty, choicesValue.count <= 16 else {
                 throw DirectHermesError.invalidResponse
             }
+            // An unknown or repeated choice from a newer Hermes is skipped, not fatal:
+            // failing the request makes Hermes treat the approval as unanswered.
             var choices: [ApprovalDecision] = []
             var seen = Set<ApprovalDecision>()
             for value in choicesValue {
                 guard let raw = value.string, let choice = ApprovalDecision(rawValue: raw),
-                      seen.insert(choice).inserted else {
-                    throw DirectHermesError.invalidResponse
-                }
+                      seen.insert(choice).inserted else { continue }
                 choices.append(choice)
             }
+            guard !choices.isEmpty else { throw DirectHermesError.invalidResponse }
             try validateOptionalString(request.params["command"], maximumBytes: 65_536)
             try validateOptionalString(request.params["description"], maximumBytes: 65_536)
             try validateOptionalString(request.params["tool_name"], maximumBytes: 4_096)
@@ -746,15 +747,14 @@ final class DirectHermesPromptStore {
                 content: .approval(approval, domainRequestID: requestID)
             )
         case .clarify:
-            let allowed = Set(["session_id", "question", "choices", "multi_select", "questions", "answers"])
-            guard Set(request.params.keys).isSubset(of: allowed) else {
-                throw DirectHermesError.invalidResponse
-            }
-            let hasSingle = request.params["question"] != nil
-            let hasBatch = request.params["questions"] != nil
+            // Keys this app doesn't know are ignored and null means absent: rejecting the
+            // request makes Hermes give the agent a blank answer instead of waiting for you.
+            func present(_ key: String) -> Bool { request.params[key].map { $0 != .null } ?? false }
+            let hasSingle = present("question")
+            let hasBatch = present("questions")
             guard hasSingle != hasBatch else { throw DirectHermesError.invalidResponse }
             if hasSingle {
-                guard request.params["answers"] == nil,
+                guard !present("answers"),
                       let question = request.params["question"]?.string else {
                     throw DirectHermesError.invalidResponse
                 }
@@ -775,11 +775,8 @@ final class DirectHermesPromptStore {
                     ))
                 )
             }
-            guard request.params["question"] == nil,
-                  request.params["choices"] == nil,
-                  request.params["multi_select"] == nil,
-                  let rows = request.params["questions"]?.array,
-                  !rows.isEmpty, rows.count <= 5 else {
+            guard let rows = request.params["questions"]?.array,
+                  !rows.isEmpty, rows.count <= 10 else {
                 throw DirectHermesError.invalidResponse
             }
             let locked = try decodeLockedAnswers(request.params["answers"])
@@ -788,7 +785,6 @@ final class DirectHermesPromptStore {
             var swiftQIDs = Set<String>()
             for row in rows {
                 guard let object = row.object,
-                      Set(object.keys).isSubset(of: Set(["qid", "question", "choices", "multi_select"])),
                       let qid = object["qid"]?.string, !qid.isEmpty, qid.utf8.count <= 4_096,
                       qids.insert(Data(qid.utf8)).inserted,
                       swiftQIDs.insert(qid).inserted,
@@ -817,7 +813,7 @@ final class DirectHermesPromptStore {
 
     private static func decodeChoices(_ value: BighelpJSONValue?) throws -> [String] {
         guard let value, value != .null else { return [] }
-        guard let rows = value.array, rows.count <= 4 else { throw DirectHermesError.invalidResponse }
+        guard let rows = value.array, rows.count <= 12 else { throw DirectHermesError.invalidResponse }
         var choices: [String] = []
         var seen = Set<Data>()
         for row in rows {
@@ -831,7 +827,7 @@ final class DirectHermesPromptStore {
     }
 
     private static func decodeMultiSelect(_ value: BighelpJSONValue?) throws -> Bool {
-        guard let value else { return false }
+        guard let value, value != .null else { return false }
         guard let result = value.boolean else { throw DirectHermesError.invalidResponse }
         return result
     }

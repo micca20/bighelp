@@ -113,13 +113,20 @@ final class DemoSessionControlMessaging: BighelpLinkSessionControlMessaging {
 
 @MainActor
 final class DemoAgentDirectoryClient: AgentDirectoryClient {
+    /// `-test-long-soul`: a SOUL long enough to scroll inside its editor.
+    private static var longSoulFixture: String? {
+        guard ProcessInfo.processInfo.arguments.contains("-test-long-soul") else { return nil }
+        return (1...60).map { "\($0). Help with financial planning: budgets, bills, savings goals and the reasoning behind each choice." }
+            .joined(separator: "\n\n")
+    }
+
     static let fixtureProfiles = [
         AgentProfile(
             id: "finance",
             name: "Avery Park",
             role: "Finance agent",
             summary: "Budget, planning, and financial decisions.",
-            instructions: "Help with financial planning.",
+            instructions: longSoulFixture ?? "Help with financial planning.",
             avatarFileName: nil,
             isDefault: true
         ),

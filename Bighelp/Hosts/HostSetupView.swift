@@ -1,5 +1,19 @@
 import SwiftUI
 
+/// Editing the Cloudflare Access token starts discovery over, like the address.
+private struct HostSetupAccessChanges: ViewModifier {
+    let values: [String]
+    let onChange: () -> Void
+    func body(content: Content) -> some View {
+        content.onChange(of: values) { _, _ in onChange() }
+    }
+}
+
+enum HostSetupAccessError: LocalizedError {
+    case needsHTTPS
+    var errorDescription: String? { "Cloudflare Access needs an https:// address." }
+}
+
 struct HostSetupDraft: Equatable {
     var address = ""
     var port = ""
@@ -26,6 +40,10 @@ struct HostSetupView: View {
     @State private var port = ""
     @State private var name = ""
     @State private var allowPrivateHTTP = false
+    /// Cloudflare Access service token; never kept in the retained draft.
+    @State private var usesCloudflareAccess = false
+    @State private var accessClientID = ""
+    @State private var accessClientSecret = ""
     @State private var token = ""
     @State private var username = ""
     @State private var password = ""
@@ -106,11 +124,14 @@ struct HostSetupView: View {
                             .keyboardType(.numberPad)
                             .accessibilityIdentifier("host-setup.port")
                             .disabled(hostToAuthenticate != nil)
-                        Toggle("Allow HTTP over Tailscale", isOn: $allowPrivateHTTP)
+                        Toggle("Allow HTTP on a private network", isOn: $allowPrivateHTTP)
                             .accessibilityIdentifier("direct-hermes.private-http")
                             .disabled(hostToAuthenticate != nil)
-                        Text("For Tailscale, connect this device to the same network first.")
+                        Text("For home Wi-Fi, a VPN or Tailscale, such as 192.168.1.20, 10.0.0.5 or hermes.local. Connect this device to that network first.")
                             .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
+                        if hostToAuthenticate == nil {
+                            cloudflareAccessFields
+                        }
                     } label: {
                         Label("Advanced connection", systemImage: "slider.horizontal.3")
                             .bighelpFont(.label, weight: .regular)
@@ -207,6 +228,8 @@ struct HostSetupView: View {
         .onChange(of: port) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
         .onChange(of: name) { _, _ in saveRetainedDraft() }
         .onChange(of: allowPrivateHTTP) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
+        .modifier(HostSetupAccessChanges(values: [usesCloudflareAccess ? "on" : "off", accessClientID, accessClientSecret],
+                                          onChange: invalidateDiscovery))
         .onChange(of: method) { _, _ in token = ""; password = ""; provider = defaultProvider }
         .onChange(of: provider) { _, _ in password = "" }
         .onChange(of: registry.accountScope) { _, _ in cancel(); dismiss() }
@@ -333,6 +356,7 @@ struct HostSetupView: View {
             defer { if requestID == owner { isWorking = false } }
             do {
                 let endpoint = try HostAddressInput.endpoint(address: address, port: port, allowPrivateHTTP: allowPrivateHTTP)
+                try stageCloudflareAccess(for: endpoint)
                 let result = try await HostAuthenticationDiscovery.discover(endpoint: endpoint)
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration, !Task.isCancelled else { return }
                 discovery = result
@@ -340,7 +364,8 @@ struct HostSetupView: View {
                 provider = defaultProvider
             } catch {
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration else { return }
-                errorMessage = DirectHermesConversationClient.safeMessage(error)
+                errorMessage = (error as? HostSetupAccessError)?.localizedDescription
+                    ?? DirectHermesConversationClient.safeMessage(error)
             }
         }
     }
@@ -391,6 +416,7 @@ struct HostSetupView: View {
     }
     private func invalidateDiscovery() {
         cancel()
+        unstageCloudflareAccess()
         if hostToAuthenticate == nil, connectedHost == nil, let pendingID {
             registry.discardPending(pendingID)
             self.pendingID = nil
@@ -406,9 +432,46 @@ struct HostSetupView: View {
     private func finish() {
         notifications?.cancel()
         cancel()
+        unstageCloudflareAccess()
         onFinished?()
         registry.finishSetup()
         dismiss()
+    }
+
+    @ViewBuilder
+    private var cloudflareAccessFields: some View {
+        Toggle("Cloudflare Access", isOn: $usesCloudflareAccess)
+            .accessibilityIdentifier("host-setup.cloudflare-access")
+        if usesCloudflareAccess {
+            TextField("Client ID", text: $accessClientID)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .textContentType(.username)
+                .accessibilityIdentifier("host-setup.cloudflare-client-id")
+            SecureField("Client secret", text: $accessClientSecret)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .privacySensitive()
+                .accessibilityIdentifier("host-setup.cloudflare-client-secret")
+        }
+        Text("For a host behind Cloudflare Access, such as a Cloudflare Tunnel. Create a service token in Cloudflare Zero Trust and allow it with a Service Auth policy. bighelp sends it only to this address and keeps it in Keychain.")
+            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
+    }
+
+    /// Requests during setup use the entered token; it's saved once the connection works.
+    private func stageCloudflareAccess(for endpoint: DirectHermesEndpoint) throws {
+        let store = DirectHermesAccessCredentialStore.shared
+        guard usesCloudflareAccess, hostToAuthenticate == nil else {
+            store.stage(nil, for: endpoint)
+            return
+        }
+        guard endpoint.baseURL.scheme == "https" else { throw HostSetupAccessError.needsHTTPS }
+        store.stage(try DirectHermesAccessCredentials(clientID: accessClientID, clientSecret: accessClientSecret),
+                    for: endpoint)
+    }
+
+    /// An abandoned setup never leaves a token in use; a connected host already saved it.
+    private func unstageCloudflareAccess() {
+        guard connectedHost == nil, let endpoint = discovery?.endpoint else { return }
+        DirectHermesAccessCredentialStore.shared.stage(nil, for: endpoint)
     }
 
     private func saveRetainedDraft() {

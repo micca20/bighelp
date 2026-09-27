@@ -10,6 +10,8 @@ struct ChatNativeMarkdownStyle {
     let proseLineSpacing: CGFloat
     let traitCollection: UITraitCollection
     var theme: BighelpTheme = .light
+    /// Interim agent messages render slightly smaller than the answer.
+    var textScale: CGFloat = 1
 }
 
 /// One rendered revision per native text view. The cache never crosses a
@@ -18,6 +20,7 @@ struct ChatNativeMarkdownStyle {
 final class ChatNativeMarkdownRenderCache {
     private struct StyleKey: Equatable {
         let lineSpacing: CGFloat
+        let textScale: CGFloat
         let fontSizes: [CGFloat]
         let typeface: BighelpThemeTypeface
         let typography: BighelpThemeTypography
@@ -25,6 +28,7 @@ final class ChatNativeMarkdownRenderCache {
 
         init(_ style: ChatNativeMarkdownStyle) {
             lineSpacing = style.proseLineSpacing
+            textScale = style.textScale
             typeface = style.theme.typeface
             typography = style.theme.typography
             // These are the text styles used by the attributed builder below.
@@ -320,6 +324,7 @@ enum ChatNativeMarkdownAttributedBuilder {
         var resolved = style.theme.uiFont(monospaced ? .code : role, compatibleWith: style.traitCollection)
         if strong { resolved = resolved.bighelpApplyingTraits(.traitBold) }
         if italic { resolved = resolved.bighelpApplyingTraits(.traitItalic) }
+        if style.textScale != 1 { resolved = resolved.withSize((resolved.pointSize * style.textScale).rounded()) }
         return resolved
     }
 }

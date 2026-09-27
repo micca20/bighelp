@@ -43,10 +43,12 @@ struct ChatActivityRow: View {
                     .padding(.leading, 28)
             } else if event.kind == .reasoning, isExpanded, let text = event.reasoningText {
                 Text(text)
-                    .bighelpFont(.body)
+                    .bighelpFont(.label, weight: .regular)
                     .foregroundStyle(theme.secondaryText)
+                    .lineSpacing(3)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .modifier(ChatInterimReplyStyle(theme: theme))
                     .accessibilityIdentifier("chat.reasoning-content.\(event.eventID)")
             }
         }
@@ -58,13 +60,22 @@ struct ChatActivityRow: View {
 
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
-                    Text(event.presentationTitle)
-                        .bighelpFont(.body)
-                        .foregroundStyle(statusColor)
+                    if event.kind == .reasoning {
+                        Text(reasoningTitle)
+                            .bighelpFont(.label)
+                            .foregroundStyle(theme.secondaryText)
+                            .bighelpActiveCallShimmer(isActive: event.lifecycle == .running, color: .white)
+                    } else {
+                        Text(event.presentationTitle)
+                            .bighelpFont(.body)
+                            .foregroundStyle(statusColor)
+                    }
                     Spacer(minLength: BighelpTokens.space8)
-                    Text(statusLabel)
-                        .bighelpFont(.metadata, weight: .semibold)
-                        .foregroundStyle(statusColor)
+                    if event.kind != .reasoning || [.failed, .cancelled].contains(event.lifecycle) {
+                        Text(statusLabel)
+                            .bighelpFont(.metadata, weight: .semibold)
+                            .foregroundStyle(statusColor)
+                    }
                     if event.kind == .tool || event.kind == .reasoning {
                         Image(systemName: "chevron.right")
                             .bighelpFont(.metadata, weight: .semibold)
@@ -196,6 +207,16 @@ struct ChatActivityRow: View {
         case .subagent: "person.badge.plus"
         case .botHandoff: "arrow.trianglehead.swap"
         }
+    }
+
+    /// "Thinking…" while it runs, then how long it took, like Claude.
+    private var reasoningTitle: String {
+        guard event.lifecycle != .running else { return "Thinking…" }
+        guard let milliseconds = event.durationMilliseconds, (1_000..<86_400_000).contains(milliseconds) else {
+            return "Thought process"
+        }
+        let seconds = milliseconds / 1_000
+        return seconds < 60 ? "Thought for \(seconds)s" : "Thought for \(seconds / 60)m \(seconds % 60)s"
     }
 
     private var statusLabel: String {

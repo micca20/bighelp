@@ -23,6 +23,30 @@ struct DirectHermesSecurePromptTests {
         #expect(store.activePrompt == nil)
     }
 
+    @Test func anAgentsSecureInputRequestShowsItsLabelAndSendsTheValueOnce() async throws {
+        let identity = NSObject()
+        let connection = DirectHermesPromptConnection(owner: UUID(), principalIdentity: "host",
+            clientIdentity: ObjectIdentifier(identity), transportGeneration: .init(UUID()))
+        let store = DirectHermesSecurePromptStore()
+        store.beginConnection(connection, dependencies: dependencies)
+        defer { store.retireConnection(connection) }
+        try store.bind(profile: "juniper", runtimeID: "runtime", visibleSessionID: "chat", connection: connection)
+        let task = Task { await store.handle(.init(id: "secret-id", method: "secret", params: [
+            "session_id": .string("runtime"), "env_var": .string("GITHUB_TOKEN"),
+            "prompt": .string("Paste a GitHub token so I can open the pull request."),
+            "metadata": .object(["source": .string("agent"), "label": .string("GitHub token")]),
+        ]), connection: connection) }
+        for _ in 0..<100 where store.activePrompt == nil { await Task.yield() }
+        let prompt = try #require(store.activePrompt)
+        #expect(prompt.kind == .secret)
+        #expect(prompt.isAgentRequest)
+        #expect(prompt.title == "GitHub token")
+        #expect(prompt.detail == "Paste a GitHub token so I can open the pull request.")
+        await store.submitSecret(prompt, value: "ghp_fixture")
+        #expect(await task.value == .result(.object(["value": .string("ghp_fixture")])))
+        #expect(store.activePrompt == nil)
+    }
+
     @Test func unboundOrUnsupportedSecureRequestsNeverBecomeActionable() async {
         let identity = NSObject()
         let connection = DirectHermesPromptConnection(owner: UUID(), principalIdentity: "host",

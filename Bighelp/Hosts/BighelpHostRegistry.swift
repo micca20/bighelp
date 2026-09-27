@@ -371,6 +371,10 @@ final class BighelpHostRegistry {
         let remaining = hosts.filter { $0.id != host.id }
         let selection = selectedHostID == host.id ? nil : selectedHostID
         try persist(hosts: remaining, selected: selection)
+        // The Cloudflare Access token belongs to the address; keep it while another host uses it.
+        if !remaining.contains(where: { $0.endpoint.identity == host.endpoint.identity }) {
+            DirectHermesAccessCredentialStore.shared.remove(for: host.endpoint)
+        }
         try removeDrafts(id: host.id)
         vault.invalidate(); draftStores[host.id]?.invalidate()
         hosts = remaining; selectedHostID = selection

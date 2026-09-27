@@ -1,5 +1,6 @@
 @preconcurrency import ActivityKit
 import CryptoKit
+import BuzzKit
 import Foundation
 
 struct BighelpLiveActivityRegistration: Equatable, Sendable {
@@ -725,9 +726,17 @@ final class BighelpLiveActivityCoordinator {
     }
 }
 
+/// ActivityKit deadlocks when push tokens are read from several threads while it delivers one
+/// (a 2.3.0 (22) watchdog kill). Token reads and token streams go through BuzzKit's serial lane,
+/// never the main thread; the current token comes from the last one that lane delivered.
 @MainActor
 final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
     private var known: [String: Activity<LoopdySessionActivityAttributes>] = [:]
+    private var tokens: [String: Data] = [:]
+
+    private struct Handle: @unchecked Sendable {
+        let activity: Activity<LoopdySessionActivityAttributes>
+    }
 
     func start(
         attributes: LoopdySessionActivityAttributes,
@@ -777,23 +786,31 @@ final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
     }
 
     func currentPushToken(id: String) -> Data? {
-        activity(id: id)?.pushToken
+        tokens[id]
     }
 
     func dismiss(id: String, state: LoopdySessionActivityAttributes.ContentState) async {
         guard let activity = activity(id: id) else { return }
         await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)
         known.removeValue(forKey: id)
+        tokens.removeValue(forKey: id)
     }
 
     func pushTokenUpdates(id: String) -> AsyncStream<Data> {
         guard let activity = activity(id: id) else {
             return AsyncStream { $0.finish() }
         }
+        let handle = Handle(activity: activity)
         return AsyncStream { continuation in
-            let task = Task {
-                for await token in activity.pushTokenUpdates {
+            let task = Task { @MainActor [weak self] in
+                if let current = await ActivityKitSerialAccess.read({ handle.activity.pushToken }) {
+                    self?.tokens[id] = current
+                    continuation.yield(current)
+                }
+                let updates = await ActivityKitSerialAccess.iterate { handle.activity.pushTokenUpdates }
+                while let token = await updates.next() {
                     guard !Task.isCancelled else { break }
+                    self?.tokens[id] = token
                     continuation.yield(token)
                 }
                 continuation.finish()
@@ -809,7 +826,7 @@ final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
                 nativeActivityID: activity.id,
                 attributes: activity.attributes,
                 state: activity.content.state,
-                pushToken: activity.pushToken
+                pushToken: tokens[activity.id]
             )
         }
     }

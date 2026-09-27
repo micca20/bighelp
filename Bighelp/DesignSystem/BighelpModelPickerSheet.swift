@@ -317,6 +317,10 @@ struct BighelpModelPickerSheet: View {
     let modelConfirmation: SessionRuntimeModelConfirmation?
     let onConfirmModel: ((SessionRuntimeModelConfirmation) -> Void)?
     let onCancelModelConfirmation: ((SessionRuntimeModelConfirmation) -> Void)?
+    /// The staged flow's button, e.g. "Apply to current chat" or "Save as profile default".
+    let applyTitle: String
+    /// Shown when nothing specific is chosen, e.g. an agent that uses the default model.
+    let defaultModelTitle: String
 
     @State private var searchText = ""
     @State private var isSearchPresented = false
@@ -352,6 +356,8 @@ struct BighelpModelPickerSheet: View {
         modelConfirmation: SessionRuntimeModelConfirmation? = nil,
         onConfirmModel: ((SessionRuntimeModelConfirmation) -> Void)? = nil,
         onCancelModelConfirmation: ((SessionRuntimeModelConfirmation) -> Void)? = nil,
+        applyTitle: String = "Apply to current chat",
+        defaultModelTitle: String = "Host default",
         onApply: ((SessionRuntimeSelectionDraft) -> Void)? = nil
     ) {
         self.title = title
@@ -376,6 +382,8 @@ struct BighelpModelPickerSheet: View {
         self.modelConfirmation = modelConfirmation
         self.onConfirmModel = onConfirmModel
         self.onCancelModelConfirmation = onCancelModelConfirmation
+        self.applyTitle = applyTitle
+        self.defaultModelTitle = defaultModelTitle
         _disclosure = State(initialValue: BighelpModelPickerDisclosureState(
             expandedProviderIDs: Set([currentProviderID].compactMap { $0 })
         ))
@@ -569,7 +577,8 @@ struct BighelpModelPickerSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Model").bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
-                Text(draft.modelID.map { ModelNameCatalogStore.shared.displayName(for: $0) } ?? "Host default")
+                Text(draft.modelID.flatMap { $0.isEmpty ? nil : ModelNameCatalogStore.shared.displayName(for: $0) }
+                     ?? defaultModelTitle)
                     .bighelpFont(.sectionTitle)
                     .foregroundStyle(theme.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -594,7 +603,7 @@ struct BighelpModelPickerSheet: View {
 
     private var applyBar: some View {
         BighelpModelPickerApplyButton(
-            title: "Apply to current chat",
+            title: applyTitle,
             hasChanges: draft.hasChanges && canApplyDraft && modelConfirmation == nil && statusMessage == nil,
             isApplying: isApplying
         ) {
@@ -851,7 +860,8 @@ struct BighelpModelPickerSheet: View {
                 searchText = ""
                 isSearchPresented = false
             }
-            isReasoningPresented = !uiV3Enabled
+            // Skip the reasoning step when there is nothing to choose there.
+            isReasoningPresented = !uiV3Enabled && (!reasoningOptions.isEmpty || reasoningUnavailableReason != nil)
         } else {
             onSelect(providerID, modelID)
         }

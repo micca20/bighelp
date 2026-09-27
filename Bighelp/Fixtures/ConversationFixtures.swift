@@ -203,6 +203,57 @@ enum ConversationFixtures {
                              items: items, activityEvents: activity,
                              activityVisibility: .init(showReasoning: true, showToolCalls: true), hasAcceptedMessage: true)
     }
+
+    /// `-test-thinking-style`: a finished turn (thinking, two interim messages,
+    /// tools, answer) and a turn still in progress with visible thinking.
+    static var thinkingStylePreview: SessionRecord {
+        let sessionID = "demo-finance"
+        let agent = TimelineSender.agent(id: "finance", snapshot: .init(name: "Avery Park"))
+        func human(_ id: String, _ text: String, _ order: Int) -> TimelineItem {
+            TimelineItem(id: id, role: .human, sender: .user(snapshot: .init(name: "You")),
+                         content: .message(text), metadata: .init(sourceOrder: order))
+        }
+        func reply(_ id: String, _ text: String, _ order: Int, duration: Int? = nil) -> TimelineItem {
+            TimelineItem(id: id, role: .assistant, sender: agent, content: .message(text),
+                         metadata: .init(sourceOrder: order, turnDurationMilliseconds: duration))
+        }
+        func tool(_ id: String, _ turn: String, _ title: String, _ name: String, _ order: Int,
+                  running: Bool = false) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: sessionID, turnID: turn, kind: .tool,
+                              lifecycle: running ? .running : .succeeded, title: title,
+                              summary: running ? nil : "Completed", detail: nil, occurredAt: order,
+                              toolCallID: "call-\(id)", toolName: name, arguments: "{\"path\":\"budget.csv\"}",
+                              result: running ? nil : "Read 42 rows", sourceOrder: order)
+        }
+        func thought(_ id: String, _ turn: String, _ text: String, _ order: Int, running: Bool = false) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: sessionID, turnID: turn, kind: .reasoning,
+                              lifecycle: running ? .running : .succeeded, title: "Reasoning",
+                              summary: nil, detail: text, occurredAt: order,
+                              durationMilliseconds: running ? nil : 4_000, sourceOrder: order)
+        }
+        let items = [
+            human("thinking-q1", "Am I on track with my grocery budget this month?", 1),
+            reply("thinking-interim-1", "Let me pull up your budget file first.", 3),
+            reply("thinking-interim-2", "Found it. Now adding up this month's grocery receipts.", 5),
+            reply("thinking-answer", "You're on track. You've spent **$412** of your **$600** grocery budget, "
+                  + "with 9 days left. At your usual pace you'll finish around $540.", 7, duration: 12_000),
+            human("thinking-q2", "And dining out?", 8),
+            reply("thinking-interim-3", "Checking restaurant charges now.", 10),
+        ]
+        let activity = [
+            thought("thinking-r1", "turn-1", "They want a budget check. Read budget.csv for the grocery limit, "
+                    + "then total September grocery receipts and compare.", 2),
+            tool("thinking-t1", "turn-1", "Reading budget.csv", "read_file", 4),
+            tool("thinking-t2", "turn-1", "Totaling receipts", "execute_code", 6),
+            thought("thinking-r2", "turn-2", "Dining out is its own category. Filter card charges by restaurant "
+                    + "merchant codes for this month", 9, running: true),
+            tool("thinking-t3", "turn-2", "Searching charges", "search_files", 11, running: true),
+        ]
+        return SessionRecord(id: sessionID, kind: .direct, agentIDs: ["finance"], title: "Budget check",
+                             items: items, activityEvents: activity,
+                             activityVisibility: .init(showReasoning: true, showToolCalls: true),
+                             isActive: true, hasAcceptedMessage: true)
+    }
     #endif
 
     static func initialItems(

@@ -134,7 +134,9 @@ private struct HermesKanbanBoardView: View {
     @State private var workflowStepKey = ""
 
     var body: some View {
-        Group {
+        // One container, so the load below isn't attached to (and restarted by)
+        // whichever of the loading/unavailable/board views is showing.
+        ZStack {
             if let snapshot = store.boardSnapshot, snapshot.board.slug == slug {
                 List {
                     if let live = store.liveStatusMessage {

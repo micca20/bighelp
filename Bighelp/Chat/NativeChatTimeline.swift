@@ -224,6 +224,10 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
     let entryCount: Int
     var contentInsets: UIEdgeInsets = .zero
     @ViewBuilder let rowContent: (ChatCanvasRow) -> Content
+    /// Rows get a copy of the scene phase. Reading it here makes SwiftUI call
+    /// updateUIView when it changes, so rows don't stay "inactive" from launch
+    /// (which froze every working animation in chat).
+    @Environment(\.scenePhase) private var scenePhase
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -252,6 +256,7 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
     }
 
     func updateUIView(_ table: ChatTimelineTableView, context: Context) {
+        _ = scenePhase
         controller.table = table
         context.coordinator.scheduleUpdate(self, environment: context.environment, table: table)
     }

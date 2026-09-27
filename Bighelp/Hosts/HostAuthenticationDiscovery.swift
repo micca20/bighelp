@@ -32,10 +32,16 @@ struct HostAuthenticationDiscovery: Equatable {
 enum HostAddressInput {
     static func endpoint(address: String, port: String, allowPrivateHTTP: Bool) throws -> DirectHermesEndpoint {
         var input = address
+        var address = address
         if !input.contains("://") {
             var ipv6 = in6_addr()
             if inet_pton(AF_INET6, input, &ipv6) == 1 { input = "[\(input)]" }
-            input = "https://" + input
+            // With HTTP allowed, a bare private address ("10.8.0.5:9119") means the
+            // plain-HTTP host people run on a VPN or home network. Typing https:// keeps TLS.
+            let assumed = try DirectHermesEndpoint(address: address)
+            let scheme = allowPrivateHTTP && DirectHermesEndpoint.isPrivateNetworkHost(assumed.host) ? "http://" : "https://"
+            input = scheme + input
+            address = input
         }
         // Validate the original address too: URLComponents must not repair tokens.
         let original = try DirectHermesEndpoint(address: address, allowPrivateHTTP: allowPrivateHTTP)

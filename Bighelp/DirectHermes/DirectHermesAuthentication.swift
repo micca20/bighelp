@@ -261,7 +261,17 @@ final class DirectHermesHTTP {
         configuration.timeoutIntervalForResource = 30
         configuration.waitsForConnectivity = false
         configuration.httpMaximumConnectionsPerHost = 4
+        // Cloudflare Access service token, if this host sits behind Access.
+        accessHeaders = DirectHermesAccessCredentialStore.shared.headers(for: endpoint)
+        configuration.httpAdditionalHeaders = accessHeaders
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+    }
+
+    /// Also set on socket upgrades explicitly.
+    let accessHeaders: [String: String]
+
+    func applyAccessHeaders(to request: inout URLRequest) {
+        for (field, value) in accessHeaders { request.setValue(value, forHTTPHeaderField: field) }
     }
 
     deinit { session.invalidateAndCancel() }
@@ -336,6 +346,10 @@ final class DirectHermesHTTP {
                 bytes.task.cancel()
                 throw DirectHermesError.redirectRefused
             }
+            if Self.isCloudflareAccessDenial(http, sentAccessToken: !accessHeaders.isEmpty) {
+                bytes.task.cancel()
+                throw DirectHermesError.cloudflareAccessDenied
+            }
             if (300...399).contains(http.statusCode), !(allowAuthorizeRedirect && http.statusCode == 302) {
                 bytes.task.cancel()
                 throw DirectHermesError.redirectRefused
@@ -365,6 +379,20 @@ final class DirectHermesHTTP {
             data.append(byte)
         }
         return data
+    }
+
+    /// Access sends people without a valid token to its login page, and answers a
+    /// rejected service token with an HTML block page; Hermes itself answers JSON.
+    nonisolated static func isCloudflareAccessDenial(_ response: HTTPURLResponse, sentAccessToken: Bool) -> Bool {
+        if (300...399).contains(response.statusCode),
+           let location = response.value(forHTTPHeaderField: "Location"),
+           let host = URLComponents(string: location)?.host?.lowercased(),
+           host == "cloudflareaccess.com" || host.hasSuffix(".cloudflareaccess.com") {
+            return true
+        }
+        guard sentAccessToken, [401, 403].contains(response.statusCode) else { return false }
+        let type = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        return type.hasPrefix("text/html") && response.value(forHTTPHeaderField: "CF-RAY") != nil
     }
 
     static func requireSuccess(_ response: Response) throws {
@@ -658,6 +686,7 @@ final class DirectHermesAuthenticator {
         request.httpShouldHandleCookies = false
         if let protocols { request.setValue(protocols, forHTTPHeaderField: "Sec-WebSocket-Protocol") }
         if let legacyHeader { request.setValue(legacyHeader, forHTTPHeaderField: "X-Hermes-Session-Token") }
+        http.applyAccessHeaders(to: &request)
         return request
     }
 
@@ -690,6 +719,7 @@ final class DirectHermesAuthenticator {
         )
         request.httpShouldHandleCookies = false
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        http.applyAccessHeaders(to: &request)
         return request
     }
 
@@ -724,6 +754,7 @@ final class DirectHermesAuthenticator {
         )
         request.httpShouldHandleCookies = false
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        http.applyAccessHeaders(to: &request)
         return request
     }
 

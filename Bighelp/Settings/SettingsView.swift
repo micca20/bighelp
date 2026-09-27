@@ -184,6 +184,12 @@ struct SettingsView: View {
             pluginUpdates = store
             await store.refreshStatus()
         }
+        .task(id: selectedHostPluginCheckKey) {
+            // One quiet check per host per app session, once it's connected.
+            guard hostRegistry?.selectedWorkspace?.isConnected == true,
+                  let hostRegistry, let hostID = hostRegistry.selectedHostID else { return }
+            await HostPluginUpdateModel.model(for: hostID, registry: hostRegistry).checkIfNeeded()
+        }
         .task {
             if hostRegistry?.connectionMode != .independent,
                (linkAccount?.state == .ready || linkAccount == nil),
@@ -305,6 +311,14 @@ struct SettingsView: View {
         .listRowBackground(theme.surface)
     }
 
+    private var selectedHostPluginUpdate: HostPluginUpdateModel? {
+        hostRegistry?.selectedHostID.flatMap(HostPluginUpdateModel.existingModel(for:))
+    }
+
+    private var selectedHostPluginCheckKey: String {
+        "\(hostRegistry?.selectedHostID?.uuidString ?? "none"):\(hostRegistry?.selectedWorkspace?.isConnected == true)"
+    }
+
     private func settingsMenuRow(_ section: SettingsMenuSection) -> some View {
         HStack(spacing: BighelpTokens.space12) {
             BighelpIconTile(systemName: section.systemImage)
@@ -312,9 +326,16 @@ struct SettingsView: View {
                 Text(section.title)
                     .bighelpFont(.body)
                     .foregroundStyle(theme.primaryText)
-                Text(section.detail)
-                    .bighelpFont(.metadata)
-                    .foregroundStyle(theme.secondaryText)
+                if section == .connectivityAndNotifications, let attention = selectedHostPluginUpdate?.attentionTitle {
+                    Text(attention)
+                        .bighelpFont(.metadata)
+                        .foregroundStyle(theme.action)
+                        .accessibilityIdentifier("settings.menu.plugin-update")
+                } else {
+                    Text(section.detail)
+                        .bighelpFont(.metadata)
+                        .foregroundStyle(theme.secondaryText)
+                }
             }
             Spacer(minLength: BighelpTokens.space8)
         }
@@ -366,6 +387,9 @@ struct SettingsView: View {
             settingsPage(title: section.title) {
                 if let hostRegistry {
                     BighelpConfiguredHostsSection(registry: hostRegistry)
+                    if let update = selectedHostPluginUpdate, update.needsAttention || update.isWorking {
+                        HostPluginUpdateSection(model: update)
+                    }
                     if hostRegistry.selectedHostID != nil {
                         Section { Text(hostRegistry.selectedWorkspace?.status ?? "Not connected") }
                         currentConnection

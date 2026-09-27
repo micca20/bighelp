@@ -128,6 +128,9 @@ struct MessageBubble: View {
         self.onReaction = onReaction
     }
 
+    /// Written on the way to the answer: shown quieter, like thinking.
+    private var isInterimReply: Bool { role == .assistant && metadata?.isInterimReply == true }
+
     var body: some View {
         let projection = contentCache.project(text, role: role)
         let references = projection.references
@@ -224,7 +227,7 @@ struct MessageBubble: View {
                     .foregroundStyle(theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if uiV3Enabled, !isPendingSubmission {
+            if uiV3Enabled, !isPendingSubmission, !isInterimReply {
                 if let metadata {
                     TimelineMetadataView(metadata: metadata)
                         .padding(.horizontal, 6)
@@ -350,12 +353,14 @@ struct MessageBubble: View {
                 }
             }
         } else if uiV3Enabled {
+            // One text view for both looks: becoming interim restyles it in place.
             NativeInlineSelectableMarkdownTextView(
                 document: document,
                 speakerName: speakerName,
-                proseLineSpacing: role == .human ? 2 : 5,
-                primaryText: nativePrimaryText,
-                secondaryText: role == .human ? nativePrimaryText.opacity(0.82) : theme.secondaryText,
+                proseLineSpacing: role == .human ? 2 : isInterimReply ? 4 : 5,
+                primaryText: isInterimReply ? theme.secondaryText : nativePrimaryText,
+                secondaryText: role == .human ? nativePrimaryText.opacity(0.82)
+                    : isInterimReply ? theme.tertiaryText : theme.secondaryText,
                 accent: role == .human ? nativePrimaryText : theme.action,
                 codeBackground: role == .human
                     ? nativePrimaryText.opacity(0.14)
@@ -366,12 +371,14 @@ struct MessageBubble: View {
                 onCopy: { copy(interaction.copyText) },
                 onSelect: { isSelectingText = true },
                 onFork: onFork,
-                onReact: canReact ? { isReactionPickerPresented = true } : nil
+                onReact: canReact ? { isReactionPickerPresented = true } : nil,
+                textScale: isInterimReply ? ChatInterimReplyStyle.textScale : 1
             )
             .modifier(BighelpV3MessageSurface(
                 role: role,
                 theme: theme,
-                increasedContrast: colorSchemeContrast == .increased
+                increasedContrast: colorSchemeContrast == .increased,
+                isInterim: isInterimReply
             ))
         } else {
             switch presentation.chrome {
@@ -385,6 +392,15 @@ struct MessageBubble: View {
                     .padding(.horizontal, BighelpTokens.space16)
                     .padding(.vertical, BighelpTokens.space12)
                     .bighelpSurface(.selected)
+            case .openProse where isInterimReply:
+                MarkdownMessageView(
+                    document: document,
+                    proseLineSpacing: presentation.proseLineSpacing
+                )
+                    .font(.subheadline)
+                    .foregroundStyle(theme.secondaryText)
+                    .multilineTextAlignment(.leading)
+                    .modifier(ChatInterimReplyStyle(theme: theme))
             case .openProse:
                 MarkdownMessageView(
                     document: document,

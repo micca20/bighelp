@@ -581,8 +581,13 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
         let key = DirectHermesSessionIdentity.key(profileID)
         try beginCreation(key: key, profileID: profileID)
         defer { creatingProfiles.remove(key) }
-        guard creations[key] == nil || creations[key]?.phase == .complete
-                || creations[key]?.phase == .canonicalResolved else {
+        // Only the agent's first canonical chat must be reconciled before another
+        // create: a duplicate there would compete for its registry. An unfinished
+        // ordinary new chat can at most leave one unused empty chat on the host,
+        // so a new attempt replaces it. (Blocking here used to lock an agent out
+        // of new chats for good, across restarts, after one timed-out create.)
+        if let pending = creations[key], pending.purpose == .firstCanonical,
+           pending.phase != .complete, pending.phase != .canonicalResolved {
             throw DirectHermesSessionError.creationUnconfirmed(profileID: profileID)
         }
         var state = try await newCreation(profile: profile, purpose: .ordinary)

@@ -63,18 +63,31 @@ struct BighelpV3MessageSurface: ViewModifier {
     let role: TimelineRole
     let theme: BighelpTheme
     let increasedContrast: Bool
+    /// Written on the way to the answer: no bubble, a thin line on the left.
+    /// Same view structure either way, so switching keeps the text view.
+    var isInterim = false
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, BighelpV3MessagePresentation.horizontalContentPadding)
-            .padding(.vertical, 10)
-            .background(shape.fill(fillColor))
+            .padding(.leading, isInterim ? BighelpTokens.space12 : 0)
+            .padding(.horizontal, isInterim ? 0 : BighelpV3MessagePresentation.horizontalContentPadding)
+            .padding(.vertical, isInterim ? BighelpTokens.space4 : 10)
+            .background(shape.fill(isInterim ? Color.clear : fillColor))
             .overlay {
-                if increasedContrast {
+                if increasedContrast, !isInterim {
                     shape.strokeBorder(theme.primaryText, lineWidth: 2)
                         .allowsHitTesting(false)
                 }
             }
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(theme.secondaryText.opacity(0.28))
+                    .frame(width: ChatInterimReplyStyle.ruleWidth)
+                    .padding(.vertical, BighelpTokens.space4)
+                    .opacity(isInterim ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .padding(.leading, isInterim ? BighelpTokens.space8 : 0)
     }
 
     var fillColor: Color {

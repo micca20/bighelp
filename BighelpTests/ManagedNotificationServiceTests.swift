@@ -429,6 +429,25 @@ import UserNotifications
         #expect(try fixture.sealedSenders.sender(grantID: grant.grantId) == nil)
     }
 
+    @Test func alertsForTheChatOnScreenAreRecognizedByTheirThread() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = try DirectHermesConversationClient(rpc: IdleRPC(), hostIdentity: "host", profile: "nova",
+            runtimeID: "runtime", storedID: "20260927_010203_abcdef", title: "Chat", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: root.appending(path: "drafts")))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        let thread = ManagedNotificationValidation.sessionReference(profile: "nova", session: "20260927_010203_abcdef")
+        let visible = BighelpVisibleChats.shared
+        #expect(!visible.isShowing(thread: thread))
+        visible.appeared(model)
+        #expect(visible.isShowing(thread: thread))
+        #expect(!visible.isShowing(thread: ManagedNotificationValidation.sessionReference(profile: "nova", session: "other")))
+        #expect(!visible.isShowing(thread: ""))
+        visible.disappeared(model)
+        #expect(!visible.isShowing(thread: thread))
+    }
+
     @Test func hostWithoutSealedAlertsNeverGetsAKey() async throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

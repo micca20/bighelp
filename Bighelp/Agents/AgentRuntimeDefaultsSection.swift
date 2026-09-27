@@ -46,10 +46,8 @@ struct AgentRuntimeDefaultsSection: View {
                 }
             }
         }
-        .task {
-            guard !model.hasLoaded, !model.isLoading else { return }
-            await model.load()
-        }
+        // Loading starts from the editor (AgentEditorView): a `.task` here would be
+        // attached to each section, restarting as they swap and flooding the host.
         .onChange(of: allowsEdits) { _, canEdit in
             if !canEdit {
                 modelPickerScope = nil
@@ -59,90 +57,49 @@ struct AgentRuntimeDefaultsSection: View {
 
     private func scopeSection(_ scope: AgentRuntimeScope) -> some View {
         let selection = model.draft[scope]
-        let usesDefault = selection.modelID.isEmpty
-        let isEditable = allowsEdits && !model.providers.isEmpty && model.support.modelUnavailableReasons[scope] == nil
+        let canChangeModel = !model.providers.isEmpty && model.support.modelUnavailableReasons[scope] == nil
+        let canChangeReasoning = model.support.reasoningUnavailableReasons[scope] == nil
+        let isEditable = allowsEdits && (canChangeModel || canChangeReasoning)
         return Section {
-                Button {
-                    modelPickerScope = scope
-                } label: {
-                    HStack(spacing: BighelpTokens.space12) {
-                        AIProviderMarkView(
-                            providerID: selection.providerID,
-                            providerName: providerName(for: selection.providerID),
-                            context: .agentRuntimeSelection
-                        )
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(usesDefault ? "Uses the default model" : "Uses \(modelName(for: selection))")
-                                .font(.body)
-                                .foregroundStyle(theme.primaryText)
-                                .lineLimit(2)
-                            if !usesDefault {
-                                Text(providerName(for: selection.providerID))
-                                    .font(.footnote)
-                                    .foregroundStyle(theme.secondaryText)
-                                    .lineLimit(1)
-                            }
-                        }
-                        Spacer(minLength: BighelpTokens.space8)
-                        if usesDefault {
-                            Text("Default")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(theme.secondaryText)
-                                .padding(.horizontal, BighelpTokens.space8)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(theme.incomingMessageBackground))
-                        }
-                        if isEditable {
-                            Text("Change")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(theme.action)
-                        }
-                    }
-                    .frame(minHeight: BighelpTokens.hitTarget)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .disabled(!isEditable)
-                .accessibilityLabel("Choose provider and model for \(scope.title)")
-                .accessibilityValue(modelLabel(for: selection))
-                .accessibilityIdentifier("agent.runtime.\(scope.rawValue).model")
-                if let reason = model.support.modelUnavailableReasons[scope] {
-                    Text(reason)
-                        .font(.footnote)
-                        .foregroundStyle(theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if model.support.reasoningUnavailableReasons[scope] != nil {
-                    LabeledContent("Reasoning", value: "Inherited")
-                        .accessibilityIdentifier("agent.runtime.\(scope.rawValue).reasoning")
-                } else {
-                    Picker("Reasoning", selection: Binding(
-                        get: { model.draft[scope].reasoningEffort },
-                        set: { model.selectReasoning($0, for: scope) }
-                    )) {
-                        ForEach(AgentReasoningOption.all, id: \.value) { option in
-                            Text(option.title).tag(option.value)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(theme.action)
-                    .disabled(!allowsEdits || model.support.reasoningUnavailableReasons[scope] != nil)
-                    .accessibilityIdentifier("agent.runtime.\(scope.rawValue).reasoning")
-                }
-                if let reason = model.support.reasoningUnavailableReasons[scope] ?? model.support.reasoningNotes[scope] {
-                    Text(reason)
-                        .font(.footnote)
-                        .foregroundStyle(theme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("agent.runtime.\(scope.rawValue).reasoning-note")
-                }
+            // The same picker as the chat's model control: model, reasoning, then apply.
+            BighelpModelChoiceRow(
+                providerID: selection.providerID,
+                providerName: providerName(for: selection.providerID),
+                modelID: selection.modelID,
+                detail: "Reasoning: \(reasoningTitle(for: scope))",
+                showsDefaultBadge: true,
+                isEnabled: isEditable
+            ) {
+                modelPickerScope = scope
+            }
+            .accessibilityLabel("Choose model and reasoning for \(scope.title)")
+            .accessibilityValue("\(modelLabel(for: selection)), reasoning \(reasoningTitle(for: scope))")
+            .accessibilityIdentifier("agent.runtime.\(scope.rawValue).model")
+            if let reason = model.support.modelUnavailableReasons[scope] {
+                Text(reason)
+                    .font(.footnote)
+                    .foregroundStyle(theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let reason = model.support.reasoningUnavailableReasons[scope] ?? model.support.reasoningNotes[scope] {
+                Text(reason)
+                    .font(.footnote)
+                    .foregroundStyle(theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("agent.runtime.\(scope.rawValue).reasoning-note")
+            }
         } header: {
             AgentStudioCaption(scope == .mainChats ? "Model" : scope.title)
         } footer: {
             Text(scope.detail)
         }
         .listRowBackground(theme.surface)
+    }
+
+    private func reasoningTitle(for scope: AgentRuntimeScope) -> String {
+        guard model.support.reasoningUnavailableReasons[scope] == nil else { return "Inherited" }
+        let value = model.draft[scope].reasoningEffort
+        return AgentReasoningOption.all.first(where: { $0.value == value })?.title ?? value
     }
 
     private var statusCaption: String {

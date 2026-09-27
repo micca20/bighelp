@@ -219,6 +219,28 @@ final class DirectHermesNativePluginClient {
         catch { throw route.isMutation ? WorkspaceClientError.outcomeUnknown : WorkspaceClientError.invalidResponse }
     }
 
+    /// Plugins from 2.16.1 can restart the Hermes process that serves them.
+    static let hostRestartFeature = "native-host-restart-v1"
+
+    /// Asks the plugin to restart the Hermes process serving this connection in
+    /// place, so an updated plugin loads. The connection drops right after.
+    func restartHost() async throws {
+        let context = try await loadContext(force: true)
+        guard context.features.contains(Self.hostRestartFeature) else {
+            throw WorkspaceClientError.unavailable(.unsupportedOperation)
+        }
+        let requestGuard = try DirectHermesNativeRequestGuard(etag: context.etag)
+        let response = try await http.nativeResponse(.init(
+            path: "/api/plugins/loopdy/native/host/restart", method: .post,
+            body: ["confirm": .boolean(true)], maximumResponseBytes: 16_384
+        ), requestGuard: requestGuard)
+        try check()
+        guard (200...299).contains(response.http.statusCode),
+              try response.object()["restarting"]?.boolean == true else {
+            throw responseError(response, mutation: true)
+        }
+    }
+
     static func supports(_ operation: WorkspaceOperation) -> Bool {
         operation == .nativeContext || (try? route(operation)) != nil
     }

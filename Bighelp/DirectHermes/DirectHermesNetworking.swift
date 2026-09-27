@@ -53,6 +53,8 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
     private var readyDeadline: Task<Void, Never>?
     private var pending: [String: Pending] = [:]
     private var serverRequestHandlers: [String: DirectHermesServerRequestHandler] = [:]
+    /// The socket that last announced it answers server requests (see advertiseServerRequests).
+    private var advertisedGeneration: UUID?
     private var serverRequestTasks: [Data: ServerRequestTask] = [:]
     private var serverRequestState = DirectHermesServerRequestState()
     private var outbox: [Outbound] = []
@@ -87,7 +89,7 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
         "session.status", "session.usage", "session.events.since", "commands.catalog",
         "config.get", "delegation.status", "spawn_tree.list",
         "profiles.list", "profiles.describe", "profiles.get_asset", "model.options",
-        "projects.list", "projects.get", "subagent.list", "subagent.tail",
+        "projects.list", "projects.get", "subagent.list", "subagent.tail", "client.capabilities",
         "groups.capabilities", "groups.list", "groups.state", "groups.log"
     ]
 
@@ -111,6 +113,8 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
             do {
                 try await client.openSocket()
                 try Task.checkCancellation()
+                // A Cloudflare Access token entered during setup is kept once it worked.
+                try DirectHermesAccessCredentialStore.shared.commitStaged(for: endpoint)
                 // The workspace owns initial persistence AFTER its host-selection
                 // generation check. A superseded Connect must not replace a host.
                 return client
@@ -294,6 +298,29 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
             throw DirectHermesError.invalidResponse
         }
         serverRequestHandlers[method] = handler
+        if handler != nil { advertiseServerRequests() }
+    }
+
+    /// Hermes sends clarify, approval, secret and sudo requests only to a socket that announced
+    /// `client.capabilities {server_requests: true}`; to any other app it answers them blank itself
+    /// (hermes #112548). Announce once per socket, as soon as this client has handlers. Older Hermes
+    /// has no such method and needs none, so a rejection is fine; a lost socket re-announces.
+    private func advertiseServerRequests() {
+        guard isConnected, socket != nil, !terminallyClosed, !serverRequestHandlers.isEmpty,
+              advertisedGeneration != generation else { return }
+        advertisedGeneration = generation
+        let epoch = generation
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.request("client.capabilities", params: ["server_requests": .boolean(true)],
+                                           timeoutNanoseconds: 15_000_000_000)
+            } catch DirectHermesError.rpcRejected(_) {
+                return
+            } catch {
+                if self.generation == epoch { self.advertisedGeneration = nil }
+            }
+        }
     }
 
     /// Adopts the final `session.events.since.open_requests` snapshot into the
@@ -570,6 +597,8 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
             if generation == epoch { closeConnection(DirectHermesHTTP.safeError(error), notify: false) }
             throw DirectHermesHTTP.safeError(error)
         }
+        // A replacement socket after a drop keeps the handlers; announce them again.
+        advertiseServerRequests()
     }
 
     private func accept(_ messages: [DirectHermesWire.Message], epoch: UUID) {

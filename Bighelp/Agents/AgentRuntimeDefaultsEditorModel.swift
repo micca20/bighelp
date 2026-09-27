@@ -32,6 +32,14 @@ final class AgentRuntimeDefaultsEditorModel {
 
     var isDirty: Bool { hasLoaded && draft != persisted }
 
+    /// Loads once. Call from a view whose identity doesn't change while loading:
+    /// a trigger on the loading/error sections themselves cancels and restarts
+    /// every few milliseconds, flooding the host with requests.
+    func loadIfNeeded() async {
+        guard !hasLoaded, !isLoading else { return }
+        await load()
+    }
+
     func load() async {
         loadGeneration += 1
         let generation = loadGeneration

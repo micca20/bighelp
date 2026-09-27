@@ -26,8 +26,8 @@
   "aggregateHash": {
     "algorithm": "sha256(sorted UTF-8 relativePath + NUL + lowercase file sha256 + LF)",
     "upstreamScope": "4ef7da5ffdebf4f973a140918c1a20a9e6425a0207ff69bead4139b8b91f3216",
-    "patchedScope": "6046d789e5ecda5b839b41291f25713346f834e3bccfac12f018479fc95101b1",
-    "fileCount": 60
+    "patchedScope": "0e58a024ea0c3adb3401858ad68511ebba7a39213b5097d453d305aac18faa72",
+    "fileCount": 61
   },
   "patches": [
     {
@@ -83,6 +83,28 @@
           "path": "Sources/BuzzKit/Support/SerialWorkQueue.swift",
           "upstreamSHA256": "2d684c190b078505884670a023afc1aa3b5115449a8f2c9b7549e8560c2b80a5",
           "patchedSHA256": "61c61b9db45c2132ca4414a8b7abb3c916258f457685fd4bfc3d5b254e158637"
+        }
+      ]
+    },
+    {
+      "id": "unwedge-notification-enrollment",
+      "summary": "Recorded after the fact (parent commit 7a98cbb0): enrollment no longer wedges after a retired identity; builds on awaitable-serialized-push-enrollment.",
+      "changedFiles": [
+        {
+          "path": "Sources/BuzzKit/Push/PushManager.swift",
+          "upstreamSHA256": "6eda43b6e70c06348c6f5d52280e42a130ad94103eea76aa4972be99e2027752",
+          "patchedSHA256": "0b55d455361c122f68e4b034188d9e6c829e5e1952d98cfde10af523857693b9"
+        }
+      ]
+    },
+    {
+      "id": "serialized-activitykit-access",
+      "summary": "ActivityKit deadlocked (main-thread watchdog kill) when several tasks opened push-token/state streams while it delivered a token. All ActivityKit token and stream setup goes through one public serial lane (ActivityKitSerialAccess), off the main thread; the host app uses the same lane.",
+      "changedFiles": [
+        {
+          "path": "Sources/BuzzKit/Activities/ActivitiesActivityKit.swift",
+          "upstreamSHA256": "9d1e5e7df0aa0122b98bdfbdedd5f012dc746c322c737f737df20f2b789c825c",
+          "patchedSHA256": "1b2746d24a0e5fe443fd94111f1a12095484c42be4158e943b7a3535b79fe19a"
         }
       ]
     }

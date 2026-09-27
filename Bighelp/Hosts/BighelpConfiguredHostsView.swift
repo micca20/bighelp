@@ -14,6 +14,11 @@ struct BighelpConfiguredHostsSection: View {
                             Text(host.name)
                             Text(host.id == registry.selectedHostID ? "Selected · native Hermes" : "Native Hermes")
                                 .bighelpFont(.metadata).foregroundStyle(.secondary)
+                            if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
+                                Text(attention)
+                                    .bighelpFont(.metadata).foregroundStyle(.tint)
+                                    .accessibilityIdentifier("hosts.host.plugin-update")
+                            }
                         }
                     } icon: { Image(systemName: host.id == registry.selectedHostID ? "checkmark.circle" : "server.rack") }
                 }.accessibilityIdentifier("hosts.host.\(host.id.uuidString)")
@@ -35,6 +40,7 @@ struct BighelpConfiguredHostView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var notificationModel: HostNotificationSetupModel?
     @State private var pluginModel: HostNotificationSetupModel?
+    @State private var updateModel: HostPluginUpdateModel?
     @State private var showsRemove = false
     @State private var error: String?
     private var host: BighelpConfiguredHost? { registry.hosts.first { $0.id == hostID } }
@@ -46,6 +52,11 @@ struct BighelpConfiguredHostView: View {
                     LabeledContent("Computer", value: host.name)
                     DisclosureGroup("Advanced connection details") {
                         Text(host.endpoint.identity).bighelpFont(.code).textSelection(.enabled)
+                        if DirectHermesAccessCredentialStore.shared.hasSavedCredentials(for: host.endpoint) {
+                            Label("Cloudflare Access service token saved", systemImage: "lock.shield")
+                                .bighelpFont(.metadata).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("hosts.cloudflare-access")
+                        }
                         Text(host.isIndependent
                              ? "Credentials are saved on this device for this Hermes principal."
                              : "These legacy credentials remain private to this account until explicitly migrated.")
@@ -67,6 +78,9 @@ struct BighelpConfiguredHostView: View {
                         hostName: host.name,
                         hostEndpoint: host.endpoint.identity
                     )
+                }
+                if let updateModel, updateModel.state != .notInstalled {
+                    HostPluginUpdateSection(model: updateModel)
                 }
                 if let notificationModel {
                     HostNotificationSetupSection(
@@ -106,6 +120,9 @@ struct BighelpConfiguredHostView: View {
                 )
                 notificationModel = HostNotificationSetupModel(host: host, registry: registry)
                 await pluginModel?.refreshInstalledState()
+                let update = HostPluginUpdateModel.model(for: host.id, registry: registry)
+                updateModel = update
+                await update.checkIfNeeded()
             }
         }
         .onDisappear {

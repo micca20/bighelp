@@ -75,6 +75,26 @@ struct HostPluginPin: Equatable, Sendable {
         guard let revision = Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginRevision") as? String else { return nil }
         return try? HostPluginPin(revision: revision)
     }
+
+    /// The plugin version at the bundled revision: the latest this app build installs.
+    static var bundledVersion: String? {
+        (Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginVersion") as? String)
+            .flatMap { validVersion($0) ? $0 : nil }
+    }
+
+    static func validVersion(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 32 && value.allSatisfy { $0.isASCII && ($0.isNumber || $0 == ".") }
+    }
+
+    /// Numeric comparison of dotted versions ("2.16.1" > "2.9.0").
+    static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        let a = lhs.split(separator: ".").map { Int($0) ?? 0 }, b = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        for index in 0..<max(a.count, b.count) {
+            let x = index < a.count ? a[index] : 0, y = index < b.count ? b[index] : 0
+            if x != y { return x < y ? .orderedAscending : .orderedDescending }
+        }
+        return .orderedSame
+    }
     var installParameters: [String: BighelpJSONValue] {
         ["action": .string("install"), "identifier": .string(identifier), "catalog_name": .null,
          "ref": .string(revision), "enable": .boolean(true), "force": .boolean(false)]
@@ -93,6 +113,8 @@ struct HostInstalledPlugin: Equatable {
     let key: String
     let pinnedSHA: String?
     let configuredEnabled: Bool
+    /// The version of the plugin files on disk (plugin.yaml), not necessarily the running one.
+    var version: String? = nil
 
     static func decodeList(_ value: BighelpJSONValue) throws -> [HostInstalledPlugin] {
         guard let values = value.object?["plugins"]?.array, values.count <= 4096 else { throw DirectHermesError.invalidResponse }
@@ -116,7 +138,9 @@ struct HostInstalledPlugin: Equatable {
                     throw DirectHermesError.invalidResponse
                 }
             }
-            return Self(name: name, key: key, pinnedSHA: object["pinned_sha"]?.string, configuredEnabled: status == "enabled")
+            let version = object["version"]?.string.flatMap { HostPluginPin.validVersion($0) ? $0 : nil }
+            return Self(name: name, key: key, pinnedSHA: object["pinned_sha"]?.string,
+                        configuredEnabled: status == "enabled", version: version)
         }
     }
 }

@@ -125,6 +125,14 @@ struct TimelineMetadata: Codable, Equatable, Sendable {
     let platformMessageID: String?
     /// Missing in legacy snapshots and complete rows; absence is not a fetch hint.
     private(set) var contentReference: CanonicalContentReference?
+    /// Display only, never saved: an agent message written on the way to the
+    /// answer (more work followed in the same turn). See ChatInterimReplies.
+    var isInterimReply = false
+
+    private enum CodingKeys: String, CodingKey {
+        case source, freshness, delivery, timestamp, turnDurationMilliseconds, sourceOrder,
+             platformMessageID, contentReference
+    }
 
     init(
         source: String? = nil,
@@ -346,6 +354,13 @@ struct TimelineItem: Identifiable, Codable, Equatable, Sendable {
             metadata: try container.decode(TimelineMetadata.self, forKey: .metadata),
             attachments: try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
         )
+    }
+
+    /// The same message marked as written on the way to the answer (display only).
+    func markedInterim() -> TimelineItem {
+        var item = self
+        item.metadata.isInterimReply = true
+        return item
     }
 
     func ordered(_ sourceOrder: Int) -> TimelineItem {

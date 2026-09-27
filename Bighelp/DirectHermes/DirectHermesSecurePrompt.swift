@@ -36,11 +36,15 @@ struct DirectHermesSecurePrompt: Identifiable {
     let prompt: String?
     let server: String?
     let reason: String?
+    /// The agent asked for this itself (bighelp_request_secure_input), with a short field label.
+    var isAgentRequest = false
+    var label: String?
     let createdAt: Date
     fileprivate let key: DirectHermesSecurePromptKey
 
     var title: String {
         switch kind {
+        case .secret where isAgentRequest: label ?? envVar ?? "Secure input"
         case .secret: envVar ?? "Secret required"
         case .sudo: "Sudo password required"
         case .mcpSetup(let action):
@@ -655,6 +659,8 @@ final class DirectHermesSecurePromptStore {
         let promptText: String?
         let server: String?
         let reason: String?
+        var isAgentRequest = false
+        var label: String?
         switch method {
         case .secret:
             guard Set(params.keys).isSubset(of: ["session_id", "env_var", "prompt", "metadata"]),
@@ -670,6 +676,12 @@ final class DirectHermesSecurePromptStore {
             promptText = message
             server = nil
             reason = nil
+            let metadata = params["metadata"]?.object
+            isAgentRequest = metadata?["source"]?.string == "agent"
+            label = metadata?["label"]?.string.flatMap { value -> String? in
+                let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty || text.utf8.count > 120 ? nil : text
+            }
         case .sudo:
             guard Set(params.keys) == Set(["session_id"]) else {
                 throw DirectHermesError.invalidResponse
@@ -719,6 +731,8 @@ final class DirectHermesSecurePromptStore {
             prompt: promptText,
             server: server,
             reason: reason,
+            isAgentRequest: isAgentRequest,
+            label: label,
             createdAt: .now,
             key: key
         )
@@ -937,7 +951,7 @@ private struct DirectHermesSecurePromptView: View {
                 Section {
                     Text(prompt.detail)
                         .textSelection(.enabled)
-                    LabeledContent("Profile", value: prompt.profile)
+                    LabeledContent(prompt.isAgentRequest ? "Agent" : "Profile", value: prompt.profile)
                     if let server = prompt.server {
                         LabeledContent("Server", value: server)
                     }
@@ -950,7 +964,7 @@ private struct DirectHermesSecurePromptView: View {
 
                 switch prompt.kind {
                 case .secret:
-                    secureValueSection(label: prompt.envVar ?? "Secret")
+                    secureValueSection(label: prompt.isAgentRequest ? (prompt.label ?? "Secret") : (prompt.envVar ?? "Secret"))
                 case .sudo:
                     secureValueSection(label: "Password")
                 case .mcpSetup:
@@ -964,7 +978,7 @@ private struct DirectHermesSecurePromptView: View {
                 }
             }
             .bighelpFormSurface()
-            .navigationTitle("Hermes request")
+            .navigationTitle(prompt.isAgentRequest ? "Secure input" : "Hermes request")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(store.isWorking)
             .toolbar {
@@ -1003,7 +1017,11 @@ private struct DirectHermesSecurePromptView: View {
         } header: {
             Text("Secure response")
         } footer: {
-            Text("This value is sent only to the waiting request. bighelp does not save it, add it to chat, or copy it to the clipboard.")
+            if prompt.isAgentRequest, let name = prompt.envVar {
+                Text("Saved privately on your computer as \(name). Your agent can use it in commands but never sees what you type, and bighelp doesn't keep it or add it to chat.")
+            } else {
+                Text("This value is sent only to the waiting request. bighelp does not save it, add it to chat, or copy it to the clipboard.")
+            }
         }
     }
 
@@ -1131,3 +1149,48 @@ private struct DirectHermesSecurePromptView: View {
         focusedField = nil
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+/// `-test-secure-input`: an agent's secure input request, for screenshots.
+enum DirectHermesSecurePromptFixture {
+    static let launchArgument = "-test-secure-input"
+
+    @MainActor
+    static func rootView() -> some View { FixtureHost() }
+
+    @MainActor
+    private struct FixtureHost: View {
+        @State private var store = DirectHermesSecurePromptStore()
+        @State private var identity = NSObject()
+
+        var body: some View {
+            let _ = store.revision
+            NavigationStack {
+                Text("Chat").navigationTitle("Juniper")
+            }
+            .sheet(item: store.presentationBinding()) { prompt in
+                DirectHermesSecurePromptView(store: store, prompt: prompt)
+            }
+            .task { await request() }
+        }
+
+        private func request() async {
+            let connection = DirectHermesPromptConnection(owner: UUID(), principalIdentity: "host",
+                clientIdentity: ObjectIdentifier(identity), transportGeneration: .init(UUID()))
+            let unsupported: @MainActor @Sendable (String) async throws -> Void = { _ in
+                throw WorkspaceClientError.unavailable(.unsupportedOperation)
+            }
+            store.beginConnection(connection, dependencies: .init(
+                respondToLegacyPrompt: { _, _ in throw WorkspaceClientError.unavailable(.unsupportedOperation) },
+                makeMCPClient: { _ in throw WorkspaceClientError.unavailable(.unsupportedOperation) },
+                reloadMCP: unsupported))
+            try? store.bind(profile: "juniper", runtimeID: "runtime", visibleSessionID: "chat", connection: connection)
+            _ = await store.handle(.init(id: "fixture", method: "secret", params: [
+                "session_id": .string("runtime"), "env_var": .string("GITHUB_TOKEN"),
+                "prompt": .string("Paste a GitHub token with repo access so I can open the pull request for you."),
+                "metadata": .object(["source": .string("agent"), "label": .string("GitHub token")]),
+            ]), connection: connection)
+        }
+    }
+}
+#endif

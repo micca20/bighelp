@@ -138,9 +138,8 @@ enum BighelpAnimatedMarkPolicy {
     }
 }
 
-/// The canonical infinity mark with a restrained traveling highlight for
-/// real active work. Terminal, hidden, background, and Reduce Motion states
-/// render one quiet static mark instead of consuming animation work.
+/// The working blob for real active work (tool calls, thinking). Finished,
+/// hidden, background and Reduce Motion states draw one quiet, dimmed orb.
 struct BighelpAnimatedMark: View {
     let isActive: Bool
     var height: CGFloat = 20

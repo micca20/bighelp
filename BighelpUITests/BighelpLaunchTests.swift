@@ -4887,20 +4887,28 @@ final class BighelpLaunchTests: BighelpUITestCase {
         capture.name = "Friendly model picker"
         capture.lifetime = .keepAlways
         add(capture)
-        app.buttons["model-picker.dismiss"].tap()
+        // Reasoning is chosen in the same picker, as in chat, then applied to the agent.
+        let reasoningPicker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reasoning,")).firstMatch
+        XCTAssertTrue(reasoningPicker.waitForExistence(timeout: 3))
+        reasoningPicker.tap()
+        let high = app.buttons["High"].firstMatch
+        XCTAssertTrue(high.waitForExistence(timeout: 3))
+        high.tap()
+        let apply = app.buttons["model-picker.apply"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 3))
+        XCTAssertEqual(apply.label, "Use for this agent")
+        apply.tap()
+        XCTAssertTrue(apply.waitForNonExistence(timeout: 3))
+        let updated = reveal("agent.runtime.mainChats.model")
+        XCTAssertTrue((updated.value as? String)?.contains("reasoning High") == true,
+                      "The agent's model row shows the chosen reasoning level.")
 
-        let reasoning = reveal("agent.runtime.mainChats.reasoning")
-        XCTAssertTrue(reasoning.isEnabled)
-        reasoning.tap()
-        app.buttons["High"].firstMatch.tap()
-        XCTAssertTrue(reasoning.label.contains("High") || reasoning.value as? String == "High")
         let advanced = app.buttons["agent.editor.advanced"]
         for _ in 0..<4 where !advanced.isHittable { editor.swipeUp() }
         advanced.tap()
         XCTAssertTrue(app.navigationBars["Advanced"].waitForExistence(timeout: 3))
         for identifier in [
-            "agent.runtime.subagents.model", "agent.runtime.subagents.reasoning",
-            "agent.runtime.scheduledTasks.model", "agent.runtime.scheduledTasks.reasoning"
+            "agent.runtime.subagents.model", "agent.runtime.scheduledTasks.model"
         ] {
             XCTAssertTrue(app.buttons[identifier].exists, identifier)
         }

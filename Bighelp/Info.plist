@@ -50,6 +50,9 @@
 	<string>$(AppIdentifierPrefix)app.loopdy.mobile.notification</string>
     <key>NSAppTransportSecurity</key>
     <dict>
+        <!-- Plain HTTP only reaches private networks (home Wi-Fi, VPN, Tailscale); see DirectHermesEndpoint.isPrivateNetworkHost. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
         <key>NSExceptionDomains</key>
         <dict>
             <key>127.0.0.0/8</key>
@@ -60,10 +63,34 @@
             <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
             <key>fd7a:115c:a1e0::/48</key>
             <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>10.0.0.0/8</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>172.16.0.0/12</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>192.168.0.0/16</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>169.254.0.0/16</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>fc00::/7</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+            <key>lan</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>internal</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>home.arpa</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>intranet</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>corp</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>localdomain</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>private</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
         </dict>
     </dict>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>bighelp connects directly to the Hermes host you choose on your local network or Tailscale.</string>
+    <string>bighelp connects directly to the Hermes computer you choose on your home network, VPN or Tailscale.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>When you enable Apple Health tools, bighelp shares the Health data you choose with your selected agent and its AI provider to answer your health and fitness questions.</string>
     <key>NSHealthUpdateUsageDescription</key>
@@ -72,27 +99,13 @@
     <string>When you enable Calendar tools, your selected agent can read, create, update, and delete calendar events on your request.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>When you enable Reminders tools, your selected agent can read, create, update, and delete reminders on your request.</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>127.0.0.0/8</key>
-            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
-            <key>::1</key>
-            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
-            <key>100.64.0.0/10</key>
-            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
-            <key>fd7a:115c:a1e0::/48</key>
-            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
-        </dict>
-    </dict>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>bighelp connects directly to the Hermes host you choose on your local network or Tailscale.</string>
 
     <key>BighelpNativeBrowserAuthenticationEnabled</key>
     <true/>
+    <key>BighelpNotificationPluginVersion</key>
+    <string>2.17.0</string>
     <key>BighelpNotificationPluginRevision</key>
-    <string>ca6855d87c2be4fa8af78f724b1c6bf96d9ad8e6</string>
+    <string>fa8c1eeb03c9c6b2d69b03cdeb39c341cbc12d88</string>
     <key>NSCameraUsageDescription</key>
     <string>bighelp uses the camera to scan short-lived pairing codes, power Reflective Vision, and capture photos or scan documents you intentionally attach to chats.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
