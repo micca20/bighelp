@@ -53,7 +53,7 @@ extension SettingsView {
             .accessibilityIdentifier("settings.nerd-mode")
         } footer: {
             Text(settings.nerdModeEnabled
-                 ? "Advanced tools are shown below. Turn this off anytime to keep things simple."
+                 ? "Hermes Tools is in the ☰ menu, and advanced settings are below. Turn this off anytime to keep things simple."
                  : "Files, gateways, plugins, logs and other host tools stay out of the way until you need them.")
                 .bighelpFont(.metadata)
         }
@@ -64,33 +64,6 @@ extension SettingsView {
     var nerdModeSections: some View {
         chatDetailDefaults
         Section("Advanced") {
-            if let onOpenRoute {
-                routeRow("Hermes tools", detail: "Files, gateways, plugins, MCP, memory and more",
-                         symbol: "square.grid.2x2.fill", identifier: "settings.advanced.hermes-tools") {
-                    onOpenRoute(.workspaceHub)
-                }
-                routeRow("Activity", detail: "Inbox, approvals and running work",
-                         symbol: "waveform.path", tint: Color(hex: "1769AA"), identifier: "settings.advanced.activity") {
-                    onOpenRoute(.workspaceActivity)
-                }
-                routeRow("Skills & tools", detail: "What agents can use",
-                         symbol: "wrench.and.screwdriver.fill", tint: Color(hex: "1E7A4E"),
-                         identifier: "settings.advanced.skills") {
-                    onOpenRoute(.skillsAndTools)
-                }
-                if hostRegistry?.connectionMode != .independent {
-                    routeRow("Direct Links", detail: "Paired devices",
-                             symbol: "link", tint: Color(hex: "9A6BFF"), identifier: "settings.advanced.links") {
-                        onOpenRoute(.bighelpLinkDevices)
-                    }
-                }
-            }
-            if let onOpenWorkspaceDestination {
-                routeRow("Diagnostics", detail: "Host logs", symbol: "stethoscope",
-                         tint: .gray, identifier: "settings.advanced.diagnostics") {
-                    onOpenWorkspaceDestination(.logs)
-                }
-            }
             NavigationLink {
                 BighelpDeferredSection {
                     settingsPage(title: "Chats & Gestures") {

@@ -863,7 +863,6 @@ struct ChatDestinationView: View {
                     dismissWorkspace()
                     onNewChat()
                 },
-                onOpenHome: { openTab(.home) },
                 onOpenSessions: {
                     dismissWorkspace()
                     onOpenSessions()
@@ -877,7 +876,6 @@ struct ChatDestinationView: View {
                     dismissWorkspace()
                     onOpenScheduledTasks()
                 },
-                onOpenSkillsTools: openSkillsAndTools,
                 onOpenWorkspaceHub: { openTab(.workspace) },
                 onOpenWorkspaces: openHermesWorkspaces,
                 onSelectAgent: { agent in
@@ -905,12 +903,10 @@ struct ChatDestinationView: View {
             selectedTab: selectedTab,
             onDismiss: collapsePersistentWorkspace,
             onNewChat: onNewChat,
-            onOpenHome: { onSelectTab(.home) },
             onOpenSessions: onOpenSessions,
             onOpenSession: onOpenSession,
             onOpenAgents: { onSelectTab(.agents) },
             onOpenScheduledTasks: onOpenScheduledTasks,
-            onOpenSkillsTools: openSkillsAndTools,
             onOpenWorkspaceHub: { onSelectTab(.workspace) },
             onOpenWorkspaces: presentHermesWorkspacePicker,
             onSelectAgent: onSelectAgent,
@@ -938,9 +934,6 @@ struct ChatDestinationView: View {
                 onNewChat: {
                     closeVoiceAnd(onNewChat)
                 },
-                onOpenHome: {
-                    closeVoiceAnd { onSelectTab(.home) }
-                },
                 onOpenSessions: {
                     closeVoiceAnd(onOpenSessions)
                 },
@@ -952,12 +945,6 @@ struct ChatDestinationView: View {
                 },
                 onOpenScheduledTasks: {
                     closeVoiceAnd(onOpenScheduledTasks)
-                },
-                onOpenSkillsTools: {
-                    closeVoiceAnd {
-                        guard featureStore.prepare(.skillsAndTools) else { return }
-                        appState.open(.skillsAndTools)
-                    }
                 },
                 onOpenWorkspaceHub: { closeVoiceAnd { onSelectTab(.workspace) } },
                 onOpenWorkspaces: {

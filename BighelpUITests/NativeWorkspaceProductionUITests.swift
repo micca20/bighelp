@@ -549,7 +549,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         let menu = [app.buttons["chat.menu"], app.buttons["home.drawer.open"]].first { $0.waitForExistence(timeout: 5) }
         if let menu {
             menu.tap(); alive("home-drawer")
-            app.buttons["home.drawer.done"].tap()
+            app.buttons["menu.done"].tap()
         }
         openRootTab("tab.profile", in: app)
         let nerd = app.switches["settings.nerd-mode"]
@@ -842,7 +842,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         app.buttons["root.new-chat"].tap()
         XCTAssertTrue(app.textViews["chat.composer.text"].waitForExistence(timeout: 15))
         openChatWorkspaceMenu(in: app)
-        app.buttons["quick-workspace.settings"].tap()
+        app.buttons["menu.settings"].tap()
         app.buttons["settings.menu.permissions"].tap()
         app.buttons["permissions.open.calendar"].firstMatch.tap()
         let toggle = app.switches["permissions.device-tools.calendar"].firstMatch
@@ -927,13 +927,13 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         capture("real-host-existing-chat-116", app)
         openChatWorkspaceMenu(in: app)
         let chatsMenu = app.buttons["quick-workspace.menu.chats"]
-        let agentsMenu = app.buttons["quick-workspace.menu.agents"]
+        let agentsMenu = app.buttons["menu.agents"]
         let agentsVisible = agentsMenu.waitForExistence(timeout: 5)
         capture("real-host-sidebar-116", app)
         XCTAssertTrue(agentsVisible)
         XCTAssertGreaterThan(agentsMenu.frame.minY, chatsMenu.frame.minY)
         capture("real-host-sidebar-116", app)
-        app.buttons["quick-workspace.settings"].tap()
+        app.buttons["menu.settings"].tap()
         let chatSettings = app.buttons["settings.menu.chat"]
         XCTAssertTrue(chatSettings.waitForExistence(timeout: 5))
         chatSettings.tap()
@@ -983,7 +983,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         }
         capture("real-host-new-chat-116", app)
         openChatWorkspaceMenu(in: app)
-        app.buttons["quick-workspace.workspaces"].tap()
+        app.buttons["menu.folder"].tap()
         XCTAssertTrue(app.otherElements["hermes-workspaces.screen"].waitForExistence(timeout: 8))
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier BEGINSWITH %@", "hermes-workspace.", "hermes-workspace.archive."))
         let loadedRows = rows.firstMatch.waitForExistence(timeout: 15)
@@ -1237,7 +1237,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             XCTAssertEqual(rows.filter { $0["name"] as? String == "mixed-avatar-bot" }.count, 1)
             XCTAssertFalse(rows.contains { $0["name"] as? String == "MiXeD Avatar BOT" })
             app.terminate(); app.launch()
-            XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 60))
+            XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 60))
             openAgents(in: app)
             let agent = app.buttons["agent.mixed-avatar-bot"]
             XCTAssertTrue(agent.waitForExistence(timeout: 25))
@@ -1246,12 +1246,12 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             capture("native-agent-avatar-cold-reload", app)
             return
         }
-        app.buttons["quick-workspace.menu"].tap()
-        for id in ["quick-workspace.menu.agents", "quick-workspace.sessions",
-                   "quick-workspace.menu.scheduled-tasks", "quick-workspace.workspace"] {
+        app.buttons["home.drawer.open"].tap()
+        for id in ["menu.agents", "menu.chats",
+                   "menu.scheduled-tasks", "menu.hermes-tools"] {
             XCTAssertTrue(app.buttons[id].exists, id)
         }
-        app.buttons["quick-workspace.close"].tap()
+        app.buttons["menu.done"].tap()
         if ProcessInfo.processInfo.environment["NATIVE_PROBE_VERIFY_SESSION_RECOVERY"] == "1" {
             try await verifyNativeSessionRecovery(config: config, in: app)
             return
@@ -1260,7 +1260,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             for (key, title) in [("projects", "Projects"), ("files", "Files"), ("artifacts", "Artifacts"),
                                  ("toolsets", "Toolsets"), ("memory", "Memory"),
                                  ("plugins", "Plugins"), ("mcp", "MCP Servers"), ("logs", "Logs")] {
-                openRootDestination("workspace", sidebarIdentifier: "quick-workspace.workspace", in: app)
+                openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
                 let destination = app.buttons["workspace.open.\(key)"]
                 for _ in 0..<8 where !destination.isHittable { app.swipeUp() }
                 guard destination.waitForExistence(timeout: 10), destination.isHittable else {
@@ -1307,10 +1307,10 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
                 let back = app.navigationBars.buttons.element(boundBy: 0)
                 XCTAssertTrue(back.isHittable)
                 back.tap()
-                XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
+                XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
             }
         }
-        openRootDestination("scheduledTasks", sidebarIdentifier: "quick-workspace.menu.scheduled-tasks", in: app)
+        openRootDestination("scheduledTasks", sidebarIdentifier: "menu.scheduled-tasks", in: app)
         let createTask = app.buttons["scheduled-tasks.create"]
         XCTAssertTrue(createTask.waitForExistence(timeout: 15), "Native cron management must be reachable from the Tasks menu.")
         XCTAssertFalse(app.alerts["Unable to open"].exists)
@@ -1366,8 +1366,8 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         capture("native-production-stream", app)
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 60), "Device-only credentials must restore the same native workspace.")
-        openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 60), "Device-only credentials must restore the same native workspace.")
+        openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
         let saved = app.buttons.matching(NSPredicate(
             format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "session.row.native-session-v1:", nonce
         )).firstMatch
@@ -1438,8 +1438,8 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             capture("native-reaction-confirmed", app)
             app.terminate()
             app.launch()
-            XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 60))
-            openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+            XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 60))
+            openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
             XCTAssertTrue(saved.waitForExistence(timeout: 25))
             saved.tap()
             for target in reactionRows {
@@ -1486,9 +1486,9 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             )
             XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 10))
             openChatWorkspaceMenu(in: app)
-            openSidebarDestination("quick-workspace.sessions", in: app)
-            XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
-            openRootDestination("workspace", sidebarIdentifier: "quick-workspace.workspace", in: app)
+            openSidebarDestination("menu.chats", in: app)
+            XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
+            openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
             let maintenance = app.buttons["workspace.open.sessionMaintenance"]
             for _ in 0..<10 where !maintenance.isHittable { app.swipeUp() }
             XCTAssertTrue(maintenance.isHittable)
@@ -1529,7 +1529,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             XCTAssertTrue(close.waitForExistence(timeout: 5))
             close.tap()
             app.buttons["Close Runtime"].tap()
-            if !app.buttons["quick-workspace.menu"].waitForExistence(timeout: 5) {
+            if !app.buttons["home.drawer.open"].waitForExistence(timeout: 5) {
                 let success = app.descendants(matching: .any)["session-maintenance.success"].firstMatch
                 let error = app.descendants(matching: .any)["session-maintenance.error"].firstMatch
                 for _ in 0..<10 where !success.isHittable && !error.isHittable { app.swipeDown() }
@@ -1540,8 +1540,8 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
                 }
                 app.navigationBars.buttons["Back"].tap()
             }
-            XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 15))
-            openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+            XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 15))
+            openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
             XCTAssertFalse(app.staticTexts["Route unavailable"].exists)
             let preservedSession = try await storedSession(config: config, prompt: followup, reply: followupReply)
             XCTAssertEqual(preservedSession, originalSession)
@@ -1699,8 +1699,8 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
                 if phase == "cold-reopen" {
                     app.terminate()
                     app.launch()
-                    XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 60))
-                    openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+                    XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 60))
+                    openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
                     let saved = nativeSessionRow(in: app, profileID: profile, storedID: try XCTUnwrap(storedID))
                     XCTAssertTrue(saved.waitForExistence(timeout: 25))
                     saved.tap()
@@ -1721,7 +1721,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
                     XCTAssertTrue(composer.waitForExistence(timeout: 15))
                     XCTAssertEqual(composer.value as? String, prompt, "Suspension must preserve the exact draft.")
                 } else if phase == "warm-reopen" {
-                    openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+                    openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
                     let saved = nativeSessionRow(in: app, profileID: profile, storedID: try XCTUnwrap(storedID))
                     XCTAssertTrue(saved.waitForExistence(timeout: 25))
                     saved.tap()
@@ -1882,7 +1882,7 @@ final class NativeProjectActivityProductionUITests: BighelpUITestCase {
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 10))
         openChatWorkspaceMenu(in: app)
 
-        let workspaceChooser = app.buttons["quick-workspace.workspaces"]
+        let workspaceChooser = app.buttons["menu.folder"]
         XCTAssertTrue(
             workspaceChooser.waitForExistence(timeout: 10),
             "The native chat must expose the workspace chooser."

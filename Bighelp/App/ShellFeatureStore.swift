@@ -950,13 +950,13 @@ final class ShellFeatureStore {
                     role: .assistant,
                     sender: .system(
                         id: "loopdy-link",
-                        snapshot: .init(name: "bighelp Link")
+                        snapshot: .init(name: "bighelp")
                     ),
                     content: .message(
                         "This interactive card could not be displayed. The conversation is still available in text."
                     ),
                     metadata: .init(
-                        source: "bighelp Link",
+                        source: "bighelp",
                         freshness: "Just now",
                         delivery: "Diagnostic"
                     )

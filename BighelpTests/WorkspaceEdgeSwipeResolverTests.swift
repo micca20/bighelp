@@ -121,27 +121,3 @@ struct QuickWorkspaceContentTests {
         #expect(QuickWorkspaceSectionPresentation.buttonMinimumHeight == 44)
     }
 }
-
-struct WorkspaceMenuOwnershipTests {
-    @Test func rootOverlayIsTheOnlyOwnerAtTheRoot() {
-        #expect(WorkspaceMenuOwnership.shouldPresentRootOverlay(
-            isPresented: true,
-            path: []
-        ))
-        #expect(!WorkspaceMenuOwnership.shouldPresentRootOverlay(
-            isPresented: false,
-            path: []
-        ))
-    }
-
-    @Test func pushedRoutesLeaveDrawerOwnershipToTheirRouteCover() {
-        #expect(!WorkspaceMenuOwnership.shouldPresentRootOverlay(
-            isPresented: true,
-            path: [.sessions]
-        ))
-        #expect(!WorkspaceMenuOwnership.shouldPresentRootOverlay(
-            isPresented: true,
-            path: [.chat(conversationID: "current")]
-        ))
-    }
-}

@@ -174,10 +174,10 @@ final class CompactChatComposerUITests: BighelpUITestCase {
             "-loopdy.demo.appearance", "light"
         ]
         app.launch()
-        let workspace = app.buttons["quick-workspace.menu"]
+        let workspace = app.buttons["home.drawer.open"]
         XCTAssertTrue(workspace.waitForExistence(timeout: 5))
         workspace.tap()
-        app.buttons["quick-workspace.new-chat"].tap()
+        app.buttons["menu.new-chat"].tap()
         let editor = app.textViews["chat.composer.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         editor.tap()
@@ -266,7 +266,7 @@ final class CompactChatComposerUITests: BighelpUITestCase {
         XCTAssertTrue(app.keyboards.firstMatch.exists)
         openChatWorkspaceMenu(in: app)
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["quick-workspace.menu.home"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["menu.agents"].waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, (draft ?? "") + " kept")
     }
 

@@ -16,12 +16,15 @@ struct BighelpManagedEnrollmentRecord: Codable, Equatable {
     var subscriptions: Set<String>
     /// Retained historical metadata, never authority for the BuzzKit provider.
     var retiredRelayState: Data? = nil
+    /// The sealed-alert key this phone gave the host for this grant.
+    var sealedRecipientKeyID: String? = nil
 }
 
 extension BighelpManagedEnrollmentRecord {
     private enum CodingKeys: String, CodingKey {
         case accountScope, accountID, hostConnectionID, profile, creationBody, enrollmentID
         case grant, richLiveActivitySupported, enabled, revokePending, subscriptions, retiredRelayState
+        case sealedRecipientKeyID
     }
 
     init(from decoder: Decoder) throws {
@@ -37,6 +40,7 @@ extension BighelpManagedEnrollmentRecord {
         revokePending = try values.decode(Bool.self, forKey: .revokePending)
         subscriptions = try values.decode(Set<String>.self, forKey: .subscriptions)
         retiredRelayState = try values.decodeIfPresent(Data.self, forKey: .retiredRelayState)
+        sealedRecipientKeyID = try values.decodeIfPresent(String.self, forKey: .sealedRecipientKeyID)
         if let raw = try values.decodeIfPresent(BighelpJSONValue.self, forKey: .grant),
            let object = raw.object, Self.isLegacyRelayGrant(object) {
             // The former provider used the same owners-v1 file but a different

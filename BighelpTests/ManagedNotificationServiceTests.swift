@@ -401,6 +401,43 @@ import UserNotifications
         #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.subscriptions.contains("stored") == true)
     }
 
+    @Test func sealedAlertHostGetsThisPhonesKeyDirectlyAndOnce() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.hostAPI.sealedAlerts = true
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let key = try BighelpSealedAlertRecipient.key(store: fixture.sealedKeys)
+        #expect(fixture.hostAPI.recipientKeys == [BighelpSealedAlertRecipient.publicKey(key)])
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.sealedRecipientKeyID
+            == BighelpSealedAlert.keyID(key.publicKey.x963Representation))
+        let grant = fixture.account.template
+        let sender = try #require(try fixture.sealedSenders.sender(grantID: grant.grantId))
+        #expect(sender.hostPublicKey == grant.hostPublicKey && sender.hostKeyID == grant.hostKeyId)
+
+        // Opening a chat keeps the key the host already has.
+        let client = try DirectHermesConversationClient(rpc: IdleRPC(), hostIdentity: fixture.host.principalIdentity,
+            profile: "default", runtimeID: "runtime", storedID: "stored", title: "Fixture", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: fixture.root.appending(path: "drafts")))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        try await fixture.service.onChatOpened(host: fixture.host, chat: DirectHermesChat(id: client.conversationID, client: client, model: model))
+        #expect(fixture.hostAPI.recipientKeys.count == 1)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.subscriptions.contains("stored") == true)
+
+        // Removing the host forgets which key may sign its alerts.
+        try fixture.service.removeLocalEnrollment(host: fixture.host)
+        #expect(try fixture.sealedSenders.sender(grantID: grant.grantId) == nil)
+    }
+
+    @Test func hostWithoutSealedAlertsNeverGetsAKey() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        #expect(fixture.hostAPI.recipientKeys.isEmpty)
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.sealedRecipientKeyID == nil)
+        #expect(try fixture.sealedSenders.load().isEmpty)
+    }
+
     @Test(arguments: [false, true])
     func independentChatSubscribesUsingItsNativeAuthorityOnlyAfterOptIn(dashboard: Bool) async throws {
         let fixture = try Fixture(independent: true, dashboard: dashboard)
@@ -514,6 +551,8 @@ import UserNotifications
         var hasPersistedGrant: () -> Bool = { false }
         var producerLoaded = true
         var supportedEvents = ManagedNotificationValidation.eventTypes.sorted()
+        var sealedAlerts = false
+        var recipientKeys: [String] = []
         init(_ account: Account, _ trust: BighelpNotificationHostTrustStore) { self.account=account;self.trust=trust }
         func request(_ suffix: String, method: String, body: [String: BighelpJSONValue]?, isCurrent: @escaping @MainActor () -> Bool) async throws -> BighelpJSONValue {
             guard isCurrent() else { throw DirectHermesError.secureStorageChanged }
@@ -521,7 +560,13 @@ import UserNotifications
                 "hostPublicKey":.string(account.template.hostPublicKey),"managedEnrollmentSupported":.boolean(true),
                 "supportedEventTypes":.array(supportedEvents.map(BighelpJSONValue.string)),
                 "richLiveActivitySupported":.boolean(true),
+                "sealedAlerts":sealedAlerts ? .object(["version":.integer(2)]) : .null,
                 "producerCapabilities":.object(["sessionCompletion":.boolean(producerLoaded),"sessionFailure":.boolean(producerLoaded),"richLiveActivity":.boolean(producerLoaded),"nativeApproval":.boolean(supportedEvents.contains("approval.required")),"nativeClarification":.boolean(false)])]) }
+            if suffix.hasSuffix("/recipient-key"), method == "PUT", let key = body?["publicKey"]?.string {
+                recipientKeys.append(key)
+                let raw = try #require(BighelpNotificationBase64URL.decodeCanonical(key))
+                return .object(["version":.integer(1),"recipientKeyId":.string(BighelpSealedAlert.keyID(raw))])
+            }
             if suffix.hasSuffix("/sessions"), let body {
                 let profile = try #require(body["profile"]?.string)
                 let session = try #require(body["sessionId"]?.string)
@@ -660,6 +705,8 @@ import UserNotifications
         var host: BighelpConfiguredHost { registry.hosts.first { $0.id == storedHost.id } ?? storedHost }
         let connection: DirectHermesSavedConnection; let ledger: BighelpManagedNotificationLedger
         let trust: BighelpNotificationHostTrustStore; let service: BighelpManagedNotificationService
+        let sealedKeys = BighelpNotificationRecipientKeyStore(accessGroup: nil, account: "test." + UUID().uuidString)
+        let sealedSenders = BighelpSealedAlertSenderStore(accessGroup: nil, service: "app.loopdy.test.sealed." + UUID().uuidString)
         let account: Account; let hostAPI: Host
         private let notificationTransport: NoNetworkTransport
         var bindingRequests: Int { notificationTransport.bindingRequests }
@@ -723,8 +770,9 @@ import UserNotifications
             )))
             let identity = BighelpNotificationIdentityCoordinator(vault: identityVault, legacyVault: vault, broker: broker)
             service=BighelpManagedNotificationService(identity:identity,api:account,requestPermission:{permissionGranted},registry:registry,ledger:ledger,
-                activityKeys:BighelpManagedActivityKeychain(service:"app.loopdy.test.activities."+UUID().uuidString),hostClient:{_ in hostClient},now:{Date(timeIntervalSince1970:1_800_000_100)},buzzKit:providerOverride ?? provider)
+                activityKeys:BighelpManagedActivityKeychain(service:"app.loopdy.test.activities."+UUID().uuidString),hostClient:{_ in hostClient},now:{Date(timeIntervalSince1970:1_800_000_100)},buzzKit:providerOverride ?? provider,
+                sealedRecipientKeys:sealedKeys,sealedSenders:sealedSenders)
         }
-        func cleanup(){ try? trust.removeAll(); registry.bind(deviceID:nil,authorizationEpoch:nil); try? FileManager.default.removeItem(at:root) }
+        func cleanup(){ try? trust.removeAll(); try? sealedKeys.remove(); try? sealedSenders.removeAll(); registry.bind(deviceID:nil,authorizationEpoch:nil); try? FileManager.default.removeItem(at:root) }
     }
 }

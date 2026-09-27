@@ -81,9 +81,29 @@ extension BighelpUITestCase {
 
     @MainActor
     func openActivity(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        openSidebarDestination("quick-workspace.menu.home", in: app, file: file, line: line)
+        openHermesTool("activity", in: app, file: file, line: line)
         XCTAssertTrue(app.descendants(matching: .any)["dashboard.screen"].firstMatch.waitForExistence(timeout: 5),
-                      "The Activity destination must open through the current sidebar.", file: file, line: line)
+                      "Activity must open from ☰ › Hermes Tools.", file: file, line: line)
+    }
+
+    @MainActor
+    func openSkillsAndTools(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        openHermesTool("skills", in: app, file: file, line: line)
+    }
+
+    /// Host tools live in ☰ › Hermes Tools (Nerd Mode).
+    @MainActor
+    func openHermesTool(_ destination: String, in app: XCUIApplication,
+                        file: StaticString = #filePath, line: UInt = #line) {
+        openSidebarDestination("menu.hermes-tools", in: app, file: file, line: line)
+        let row = app.buttons["workspace.open.\(destination)"].firstMatch
+        // Let Hermes Tools finish opening before scrolling, or the first rows scroll away.
+        _ = app.descendants(matching: .any)["workspace.hub"].firstMatch.waitForExistence(timeout: 5)
+        _ = row.waitForExistence(timeout: 2)
+        for _ in 0..<6 where !(row.exists && row.isHittable) { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 8), "Hermes Tools must list \(destination).", file: file, line: line)
+        guard row.exists else { return }
+        row.tap()
     }
 
     @MainActor
@@ -107,7 +127,7 @@ extension BighelpUITestCase {
         let destinations = app.buttons.matching(identifier: identifier)
         // A persistent iPad sidebar already exposes the same destination.
         if !destinations.allElementsBoundByIndex.contains(where: \.isHittable) {
-            let rootMenu = app.buttons["quick-workspace.menu"].firstMatch
+            let rootMenu = app.buttons["home.drawer.open"].firstMatch
             let chatOptions = app.buttons["chat.options"].firstMatch
             let nestedMenu = app.buttons["workspace.menu"].firstMatch
             if !(rootMenu.exists && rootMenu.isHittable) && chatOptions.exists && chatOptions.isHittable {

@@ -47,7 +47,7 @@ struct BighelpConfiguredHostView: View {
                     DisclosureGroup("Advanced connection details") {
                         Text(host.endpoint.identity).bighelpFont(.code).textSelection(.enabled)
                         Text(host.isIndependent
-                             ? "Credentials are saved on this device for this Hermes principal, independently of a bighelp account."
+                             ? "Credentials are saved on this device for this Hermes principal."
                              : "These legacy credentials remain private to this account until explicitly migrated.")
                             .bighelpFont(.metadata).foregroundStyle(.secondary)
                     }

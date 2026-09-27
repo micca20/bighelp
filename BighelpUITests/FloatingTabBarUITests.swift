@@ -2,10 +2,10 @@ import XCTest
 
 final class FloatingTabBarUITests: BighelpUITestCase {
     private let destinations = [
-        (root: "chats", sidebar: "quick-workspace.sessions"),
-        (root: "agents", sidebar: "quick-workspace.menu.agents"),
-        (root: "scheduledTasks", sidebar: "quick-workspace.menu.scheduled-tasks"),
-        (root: "workspace", sidebar: "quick-workspace.hub"),
+        (root: "chats", sidebar: "menu.chats"),
+        (root: "agents", sidebar: "menu.agents"),
+        (root: "scheduledTasks", sidebar: "menu.scheduled-tasks"),
+        (root: "workspace", sidebar: "menu.hermes-tools"),
     ]
 
     @MainActor
@@ -18,7 +18,7 @@ final class FloatingTabBarUITests: BighelpUITestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
         return app
     }
 
@@ -28,7 +28,7 @@ final class FloatingTabBarUITests: BighelpUITestCase {
             for appearance in ["light", "dark"] {
                 let app = launch(version: version, appearance: appearance)
                 assertNativeNavigationGeometry(app)
-                openRootDestination("chats", sidebarIdentifier: "quick-workspace.sessions", in: app)
+                openRootDestination("chats", sidebarIdentifier: "menu.chats", in: app)
                 assertNativeNavigationGeometry(app)
                 let attachment = XCTAttachment(screenshot: app.screenshot())
                 attachment.name = "navigation-\(version)-\(appearance)"
@@ -57,12 +57,12 @@ final class FloatingTabBarUITests: BighelpUITestCase {
     @MainActor
     func testWorkspaceDrawerOwnsFirstTapAndRestoresRootAfterDismissal() {
         let app = launch(version: "v3", appearance: "light")
-        openRootDestination("workspace", sidebarIdentifier: "quick-workspace.hub", in: app)
-        let rootMenu = app.buttons["quick-workspace.menu"]
+        openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
+        let rootMenu = app.buttons["home.drawer.open"]
         let underlyingActivity = app.buttons["workspace.open.activity"]
         XCTAssertTrue(underlyingActivity.waitForExistence(timeout: 5))
         rootMenu.tap()
-        let close = app.buttons["quick-workspace.close"]
+        let close = app.buttons["menu.done"]
         XCTAssertTrue(close.waitForExistence(timeout: 5))
         // A transparent cover retains underlying AX elements, but not hit targets.
         XCTAssertFalse(underlyingActivity.isHittable, "The modal must block underlying native rows.")
@@ -70,10 +70,12 @@ final class FloatingTabBarUITests: BighelpUITestCase {
         XCTAssertTrue(underlyingActivity.waitForExistence(timeout: 5))
         XCTAssertTrue(underlyingActivity.isHittable)
         rootMenu.tap()
-        let activity = app.buttons["quick-workspace.menu.home"]
-        XCTAssertTrue(activity.waitForExistence(timeout: 5))
-        XCTAssertTrue(activity.isHittable)
-        activity.tap()
+        let tools = app.buttons["menu.hermes-tools"]
+        XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        XCTAssertTrue(tools.isHittable)
+        tools.tap()
+        XCTAssertTrue(underlyingActivity.waitForExistence(timeout: 5))
+        underlyingActivity.tap()
         XCTAssertTrue(app.collectionViews["dashboard.screen"].waitForExistence(timeout: 5))
         XCTAssertFalse(close.exists)
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -111,11 +113,11 @@ final class FloatingTabBarUITests: BighelpUITestCase {
     @MainActor
     func testAllRootFinalItemsClearGlassNavigation() {
         let app = launch(version: "v3", appearance: "light")
-        app.buttons["quick-workspace.menu"].tap()
-        let chats = app.buttons["quick-workspace.sessions"]
-        let agents = app.buttons["quick-workspace.menu.agents"]
-        let tasks = app.buttons["quick-workspace.menu.scheduled-tasks"]
-        let workspace = app.buttons["quick-workspace.hub"]
+        app.buttons["home.drawer.open"].tap()
+        let chats = app.buttons["menu.chats"]
+        let agents = app.buttons["menu.agents"]
+        let tasks = app.buttons["menu.scheduled-tasks"]
+        let workspace = app.buttons["menu.hermes-tools"]
         for destination in [chats, agents, tasks, workspace] {
             XCTAssertTrue(destination.waitForExistence(timeout: 5))
             XCTAssertTrue(destination.isHittable)
@@ -152,14 +154,21 @@ final class FloatingTabBarUITests: BighelpUITestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
 
         let routes = [
-            (name: "agents", root: "agents", sidebar: "quick-workspace.menu.agents", screen: "agents.screen"),
-            (name: "chats", root: "chats", sidebar: "quick-workspace.sessions", screen: "sessions.screen"),
-            (name: "scheduled tasks", root: "scheduledTasks", sidebar: "quick-workspace.menu.scheduled-tasks", screen: "scheduled-tasks.screen"),
-            (name: "workspace", root: "workspace", sidebar: "quick-workspace.hub", screen: "workspace.hub"),
-            (name: "activity", root: "activity", sidebar: "quick-workspace.menu.home", screen: "dashboard.screen"),
+            (name: "agents", root: "agents", sidebar: "menu.agents", screen: "agents.screen"),
+            (name: "chats", root: "chats", sidebar: "menu.chats", screen: "sessions.screen"),
+            (name: "scheduled tasks", root: "scheduledTasks", sidebar: "menu.scheduled-tasks", screen: "scheduled-tasks.screen"),
+            (name: "workspace", root: "workspace", sidebar: "menu.hermes-tools", screen: "workspace.hub"),
+            (name: "activity", root: "activity", sidebar: "", screen: "dashboard.screen"),
         ]
         for route in routes {
-            openRootDestination(route.root, sidebarIdentifier: route.sidebar, in: app)
+            // Activity is one of the host's tools: Hermes Tools in the ☰ menu or the sidebar.
+            if route.sidebar.isEmpty, app.collectionViews["root.sidebar"].exists {
+                openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
+                let activity = app.buttons["workspace.open.activity"].firstMatch
+                XCTAssertTrue(activity.waitForExistence(timeout: 5), route.name)
+                activity.tap()
+            } else if route.sidebar.isEmpty { openActivity(in: app) }
+            else { openRootDestination(route.root, sidebarIdentifier: route.sidebar, in: app) }
             let screen = app.descendants(matching: .any)[route.screen].firstMatch
             XCTAssertTrue(screen.waitForExistence(timeout: 5), route.name)
             XCTAssertGreaterThan(screen.frame.height, 0, route.name)
@@ -178,27 +187,30 @@ final class FloatingTabBarUITests: BighelpUITestCase {
                                                 file: StaticString = #filePath, line: UInt = #line) {
         let usesPersistentSidebar = app.buttons["root.destination.chats"].exists
         if !usesPersistentSidebar {
-            app.buttons["quick-workspace.menu"].tap()
+            app.buttons["home.drawer.open"].tap()
             XCTAssertTrue(app.descendants(matching: .any)["navigation.menu"].firstMatch
                 .waitForExistence(timeout: 5), file: file, line: line)
         }
         let buttons = destinations.map {
             app.buttons[usesPersistentSidebar ? "root.destination.\($0.root)" : $0.sidebar].firstMatch
         }
-        var previousY: CGFloat = -.infinity
+        // With very large text the menu scrolls; every destination must still be reachable.
+        let menu = app.descendants(matching: .any)["navigation.menu"].firstMatch
+        var previous: XCUIElement?
         for (index, button) in buttons.enumerated() {
+            for _ in 0..<6 where !usesPersistentSidebar && !(button.exists && button.isHittable) { menu.swipeUp() }
             XCTAssertTrue(button.exists, destinations[index].root, file: file, line: line)
             XCTAssertTrue(button.isHittable, destinations[index].root, file: file, line: line)
             XCTAssertGreaterThanOrEqual(button.frame.width, 44, file: file, line: line)
             XCTAssertGreaterThanOrEqual(button.frame.height, 44, file: file, line: line)
-            XCTAssertGreaterThan(button.frame.midY, previousY, file: file, line: line)
-            previousY = button.frame.midY
-            for prior in buttons[..<index] {
-                XCTAssertFalse(button.frame.intersects(prior.frame), file: file, line: line)
+            if let previous, previous.exists, previous.isHittable {
+                XCTAssertGreaterThan(button.frame.midY, previous.frame.midY, file: file, line: line)
+                XCTAssertFalse(button.frame.intersects(previous.frame), file: file, line: line)
             }
+            previous = button
         }
         if !usesPersistentSidebar {
-            app.buttons["quick-workspace.close"].tap()
+            app.buttons["menu.done"].tap()
         }
     }
 }

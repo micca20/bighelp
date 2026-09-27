@@ -467,8 +467,10 @@ struct SettingsStoreTests {
             .notifications,
             .permissions,
             .connectivityAndNotifications,
+            .help,
+            .watch,
         ])
-        #expect(Set(SettingsMenuSection.allCases.map(\.title)).count == 8)
+        #expect(Set(SettingsMenuSection.allCases.map(\.title)).count == 10)
     }
 
     @Test func currentEdgeGestureChoicesExcludeTheLegacyInboxDestination() {

@@ -267,7 +267,7 @@ final class SessionRuntimeControlModel {
         } catch {
             guard generation == modelLoadGeneration else { return }
             errorMessage = (error as? WorkspaceClientError)?.localizedDescription
-                ?? "Couldn’t load models. Check bighelp Link and try again."
+                ?? "Couldn’t load models. Check your Hermes connection and try again."
         }
     }
 
@@ -321,7 +321,7 @@ final class SessionRuntimeControlModel {
         } catch {
             guard generation == reasoningLoadGeneration else { return }
             errorMessage = (error as? WorkspaceClientError)?.localizedDescription
-                ?? "Couldn’t load reasoning choices. Check bighelp Link and try again."
+                ?? "Couldn’t load reasoning choices. Check your Hermes connection and try again."
         }
     }
 
@@ -493,7 +493,7 @@ final class SessionRuntimeControlModel {
     /// replacing any existing session selection. The picker clears this
     /// recoverable message when the user asks it to load again.
     func markAgentDefaultsLoadFailed() {
-        errorMessage = "Couldn’t load agent defaults. Check bighelp Link and try again."
+        errorMessage = "Couldn’t load agent defaults. Check your Hermes connection and try again."
     }
 
     private func apply(

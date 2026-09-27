@@ -61,6 +61,8 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
     case notifications
     case permissions
     case connectivityAndNotifications
+    case help
+    case watch
 
     var id: Self { self }
 
@@ -73,7 +75,9 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .notifications: "Notifications"
         case .appearance: "Appearance"
         case .permissions: "Permissions"
-        case .connectivityAndNotifications: "Hermes connection"
+        case .connectivityAndNotifications: "Hosts"
+        case .help: "Help & feedback"
+        case .watch: "Apple Watch"
         }
     }
 
@@ -86,7 +90,9 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .notifications: "Optional host enrollment, iOS access, and provider topics"
         case .appearance: "Theme, color mode, and Reflective Vision"
         case .permissions: "iOS access, status, and recovery"
-        case .connectivityAndNotifications: "The computer your agents run on"
+        case .connectivityAndNotifications: "The computers your agents run on"
+        case .help: "Report a problem, guides and version"
+        case .watch: "Pairing and connection"
         }
     }
 
@@ -100,6 +106,8 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .appearance: "paintpalette"
         case .permissions: "hand.raised"
         case .connectivityAndNotifications: "desktopcomputer"
+        case .help: "questionmark.circle"
+        case .watch: "applewatch"
         }
     }
 

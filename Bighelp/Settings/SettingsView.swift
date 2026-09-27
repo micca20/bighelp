@@ -151,6 +151,7 @@ struct SettingsView: View {
                 settingsMenuGroup("Notifications & Access", sections: [.notifications, .permissions])
             }
             BighelpDeferredSection { settingsMenuGroup("Connection", sections: [.connectivityAndNotifications]) }
+            BighelpDeferredSection { settingsMenuGroup("Help & about", sections: [.help, .watch]) }
             if let companionStore {
                 BighelpDeferredSection { companionExtras(companionStore) }
             }
@@ -241,32 +242,44 @@ struct SettingsView: View {
                 localCache
                 Section { Text("Agents, groups and chat history stay on this device between connections. Hermes remains the source for changes.").foregroundStyle(.secondary) }
             case .security:
-                Section("Current connection") {
-                    if let hostRegistry, let saved = hostRegistry.selectedWorkspace?.savedConnection {
-                        LabeledContent("Computer", value: saved.endpoint.identity)
-                        LabeledContent("Sign-in", value: authenticationTitle(saved.authentication))
-                    } else { Text("No host is connected.").foregroundStyle(.secondary) }
-                    Text("Connection credentials are kept in the iOS Keychain. The host controls which sign-in methods it accepts.").font(.footnote).foregroundStyle(.secondary)
-                }
+                currentConnection
             case .contact:
-                Section("Help & feedback") {
-                    Link("Report a problem", destination: URL(string: "https://github.com/promptclickrun/bighelp/issues")!)
-                    Link("Hermes documentation", destination: URL(string: "https://hermes-agent.nousresearch.com/docs")!)
-                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-                    LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
-                }
+                helpAndFeedback
             case .watch:
-                Section("Apple Watch") {
-                    if WCSession.isSupported() {
-                        LabeledContent("Paired", value: WCSession.default.isPaired ? "Yes" : "No")
-                        LabeledContent("App installed", value: WCSession.default.isWatchAppInstalled ? "Yes" : "No")
-                        LabeledContent("Connection", value: WCSession.default.isReachable ? "Reachable" : "Not currently reachable")
-                    } else { Text("Apple Watch connectivity is unavailable on this device.") }
-                }
+                appleWatch
             default: EmptyView()
             }
         }
         .accessibilityIdentifier("settings.detail.\(destination.rawValue)")
+    }
+
+    private var currentConnection: some View {
+        Section("Current connection") {
+            if let hostRegistry, let saved = hostRegistry.selectedWorkspace?.savedConnection {
+                LabeledContent("Computer", value: saved.endpoint.identity)
+                LabeledContent("Sign-in", value: authenticationTitle(saved.authentication))
+            } else { Text("No host is connected.").foregroundStyle(.secondary) }
+            Text("Connection credentials are kept in the iOS Keychain. The host controls which sign-in methods it accepts.").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    private var helpAndFeedback: some View {
+        Section("Help & feedback") {
+            Link("Report a problem", destination: URL(string: "https://github.com/promptclickrun/bighelp/issues")!)
+            Link("Hermes documentation", destination: URL(string: "https://hermes-agent.nousresearch.com/docs")!)
+            LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+            LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
+        }
+    }
+
+    private var appleWatch: some View {
+        Section("Apple Watch") {
+            if WCSession.isSupported() {
+                LabeledContent("Paired", value: WCSession.default.isPaired ? "Yes" : "No")
+                LabeledContent("App installed", value: WCSession.default.isWatchAppInstalled ? "Yes" : "No")
+                LabeledContent("Connection", value: WCSession.default.isReachable ? "Reachable" : "Not currently reachable")
+            } else { Text("Apple Watch connectivity is unavailable on this device.") }
+        }
     }
 
     private func authenticationTitle(_ authentication: DirectHermesStoredAuthentication) -> String {
@@ -345,11 +358,18 @@ struct SettingsView: View {
             )
         case .permissions:
             PermissionsSettingsView(center: permissionCenter)
+        case .help:
+            settingsPage(title: section.title) { helpAndFeedback }
+        case .watch:
+            settingsPage(title: section.title) { appleWatch }
         case .connectivityAndNotifications:
             settingsPage(title: section.title) {
-                if let hostRegistry, hostRegistry.selectedHostID != nil {
+                if let hostRegistry {
                     BighelpConfiguredHostsSection(registry: hostRegistry)
-                    Section { Text(hostRegistry.selectedWorkspace?.status ?? "Not connected") }
+                    if hostRegistry.selectedHostID != nil {
+                        Section { Text(hostRegistry.selectedWorkspace?.status ?? "Not connected") }
+                        currentConnection
+                    }
                 } else {
                     HostRuntimeSection(store: hostRuntime, connectionState: linkConnectionState,
                                        agents: agentDirectory, theme: theme)

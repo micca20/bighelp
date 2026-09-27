@@ -11,10 +11,7 @@ final class BighelpCardGalleryUITests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures", "-use-loopdy-card-gallery"]
         app.launch()
 
-        let menu = app.buttons["quick-workspace.menu"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        app.buttons["quick-workspace.menu.home"].tap()
+        openActivity(in: app)
 
         let dashboard = app.descendants(matching: .any)["dashboard.screen"].firstMatch
         XCTAssertTrue(dashboard.waitForExistence(timeout: 5))

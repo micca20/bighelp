@@ -356,6 +356,10 @@ extension RootShellView {
             }
             .sheet(isPresented: $isHomeDrawerPresented, onDismiss: runAfterHomeSheet) {
                 homeDrawer
+                    .task {
+                        // Hosts paired through bighelp Link (no independent hosts yet).
+                        if hostRegistry?.hosts.isEmpty != false, linkDevices.loadState == .idle { await linkDevices.load() }
+                    }
             }
     }
 
@@ -404,10 +408,18 @@ extension RootShellView {
 
     private var homeDrawer: some View {
         AgentHomeDrawer(
-            agentName: homeAgent?.name ?? "your agent",
             chats: Array(sessionCatalog.recentSummaries(includeCronSessions: false).prefix(12)),
             agent: { id in agents.profiles.first { $0.id == id }.map { ($0.name, agents.avatarURL(for: $0)) } },
-            showsWorkspace: settings.nerdModeEnabled,
+            hosts: BighelpMenuHosts.current(registry: hostRegistry, linkDevices: linkDevices),
+            destinations: menuDestinations,
+            onOpen: { summary in afterClosingHomeSheets { openAsHomeChat(summary) } }
+        )
+    }
+
+    /// Where the ☰ menu goes. Every menu entry point opens this one menu.
+    var menuDestinations: BighelpMenuDestinations {
+        BighelpMenuDestinations(
+            newChatTitle: homeAgent.map { "New chat with \($0.name)" } ?? "New chat",
             onNewChat: {
                 afterClosingHomeSheets {
                     if appState.selectedTab != .sessions { appState.select(.sessions) }
@@ -416,12 +428,15 @@ extension RootShellView {
                 }
             },
             onNewGroup: newGroupChatAction == nil ? nil : { afterClosingHomeSheets { inviteToGroup(seed: nil) } },
-            onOpen: { summary in afterClosingHomeSheets { openAsHomeChat(summary) } },
             onAllChats: { afterClosingHomeSheets { appState.select(.sessions) } },
             onAgents: { afterClosingHomeSheets { appState.select(.agents) } },
             onScheduledTasks: { afterClosingHomeSheets { openScheduledTasks(filteredTo: nil) } },
-            onWorkspace: { afterClosingHomeSheets { appState.select(.workspace) } },
+            onHermesTools: settings.nerdModeEnabled ? { afterClosingHomeSheets { appState.select(.workspace) } } : nil,
+            folder: settings.nerdModeEnabled
+                ? (name: activeHermesWorkspaceName, open: { afterClosingHomeSheets { presentHermesWorkspaces() } })
+                : nil,
             onSettings: { afterClosingHomeSheets { appState.select(.profile) } }
         )
     }
+
 }

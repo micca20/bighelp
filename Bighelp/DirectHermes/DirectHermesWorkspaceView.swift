@@ -116,7 +116,7 @@ struct DirectHermesSupportView: View {
         NavigationStack {
             List {
                 Section("Native Hermes") {
-                    Text("Messages, reasoning, tools, subagents, profiles, and saved sessions come directly from Hermes—not bighelp Link.")
+                    Text("Messages, reasoning, tools, subagents, profiles, and saved sessions come directly from Hermes.")
                     Text("Stop, steer, queued prompts, approvals, clarification, and commands use native requests. Acceptance does not prove a queued prompt or steer was consumed; review retained submissions after an interrupted connection.")
                 }
                 Section("Separate integrations") {

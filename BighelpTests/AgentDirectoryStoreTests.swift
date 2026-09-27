@@ -530,7 +530,7 @@ struct AgentDirectoryStoreTests {
 
         #expect(store.profiles == [.defaultFixture])
         #expect(store.isLoading == false)
-        #expect(store.errorMessage == "Agents could not be loaded from Hermes. Check bighelp Link and try again.")
+        #expect(store.errorMessage == "Agents could not be loaded from Hermes. Check your Hermes connection and try again.")
 
         try await store.load()
 

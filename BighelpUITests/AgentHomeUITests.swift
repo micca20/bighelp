@@ -48,7 +48,7 @@ final class AgentHomeUITests: BighelpUITestCase {
         tap(app.buttons["chat.menu"])
         XCTAssertTrue(app.descendants(matching: .any)["home.drawer"].waitForExistence(timeout: 10))
         save("07-drawer", app)
-        tap(app.buttons["home.drawer.done"])
+        tap(app.buttons["menu.done"])
 
         // New chat: one agent is a 1:1 chat, two or more a group.
         tap(app.buttons["chat.home.new-chat"])

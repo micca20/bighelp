@@ -123,7 +123,7 @@ final class AgentDirectoryStore {
             if Self.isHermesCapabilityMissing(error) { errorCode = "hermes_capability_missing" }
             errorMessage = errorCode == "hermes_capability_missing"
                 ? Self.hermesCompatibilityRecovery
-                : "Agents could not be loaded from Hermes. Check bighelp Link and try again."
+                : "Agents could not be loaded from Hermes. Check your Hermes connection and try again."
             throw error
         }
     }

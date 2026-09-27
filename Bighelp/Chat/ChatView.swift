@@ -174,7 +174,7 @@ struct ChatView: View {
         model: ChatModel,
         agentName: String = "Avery Park",
         agentRole: String = "Finance agent",
-        agentStatus: String = "bighelp Link",
+        agentStatus: String = "Hermes",
         identityParticipants: [ChatIdentityParticipant]? = nil,
         agents: AgentDirectoryStore? = nil,
         agentEditorPresentation: ChatAgentEditorPresentation? = nil,

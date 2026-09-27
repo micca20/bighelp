@@ -136,7 +136,7 @@ extension RootShellView {
                 selectedTab: appState.drawerSelectedTab,
                 sessionOrganizationAccountID: sessionOrganizationAccountID,
                 sessionOrganizationHostID: sessionOrganizationHostID,
-                responseHapticsCoveredByRoot: isQuickWorkspacePresented
+                responseHapticsCoveredByRoot: isHomeDrawerPresented
                     || isHostStatusPresented
                     || isHermesWorkspacePresented || isLinkAccountPresented
                     || pairingSheetRequest != nil || actionErrorMessage != nil,

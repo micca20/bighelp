@@ -63,6 +63,8 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
 
     private let hostClient: HostClientFactory
     private let now: () -> Date
+    private let sealedRecipientKeys: BighelpNotificationRecipientKeyStore
+    private let sealedSenders: BighelpSealedAlertSenderStore
     private var enrolling = Set<String>()
     private var revocationInFlight = false
     private var opening: UUID?
@@ -78,8 +80,11 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
          registry: BighelpHostRegistry, ledger: BighelpManagedNotificationLedger,
          activityKeys: BighelpManagedActivityKeychain = BighelpManagedActivityKeychain(),
          hostClient: @escaping HostClientFactory, now: @escaping () -> Date = Date.init,
-         buzzKit: any BighelpManagedNotificationProvider = BighelpBuzzKitRuntime.shared) {
+         buzzKit: any BighelpManagedNotificationProvider = BighelpBuzzKitRuntime.shared,
+         sealedRecipientKeys: BighelpNotificationRecipientKeyStore = BighelpSealedAlertRecipient.store,
+         sealedSenders: BighelpSealedAlertSenderStore = BighelpSealedAlertSenderStore()) {
         self.buzzKit = buzzKit
+        self.sealedRecipientKeys = sealedRecipientKeys; self.sealedSenders = sealedSenders
         self.identity = identity; self.api = api
         self.requestPermission = requestPermission
         self.registry = registry; self.ledger = ledger; self.activityKeys = activityKeys
@@ -312,6 +317,11 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
         grant = observed; record.grant = grant; record.enabled = true
         record.creationBody = nil
         try ledger.save(record)
+        if capabilities.supportsSealedAlerts {
+            try await registerSealedRecipient(host: host, profile: profile, grant: grant, client: client,
+                                              isCurrent: { (try? check()) != nil })
+            try check()
+        }
         // Enrollment from Settings can occur after the selected chat was already
         // opened. Subscribe that exact authenticated session now; later chats use
         // the normal onChatOpened hook.
@@ -351,6 +361,14 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
               loaded.managedEnrollmentSupported, loaded.supportsCompletionEnrollment else {
             throw DirectHermesError.notConnected
         }
+        if loaded.supportsSealedAlerts {
+            // Grants made before the host could seal alerts start sealing here.
+            try await registerSealedRecipient(host: host, profile: profile, grant: grant, client: client,
+                                              isCurrent: { (try? self.requireCurrent(host, credentials: credentials)) != nil })
+            try requireCurrent(host, credentials: credentials)
+            guard let refreshed = ledger.record(host: host, profile: profile) else { return }
+            record = refreshed
+        }
         let value = try await client.request("/enrollments/\(grant.grantId)/sessions", method: "PUT", body: [
             "version": .integer(1), "profile": .string(profile), "sessionId": .string(session), "enabled": .boolean(true)
         ], isCurrent: { (try? self.requireCurrent(host, credentials: credentials)) != nil })
@@ -362,6 +380,29 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
               let current = ledger.record(host: host, profile: profile), current.enabled,
               current.grant == grant, !current.revokePending else { throw DirectHermesError.invalidResponse }
         record = current; record.subscriptions.insert(session); try ledger.save(record)
+    }
+
+    /// Gives the host this phone's sealed-alert key, directly and never through the
+    /// notification service, and pins the host key that signs the sealed alerts.
+    private func registerSealedRecipient(host: BighelpConfiguredHost, profile: String, grant: BighelpManagedGrant,
+                                         client: any DirectHostNotificationServing,
+                                         isCurrent: @escaping @MainActor () -> Bool) async throws {
+        let key = try BighelpSealedAlertRecipient.key(store: sealedRecipientKeys)
+        let keyID = BighelpSealedAlert.keyID(key.publicKey.x963Representation)
+        let sender = BighelpSealedAlertSender(grantID: grant.grantId, hostKeyID: grant.hostKeyId,
+                                              hostPublicKey: grant.hostPublicKey, expiresAt: grant.expiresAt)
+        // Trust first: an alert sealed the moment the key lands must already open.
+        try sealedSenders.upsert(sender, now: timestamp)
+        guard ledger.record(host: host, profile: profile)?.sealedRecipientKeyID != keyID else { return }
+        let value = try await client.request("/enrollments/\(grant.grantId)/recipient-key", method: "PUT", body: [
+            "version": .integer(1), "publicKey": .string(BighelpSealedAlertRecipient.publicKey(key))
+        ], isCurrent: isCurrent)
+        guard isCurrent(), value.object?["recipientKeyId"]?.string == keyID,
+              var current = ledger.record(host: host, profile: profile), current.grant == grant else {
+            throw DirectHermesError.invalidResponse
+        }
+        current.sealedRecipientKeyID = keyID
+        try ledger.save(current)
     }
 
     func receive(host: BighelpConfiguredHost, event: DirectHermesEvent) async {
@@ -439,6 +480,10 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
     /// Synchronous removal preserves cloud revoke intent before local retirement.
     /// Main may await revoke(host:) first; offline removal still stops local use.
     func removeLocalEnrollment(host: BighelpConfiguredHost) throws {
+        let grants = ledger.enrollments.filter {
+            $0.accountScope == host.notificationScope && $0.hostConnectionID == host.hostConnectionID
+        }.compactMap { $0.grant?.grantId }
+        try? sealedSenders.remove(grantIDs: Set(grants))
         try ledger.retire(host: host)
         retiredHosts.insert(host.notificationScope + ":" + host.hostConnectionID)
         activityRuntime?.retire(host: host)

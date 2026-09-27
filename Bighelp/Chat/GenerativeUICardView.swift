@@ -1089,7 +1089,7 @@ private struct GenerativeUIFormSheet: View {
                     .disabled(isSubmitting || resultSucceeded || messaging == nil || isExpired)
 
                     if messaging == nil {
-                        Text("Connect bighelp Link to send this response.")
+                        Text("Connect to your Hermes host to send this response.")
                             .foregroundStyle(.secondary)
                     } else if isExpired {
                         Text("This response card has expired. Ask the agent to create a fresh one.")

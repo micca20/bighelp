@@ -23,16 +23,16 @@ final class IMessageShellUITests: BighelpUITestCase {
         attach("sessions-active-pinned-recency", app)
         verify(["loopdy-old", "demo-finance", "demo-travel"], prefix: "session.row.", container: screen)
         attach("sessions-ordinary-recency", app)
-        app.buttons["quick-workspace.menu"].tap()
+        app.buttons["home.drawer.open"].tap()
         let menu = app.descendants(matching: .any)["navigation.menu"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 4))
         let recent = app.descendants(matching: .any)["navigation.recent-chats"].firstMatch
         for _ in 0..<8 where !recent.isHittable { menu.swipeUp() }
         XCTAssertTrue(recent.isHittable)
         recent.tap()
-        verify(["old-pin", "old-active", "new-active", "new-pin"], prefix: "quick-workspace.session.", container: menu)
+        verify(["old-pin", "old-active", "new-active", "new-pin"], prefix: "menu.chat.", container: menu)
         attach("quick-sessions-priority-recency", app)
-        verify(["loopdy-old", "demo-finance", "demo-travel"], prefix: "quick-workspace.session.", container: menu)
+        verify(["loopdy-old", "demo-finance", "demo-travel"], prefix: "menu.chat.", container: menu)
         attach("quick-sessions-ordinary-recency", app)
     }
 
@@ -50,10 +50,10 @@ final class IMessageShellUITests: BighelpUITestCase {
     @MainActor
     func testWorkspaceHubIsDistinctFromFolderPicker() {
         let app = launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
-        app.buttons["quick-workspace.menu"].tap()
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
+        app.buttons["home.drawer.open"].tap()
         let menu = app.descendants(matching: .any)["navigation.menu"].firstMatch
-        let workspace = app.buttons["quick-workspace.hub"]
+        let workspace = app.buttons["menu.hermes-tools"]
         let exists = workspace.waitForExistence(timeout: 3)
         XCTAssertTrue(exists, "Workspace features must be reachable independently of the folder picker.")
         guard exists else { return }
@@ -77,13 +77,13 @@ final class IMessageShellUITests: BighelpUITestCase {
     @MainActor
     func testNavigationAndAgentEditorUseClearBasicAndAdvancedSections() {
         let app = launch()
-        app.buttons["quick-workspace.menu"].tap()
+        app.buttons["home.drawer.open"].tap()
         let navigation = app.descendants(matching: .any)["navigation.menu"].firstMatch
         let nativeMenuExists = navigation.waitForExistence(timeout: 5)
         XCTAssertTrue(nativeMenuExists, "Navigation must use the new native list, not the old side popup.")
         guard nativeMenuExists else { return }
         attach("minimal-navigation", app)
-        app.buttons["quick-workspace.menu.agents"].tap()
+        app.buttons["menu.agents"].tap()
         let more = app.buttons["agent.finance.more"]
         XCTAssertTrue(more.waitForExistence(timeout: 5))
         more.tap()
@@ -200,7 +200,7 @@ final class IMessageShellUITests: BighelpUITestCase {
         let sections = [
             ("notifications", "Notifications"),
             ("permissions", "Device access"),
-            ("connectivityAndNotifications", "Hermes connection")
+            ("connectivityAndNotifications", "Hosts")
         ]
         for (identifier, title) in sections {
             settingsRow("settings.menu.\(identifier)", in: app).tap()
@@ -218,10 +218,10 @@ final class IMessageShellUITests: BighelpUITestCase {
     func testSecondaryDestinationsAndLandscapeChatStayReachable() {
         let app = launch()
         defer { XCUIDevice.shared.orientation = .portrait }
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
         for (route, screen) in [("agents", "agents.screen"),
                                 ("scheduled-tasks", "scheduled-tasks.screen")] {
-            app.buttons["quick-workspace.menu"].tap()
+            app.buttons["home.drawer.open"].tap()
             let destination = app.buttons["quick-workspace.menu.\(route)"]
             XCTAssertTrue(destination.waitForExistence(timeout: 5))
             destination.tap()
@@ -234,8 +234,8 @@ final class IMessageShellUITests: BighelpUITestCase {
             }
             attach("native-\(route)", app)
         }
-        app.buttons["quick-workspace.menu"].tap()
-        let chats = app.buttons["quick-workspace.sessions"]
+        app.buttons["home.drawer.open"].tap()
+        let chats = app.buttons["menu.chats"]
         XCTAssertTrue(chats.waitForExistence(timeout: 5))
         chats.tap()
         let row = app.buttons["session.row.demo-finance"]
@@ -311,9 +311,9 @@ final class IMessageShellUITests: BighelpUITestCase {
         XCTAssertTrue(options.isHittable)
         attach("partner-theme-chat", app)
         openChatWorkspaceMenu(in: app)
-        XCTAssertTrue(app.buttons["quick-workspace.menu.agents"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["menu.agents"].waitForExistence(timeout: 5))
         attach("in-chat-workspace", app)
-        app.buttons["quick-workspace.settings"].tap()
+        app.buttons["menu.settings"].tap()
         XCTAssertTrue(app.buttons["settings.themes"].waitForExistence(timeout: 5))
     }
 
@@ -414,9 +414,9 @@ final class IMessageShellUITests: BighelpUITestCase {
                                "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3",
                                "-loopdy.demo.appearance", "light"]
         app.launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
-        app.buttons["quick-workspace.menu"].tap()
-        app.buttons["quick-workspace.menu.agents"].tap()
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
+        app.buttons["home.drawer.open"].tap()
+        app.buttons["menu.agents"].tap()
         let manage = app.buttons["agent.studio.more"]
         XCTAssertTrue(manage.waitForExistence(timeout: 5))
         manage.tap()
@@ -532,11 +532,8 @@ final class IMessageShellUITests: BighelpUITestCase {
     @MainActor
     func testNativeHomeSwipeDeletesOnlyTheSelectedUpdate() {
         let app = launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
-        app.buttons["quick-workspace.menu"].tap()
-        let home = app.buttons["quick-workspace.menu.home"]
-        XCTAssertTrue(home.waitForExistence(timeout: 3))
-        home.tap()
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
+        openActivity(in: app)
         let dashboard = app.descendants(matching: .any)["dashboard.screen"].firstMatch
         XCTAssertTrue(dashboard.waitForExistence(timeout: 5))
         let update = app.buttons["dashboard.update.row.inbox-finance-payment"].firstMatch
@@ -574,9 +571,9 @@ final class IMessageShellUITests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-agents-directory",
                                "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3"]
         app.launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 10))
-        app.buttons["quick-workspace.menu"].tap()
-        app.buttons["quick-workspace.menu.agents"].tap()
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
+        app.buttons["home.drawer.open"].tap()
+        app.buttons["menu.agents"].tap()
         let group = app.buttons["agents.group.research-circle"]
         let directory = app.descendants(matching: .any)["agents.screen"].firstMatch
         for _ in 0..<10 where !(group.exists && group.isHittable) { directory.swipeUp() }

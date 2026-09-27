@@ -161,17 +161,6 @@ struct QuickWorkspaceBackdrop: View {
     }
 }
 
-/// Keeps the root shell from presenting a second drawer while a pushed route
-/// owns the route-level drawer presentation.
-enum WorkspaceMenuOwnership {
-    static func shouldPresentRootOverlay(
-        isPresented: Bool,
-        path: [AppRoute]
-    ) -> Bool {
-        isPresented && path.isEmpty
-    }
-}
-
 @MainActor
 enum BighelpKeyboard {
     /// The composer uses a UIKit text view for Apple's native selection menu.
@@ -234,9 +223,6 @@ struct WorkspaceMenuButton: View {
 
 @MainActor
 struct QuickWorkspaceDrawer: View {
-    @Environment(\.bighelpUIV3Enabled) private var uiV3Enabled
-    @Environment(\.bighelpUIV2Enabled) private var uiV2Enabled
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var draggedSessionSectionKey: SessionSectionKey?
     @State private var lastSessionSectionDropTargetKey: SessionSectionKey?
     let content: QuickWorkspaceContent
@@ -250,14 +236,12 @@ struct QuickWorkspaceDrawer: View {
     let selectedTab: AppTab?
     let onDismiss: () -> Void
     let onNewChat: () -> Void
-    let onOpenHome: () -> Void
     // NavigationStack destinations do not inherit environment values attached
     // only to its root content. Require navigation at every drawer call site.
     let onOpenSessions: () -> Void
     let onOpenSession: (SessionSummary) -> Void
     let onOpenAgents: () -> Void
     let onOpenScheduledTasks: () -> Void
-    let onOpenSkillsTools: () -> Void
     let onOpenWorkspaceHub: () -> Void
     let onOpenWorkspaces: () -> Void
     let onSelectAgent: (AgentProfile) -> Void
@@ -267,19 +251,21 @@ struct QuickWorkspaceDrawer: View {
     /// Settings has one fixed header affordance in every drawer variant.
     var onOpenSettings: () -> Void { onOpenMore }
 
+    @Environment(\.bighelpHostRegistry) private var hostRegistry
+
     var body: some View {
         Group {
             if isEmbedded {
-                nativeNavigationList
+                menu
             } else {
                 NavigationStack {
-                    nativeNavigationList
-                        .navigationTitle(EmberBrand.appName)
+                    menu
+                        .navigationTitle("Menu")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("Done", action: onDismiss)
-                                    .accessibilityIdentifier("quick-workspace.close")
+                                    .accessibilityIdentifier("menu.done")
                             }
                         }
                 }
@@ -287,111 +273,55 @@ struct QuickWorkspaceDrawer: View {
         }
         .onDisappear { resetSectionDrag() }
         .task {
-            if hostDevices.loadState == .idle { await hostDevices.load() }
+            if hostRegistry == nil, hostDevices.loadState == .idle { await hostDevices.load() }
         }
         .onChange(of: sessionOrganizationAccountID) { _, _ in resetSectionDrag() }
         .onChange(of: sessionOrganizationHostID) { _, _ in resetSectionDrag() }
         .onChange(of: content.organizeByProjects) { _, _ in resetSectionDrag() }
     }
 
-    private var nativeNavigationList: some View {
-        List {
-            Section("Conversations") {
-                nativeNavigationRow("New chat", symbol: "square.and.pencil", id: "quick-workspace.new-chat", action: onNewChat)
-                nativeNavigationRow("Chats", symbol: "bubble.left.and.bubble.right", id: "quick-workspace.sessions", action: onOpenSessions)
-                nativeNavigationRow("Agents", symbol: "person.2", id: "quick-workspace.menu.agents", action: onOpenAgents)
-                if !settings.nerdModeEnabled { scheduledTasksRow }
+    /// The same menu as ☰, with the sidebar's project groups and pinned agents as its recent list.
+    private var menu: some View {
+        BighelpMenu(
+            hosts: BighelpMenuHosts.current(registry: hostRegistry, linkDevices: hostDevices),
+            destinations: BighelpMenuDestinations(
+                onNewChat: onNewChat,
+                onAllChats: onOpenSessions,
+                onAgents: onOpenAgents,
+                onScheduledTasks: onOpenScheduledTasks,
+                onHermesTools: settings.nerdModeEnabled ? onOpenWorkspaceHub : nil,
+                folder: settings.nerdModeEnabled ? (name: activeWorkspaceName, open: onOpenWorkspaces) : nil,
+                onSettings: onOpenSettings
+            ),
+            close: isEmbedded ? {} : onDismiss,
+            hasRecent: !content.recentSessions.isEmpty || !agents.pinnedAgents.isEmpty
+        ) {
+            ForEach(content.sessionGroups) { group in
+                if content.organizeByProjects { sessionGroupHeader(group) }
+                ForEach(group.sessions) { recentSessionButton($0) }
             }
-            // Host tools stay behind Nerd Mode; iPad shows this list as the
-            // chat sidebar, so it must match the simple everyday navigation.
-            if settings.nerdModeEnabled {
-                advancedSections
-            } else {
-                Section {
-                    nativeNavigationRow("Settings", symbol: "gearshape", id: "quick-workspace.settings", action: onOpenSettings)
+            ForEach(agents.pinnedAgents) { agent in
+                Button { onSelectAgent(agent) } label: {
+                    HStack(spacing: BighelpTokens.space12) {
+                        AvatarView(stableID: agent.id, displayName: agent.name,
+                                   imageURL: agents.avatarURL(for: agent), size: 30)
+                        Text(agent.name)
+                            .bighelpFont(.body)
+                            .foregroundStyle(theme.primaryText)
+                        Spacer(minLength: BighelpTokens.space8)
+                        Image(systemName: "pin.fill")
+                            .font(.caption)
+                            .foregroundStyle(theme.secondaryText)
+                            .accessibilityLabel("Pinned")
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
                 }
-            }
-            if !content.recentSessions.isEmpty || !agents.pinnedAgents.isEmpty {
-                savedSection
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("menu.agent.\(agent.id)")
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(BighelpThemeCanvas(theme: theme))
-        .tint(theme.action)
         .accessibilityIdentifier("navigation.menu")
-    }
-
-    private var scheduledTasksRow: some View {
-        nativeNavigationRow("Scheduled tasks", symbol: "calendar", id: "quick-workspace.menu.scheduled-tasks",
-                            action: onOpenScheduledTasks)
-    }
-
-    @ViewBuilder
-    private var advancedSections: some View {
-        Section("Work") {
-            nativeNavigationRow("Activity", symbol: "waveform.path", id: "quick-workspace.menu.home", action: onOpenHome)
-            scheduledTasksRow
-            nativeNavigationRow("Skills & tools", symbol: "wrench.and.screwdriver", id: "quick-workspace.menu.skills-&-tools", action: onOpenSkillsTools)
-        }
-        Section("Workspace") {
-            nativeNavigationRow("Workspace features", symbol: "square.grid.2x2", id: "quick-workspace.hub", action: onOpenWorkspaceHub)
-            Button(action: onOpenWorkspaces) {
-                LabeledContent("Folder", value: activeWorkspaceName)
-            }
-            .accessibilityIdentifier("quick-workspace.workspaces")
-            Menu {
-                BighelpLinkHostPicker(
-                    hosts: BighelpLinkDeviceSections(devices: hostDevices.devices).hosts,
-                    selectedHostID: hostDevices.selectedHostID,
-                    primaryHostID: hostDevices.primaryHostID,
-                    onSelectHost: { hostID in
-                        BighelpKeyboard.dismiss()
-                        onDismiss()
-                        hostDevices.selectHost(hostID)
-                    }
-                )
-            } label: {
-                Label("Switch instance", systemImage: "desktopcomputer")
-            }
-            .accessibilityIdentifier("quick-workspace.instance-picker")
-            nativeNavigationRow("Settings", symbol: "gearshape", id: "quick-workspace.settings", action: onOpenSettings)
-        }
-    }
-
-    private var savedSection: some View {
-        Section("Saved") {
-            if !content.recentSessions.isEmpty {
-                DisclosureGroup("Recent chats") {
-                    ForEach(content.sessionGroups) { group in
-                        if content.organizeByProjects { sessionGroupHeader(group) }
-                        ForEach(group.sessions) { recentSessionButton($0) }
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("navigation.recent-chats")
-            }
-            if !agents.pinnedAgents.isEmpty {
-                DisclosureGroup("Pinned agents") {
-                    ForEach(agents.pinnedAgents) { agent in
-                        Button(agent.name) { onSelectAgent(agent) }
-                            .accessibilityIdentifier("quick-workspace.agent.\(agent.id)")
-                    }
-                }
-            }
-        }
-    }
-
-    private func nativeNavigationRow(_ title: String, symbol: String, id: String,
-                                     action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-        .accessibilityIdentifier(id)
     }
 
     @ViewBuilder
@@ -520,31 +450,12 @@ struct QuickWorkspaceDrawer: View {
 
     private func recentSessionButton(_ session: SessionSummary) -> some View {
         Button { onOpenSession(session) } label: {
-            HStack(spacing: BighelpTokens.space12) {
-                Image(systemName: uiV3Enabled ? "bubble.left.and.bubble.right" : "bubble.left")
-                    .font(uiV3Enabled ? .body : .system(size: 17, weight: .medium))
-                    .foregroundStyle(theme.primaryText)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                    Text(session.title)
-                        .bighelpFont(.body)
-                        .foregroundStyle(theme.primaryText)
-                        .lineLimit(uiV2Enabled && dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    if uiV2Enabled {
-                        Text(session.updatedAt, style: .relative)
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                }
-                Spacer(minLength: BighelpTokens.space8)
+            BighelpMenuChatRow(chat: session) { id in
+                agents.profiles.first { $0.id == id }.map { ($0.name, agents.avatarURL(for: $0)) }
             }
-            .padding(.horizontal, uiV2Enabled ? BighelpTokens.space8 : 0)
-            .padding(.vertical, uiV2Enabled ? BighelpTokens.space8 : 0)
-            .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
-            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("quick-workspace.session.\(session.id)")
+        .accessibilityIdentifier("menu.chat.\(session.id)")
     }
 
     @BighelpThemeReader private var theme

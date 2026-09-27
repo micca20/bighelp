@@ -10,7 +10,10 @@ struct WorkspaceManagementTests {
         #expect(!WorkspaceDestination.appMenuCases.contains(.tasks))
         #expect(WorkspaceDestination.appMenuCases.contains(.scheduledTasks))
         #expect(WorkspaceDestination.appMenuCases.contains(.artifacts))
-        #expect(WorkspaceDestination.appMenuCases.count == WorkspaceDestination.allCases.count - 2)
+        // This app's own settings (look, permissions, Apple Watch…) live in Settings, not Hermes Tools.
+        #expect(!WorkspaceDestination.appMenuCases.contains { $0.section == .app })
+        #expect(WorkspaceDestination.appMenuCases.count
+            == WorkspaceDestination.allCases.count - 2 - WorkspaceDestination.allCases.filter { $0.section == .app }.count)
         let visibleTitles = Set(WorkspaceDestination.appMenuCases.map(\.title))
         #expect(visibleTitles.isDisjoint(with: ["Scratchpad", "GitHub", "Wiki", "Tasks"]))
     }

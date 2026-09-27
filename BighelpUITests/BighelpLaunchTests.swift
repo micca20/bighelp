@@ -58,7 +58,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             let title = app.staticTexts.matching(identifier: "loopdy.root.title")
                 .matching(NSPredicate(format: "label == %@", "Chats")).firstMatch
             XCTAssertTrue(title.waitForExistence(timeout: 5))
-            let menu = app.buttons["quick-workspace.menu"]
+            let menu = app.buttons["home.drawer.open"]
             XCTAssertTrue(menu.isHittable)
             XCTAssertFalse(menu.frame.intersects(title.frame))
             XCTAssertLessThanOrEqual(menu.frame.maxY, title.frame.minY)
@@ -67,7 +67,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             screenshot.lifetime = .keepAlways
             add(screenshot)
             menu.tap()
-            XCTAssertTrue(app.buttons["quick-workspace.settings"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.buttons["menu.settings"].waitForExistence(timeout: 3))
             app.terminate()
         }
     }
@@ -129,10 +129,10 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertGreaterThan(try metric("FRAME_COUNT"), 60)
         XCTAssertLessThan(try metric("MAIN_QUEUE_MAX_MS"), 250)
         XCTAssertLessThan(try metric("FRAME_GAP_MS"), 500)
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 3))
         menu.tap()
-        let settings = app.buttons["quick-workspace.settings"]
+        let settings = app.buttons["menu.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.tap()
         XCTAssertTrue(settingsRow("settings.menu.chat", in: app).waitForExistence(timeout: 3))
@@ -202,18 +202,18 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-ui-v3"]
         app.launch()
 
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.tap()
 
-        let drawer = app.descendants(matching: .any)["quick-workspace.drawer"].firstMatch
+        let drawer = app.descendants(matching: .any)["navigation.menu"].firstMatch
         XCTAssertTrue(drawer.waitForExistence(timeout: 3))
 
         let menuIDs = [
-            "quick-workspace.menu.home",
-            "quick-workspace.menu.agents",
-            "quick-workspace.menu.scheduled-tasks",
-            "quick-workspace.menu.skills-&-tools",
+            "menu.agents",
+            "menu.scheduled-tasks",
+            "menu.hermes-tools",
+            "menu.settings",
         ]
         let menuRows = menuIDs.map { app.buttons[$0].firstMatch }
         for row in menuRows {
@@ -226,8 +226,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTAssertLessThan(first.frame.minY, second.frame.minY, "Menu routes must retain their visible order")
         }
 
-        let pinnedAgent = app.buttons["quick-workspace.agent.finance"]
-        let recentSession = app.buttons["quick-workspace.session.demo-finance"]
+        let pinnedAgent = app.buttons["menu.agent.finance"]
+        let recentSession = app.buttons["menu.chat.demo-finance"]
         XCTAssertTrue(pinnedAgent.waitForExistence(timeout: 3))
         XCTAssertTrue(recentSession.waitForExistence(timeout: 3))
         XCTAssertTrue(pinnedAgent.isHittable, "A pinned agent preview should be visible below the menu routes")
@@ -301,15 +301,15 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTAssertTrue(pin.waitForNonExistence(timeout: 3), "Pinning \(agentID) should dismiss the action sheet")
         }
 
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 3))
         menu.tap()
 
-        let firstPreview = app.buttons["quick-workspace.agent.finance"]
-        let secondPreview = app.buttons["quick-workspace.agent.travel"]
-        let boundedOut = app.buttons["quick-workspace.agent.home"]
+        let firstPreview = app.buttons["menu.agent.finance"]
+        let secondPreview = app.buttons["menu.agent.travel"]
+        let boundedOut = app.buttons["menu.agent.home"]
         let allAgents = app.buttons["quick-workspace.agents.more"]
-        let session = app.buttons["quick-workspace.session.demo-finance"]
+        let session = app.buttons["menu.chat.demo-finance"]
         XCTAssertTrue(firstPreview.waitForExistence(timeout: 3))
         XCTAssertTrue(secondPreview.waitForExistence(timeout: 3))
         XCTAssertFalse(boundedOut.exists, "The third pinned agent must remain behind the full Agents route")
@@ -321,7 +321,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
 
         allAgents.tap()
         XCTAssertTrue(app.descendants(matching: .any)["agents.screen"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.descendants(matching: .any)["quick-workspace.drawer"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["navigation.menu"].exists)
     }
 
     @MainActor
@@ -347,19 +347,19 @@ final class BighelpLaunchTests: BighelpUITestCase {
         shot.name = "sessions-project-collapsed"
         shot.lifetime = .keepAlways
         add(shot)
-        app.buttons["quick-workspace.menu"].tap()
+        app.buttons["home.drawer.open"].tap()
         let drawerToggle = app.buttons["quick-workspace.section-toggle.project:demo-loopdy"]
         XCTAssertTrue(drawerToggle.waitForExistence(timeout: 3))
         XCTAssertEqual(drawerToggle.value as? String, "Collapsed")
-        XCTAssertFalse(app.buttons["quick-workspace.session.demo-finance"].exists)
+        XCTAssertFalse(app.buttons["menu.chat.demo-finance"].exists)
         drawerToggle.tap()
         XCTAssertEqual(drawerToggle.value as? String, "Expanded")
-        XCTAssertTrue(app.buttons["quick-workspace.session.demo-finance"].exists)
+        XCTAssertTrue(app.buttons["menu.chat.demo-finance"].exists)
         let drawerShot = XCTAttachment(screenshot: app.screenshot())
         drawerShot.name = "sidebar-project-expanded"
         drawerShot.lifetime = .keepAlways
         add(drawerShot)
-        app.buttons["quick-workspace.close"].tap()
+        app.buttons["menu.done"].tap()
         XCTAssertEqual(toggle.value as? String, "Expanded")
     }
 
@@ -402,14 +402,14 @@ final class BighelpLaunchTests: BighelpUITestCase {
         collapse("sessions", travelKey)
         let firstOrder = moveFirstBelowSecond("sessions")
         try saveSessionOrganizationEvidence(app, name: "sessions-reordered-collapsed")
-        app.buttons["quick-workspace.menu"].tap()
+        app.buttons["home.drawer.open"].tap()
         XCTAssertTrue(toggle("quick-workspace", bighelpKey).waitForExistence(timeout: 3))
         XCTAssertLessThan(toggle("quick-workspace", firstOrder.0).frame.minY,
                           toggle("quick-workspace", firstOrder.1).frame.minY)
         XCTAssertEqual(toggle("quick-workspace", bighelpKey).value as? String, "Collapsed")
         let secondOrder = moveFirstBelowSecond("quick-workspace")
         try saveSessionOrganizationEvidence(app, name: "sidebar-reordered-collapsed")
-        app.buttons["quick-workspace.close"].tap()
+        app.buttons["menu.done"].tap()
         XCTAssertLessThan(toggle("sessions", secondOrder.0).frame.minY,
                           toggle("sessions", secondOrder.1).frame.minY)
         app.buttons["sessions.section-reorder.\(secondOrder.1)"].tap()
@@ -451,8 +451,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTAssertLessThan(first.frame.minY, second.frame.minY)
         }
         try saveSessionOrganizationEvidence(app, name: "sessions-pinned-active-newest-first")
-        app.buttons["quick-workspace.menu"].tap()
-        let drawerRows = ids.map { app.buttons["quick-workspace.session.\($0)"] }
+        app.buttons["home.drawer.open"].tap()
+        let drawerRows = ids.map { app.buttons["menu.chat.\($0)"] }
         for row in drawerRows { XCTAssertTrue(row.waitForExistence(timeout: 3)) }
         for (first, second) in zip(drawerRows, drawerRows.dropFirst()) {
             XCTAssertLessThan(first.frame.minY, second.frame.minY)
@@ -488,7 +488,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             toggle.tap()
             XCTAssertEqual(toggle.value as? String, before)
             try saveSessionOrganizationEvidence(app, name: "sessions-layout-\(wide ? "landscape" : "portrait")-\(Int(app.frame.width))")
-            app.buttons["quick-workspace.menu"].tap()
+            app.buttons["home.drawer.open"].tap()
             let drawerToggle = app.buttons["quick-workspace.section-toggle.project:demo-loopdy"]
             XCTAssertTrue(drawerToggle.waitForExistence(timeout: 3))
             for _ in 0..<6 where !drawerToggle.isHittable { app.swipeUp() }
@@ -499,7 +499,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTAssertNotEqual(drawerToggle.value as? String, drawerBefore)
             try saveSessionOrganizationEvidence(app, name: "sidebar-layout-\(wide ? "landscape" : "portrait")-\(Int(app.frame.width))")
             drawerToggle.tap()
-            app.buttons["quick-workspace.close"].tap()
+            app.buttons["menu.done"].tap()
         }
     }
 
@@ -533,7 +533,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCUIDevice.shared.orientation = orientation
             let sidebar = app.descendants(matching: .any)["quick-workspace.persistent-sidebar"].firstMatch
             XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
-            let close = app.buttons["quick-workspace.close"]
+            let close = app.buttons["menu.done"]
             XCTAssertTrue(close.waitForExistence(timeout: 5))
             let bounds = sidebar.frame.intersection(app.frame)
             let controls = sidebar.descendants(matching: .button).allElementsBoundByIndex
@@ -582,7 +582,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
                        "The readable chat and composer column must center inside the open canvas")
         saveV2Evidence(app, name: "restored-ipad-sidebar-open")
 
-        app.buttons["quick-workspace.close"].tap()
+        app.buttons["menu.done"].tap()
         XCTAssertTrue(sidebar.waitForNonExistence(timeout: 5))
         // Quick Workspace now reopens from the ⋯ menu; the back button leads the header.
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
@@ -950,7 +950,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertFalse(app.buttons["chat.people"].exists)
         saveV2Evidence(app, name: "v3-ipad-header-\(landscape ? "landscape" : accessibility ? "accessibility" : "portrait")")
         if !accessibility {
-            app.buttons["quick-workspace.close"].tap()
+            app.buttons["menu.done"].tap()
             XCTAssertTrue(sidebar.waitForNonExistence(timeout: 5))
             XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
         }
@@ -1092,10 +1092,10 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let appearance = dark ? "dark" : (accessibility ? "accessibility" : "light")
         saveV2Evidence(app, name: "v3-monochrome-header-\(appearance)")
         openChatWorkspaceMenu(in: app)
-        let create = app.buttons["quick-workspace.new-chat"]
-        let workspace = app.buttons["quick-workspace.workspaces"]
+        let create = app.buttons["menu.new-chat"]
+        let workspace = app.buttons["menu.folder"]
         XCTAssertTrue(create.waitForExistence(timeout: 4))
-        XCTAssertEqual(app.buttons.matching(identifier: "quick-workspace.new-chat").count, 1)
+        XCTAssertEqual(app.buttons.matching(identifier: "menu.new-chat").count, 1)
         XCTAssertEqual(create.frame.width, 64, accuracy: 0.5)
         XCTAssertEqual(create.frame.height, 64, accuracy: 0.5)
         XCTAssertLessThanOrEqual(workspace.frame.width, 200.5)
@@ -1227,9 +1227,9 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launch()
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
         openChatWorkspaceMenu(in: app)
-        XCTAssertTrue(app.buttons["quick-workspace.new-chat"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["menu.new-chat"].waitForExistence(timeout: 4))
         saveV2Evidence(app, name: "v3-side-panel")
-        app.buttons["quick-workspace.settings"].tap()
+        app.buttons["menu.settings"].tap()
         settingsRow("settings.menu.appearance", in: app).tap()
         openThemeList(in: app)
         let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "settings.theme."))
@@ -1364,10 +1364,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-delayed-capability-control", "-loopdy.appearance.ui-v2-enabled", "YES", "-loopdy.demo.appearance", "dark"]
         app.launch()
-        let workspace = app.buttons["quick-workspace.menu"]
-        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
-        workspace.tap()
-        app.buttons["quick-workspace.menu.skills-&-tools"].tap()
+        openSkillsAndTools(in: app)
         let skill = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Weather, Skills,")).firstMatch
         XCTAssertTrue(skill.waitForExistence(timeout: 5))
         skill.tap()
@@ -1518,7 +1515,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launch()
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
         openChatWorkspaceMenu(in: app)
-        let create = app.buttons["quick-workspace.new-chat"]
+        let create = app.buttons["menu.new-chat"]
         XCTAssertTrue(create.waitForExistence(timeout: 5))
         XCTAssertTrue(create.isHittable)
         // Legacy preferences now display V3's black infinity mark in light mode.
@@ -1664,7 +1661,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCUIDevice.shared.orientation = .portrait
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         openChatWorkspaceMenu(in: app)
-        let settings = app.buttons["quick-workspace.settings"]
+        let settings = app.buttons["menu.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 4))
         capture("side-panel")
         settings.tap()
@@ -2142,13 +2139,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(app.staticTexts["Travel Planning"].exists)
         XCTAssertTrue(app.staticTexts["Unassigned"].exists)
 
-        let workspaceMenu = app.buttons["quick-workspace.menu"]
+        let workspaceMenu = app.buttons["home.drawer.open"]
         XCTAssertTrue(workspaceMenu.waitForExistence(timeout: 3))
         workspaceMenu.tap()
 
         XCTAssertEqual(
             app.descendants(matching: .any)
-                .matching(identifier: "quick-workspace.drawer").count,
+                .matching(identifier: "navigation.menu").count,
             1
         )
         XCTAssertTrue(app.staticTexts["bighelp"].waitForExistence(timeout: 2))
@@ -2161,10 +2158,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-loopdy.appearance.ui-v2-enabled", "YES"]
         app.launch()
-        let workspace = app.buttons["quick-workspace.menu"]
-        XCTAssertTrue(workspace.waitForExistence(timeout: 4))
-        workspace.tap()
-        app.buttons["quick-workspace.menu.skills-&-tools"].tap()
+        openSkillsAndTools(in: app)
         let add = app.buttons["skills-tools.add"]
         XCTAssertTrue(add.waitForExistence(timeout: 4))
         let catalogShot = XCTAttachment(screenshot: app.screenshot())
@@ -2206,12 +2200,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        let workspaceMenu = app.buttons["quick-workspace.menu"]
-        XCTAssertTrue(workspaceMenu.waitForExistence(timeout: 3))
-        workspaceMenu.tap()
-        let skills = app.buttons["quick-workspace.menu.skills-&-tools"]
-        XCTAssertTrue(skills.waitForExistence(timeout: 3))
-        skills.tap()
+        openSkillsAndTools(in: app)
 
         XCTAssertTrue(
             app.descendants(matching: .any)["skills-tools.screen"].waitForExistence(timeout: 3)
@@ -2266,7 +2255,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         search.typeText("Travel")
         search.typeText("\n")
         openActivity(in: app)
-        openSidebarDestination("quick-workspace.sessions", in: app)
+        openSidebarDestination("menu.chats", in: app)
 
         XCTAssertTrue(app.scrollViews["sessions.screen"].waitForExistence(timeout: 3))
         XCTAssertEqual(search.value as? String, "Search chats")
@@ -2805,7 +2794,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        let workspaceMenu = app.buttons["quick-workspace.menu"]
+        let workspaceMenu = app.buttons["home.drawer.open"]
         let rootTitle = app.staticTexts["loopdy.root.title"]
         let navigation = app.otherElements["primary-navigation"]
         let dashboard = app.scrollViews["sessions.screen"]
@@ -3011,7 +3000,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
 
         openChatWorkspaceMenu(in: app)
         let currentSession = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "quick-workspace.session.")
+            NSPredicate(format: "identifier BEGINSWITH %@", "menu.chat.")
         ).firstMatch
         XCTAssertTrue(
             currentSession.waitForExistence(timeout: 10),
@@ -3031,13 +3020,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let app = makeApp()
         app.launch()
 
-        let workspaceMenu = app.buttons["quick-workspace.menu"]
+        let workspaceMenu = app.buttons["home.drawer.open"]
         XCTAssertTrue(
             workspaceMenu.waitForExistence(timeout: 8),
             "The dashboard did not expose the Quick Workspace menu."
         )
         workspaceMenu.tap()
-        let sessionsLink = app.buttons["quick-workspace.sessions"]
+        let sessionsLink = app.buttons["menu.chats"]
         XCTAssertTrue(
             sessionsLink.waitForExistence(timeout: 8),
             "Quick Workspace did not expose the Sessions entry point."
@@ -3391,12 +3380,12 @@ final class BighelpLaunchTests: BighelpUITestCase {
         openChatWorkspaceMenu(in: app)
 
         XCTAssertTrue(
-            app.buttons["quick-workspace.sessions"].waitForExistence(timeout: 2),
+            app.buttons["menu.chats"].waitForExistence(timeout: 2),
             "The workspace drawer must render above the active chat with a Sessions route."
         )
         XCTAssertEqual(
             app.descendants(matching: .any)
-                .matching(identifier: "quick-workspace.drawer").count,
+                .matching(identifier: "navigation.menu").count,
             1,
             "Quick Workspace must expose one accessibility container for the drawer."
         )
@@ -3405,7 +3394,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             "The active chat must be covered by the dismissible blurred backdrop."
         )
         XCTAssertGreaterThan(app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "quick-workspace.session.")
+            NSPredicate(format: "identifier BEGINSWITH %@", "menu.chat.")
         ).count, 0)
     }
 
@@ -3415,13 +3404,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 3))
 
         let tabsAndDrawerActions = [
-            (tabID: "tab.agents", drawerActionID: "quick-workspace.menu.agents"),
-            (tabID: "tab.sessions", drawerActionID: "quick-workspace.sessions"),
-            (tabID: "tab.scheduled-tasks", drawerActionID: "quick-workspace.menu.scheduled-tasks"),
-            (tabID: "tab.workspace", drawerActionID: "quick-workspace.settings"),
+            (tabID: "tab.agents", drawerActionID: "menu.agents"),
+            (tabID: "tab.sessions", drawerActionID: "menu.chats"),
+            (tabID: "tab.scheduled-tasks", drawerActionID: "menu.scheduled-tasks"),
+            (tabID: "tab.workspace", drawerActionID: "menu.settings"),
         ]
 
         XCTAssertFalse(app.buttons["tab.inbox"].exists)
@@ -3431,17 +3420,17 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTAssertTrue(tab.waitForExistence(timeout: 3), "Missing root tab: \(tabID)")
             tab.tap()
 
-            let menu = app.buttons["quick-workspace.menu"]
+            let menu = app.buttons["home.drawer.open"]
             XCTAssertTrue(menu.waitForExistence(timeout: 3), "Missing workspace menu on \(tabID)")
             menu.tap()
             XCTAssertTrue(
-                app.buttons["quick-workspace.sessions"].waitForExistence(timeout: 3),
+                app.buttons["menu.chats"].waitForExistence(timeout: 3),
                 "Shared workspace drawer did not open from \(tabID)."
             )
             let drawerAction = app.buttons[drawerActionID]
             XCTAssertTrue(drawerAction.waitForExistence(timeout: 2), drawerActionID)
             drawerAction.tap()
-            openSidebarDestination("quick-workspace.sessions", in: app)
+            openSidebarDestination("menu.chats", in: app)
             XCTAssertTrue(app.buttons["tab.sessions"].isSelected)
         }
     }
@@ -3526,7 +3515,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         sessionsTab.tap()
 
         XCTAssertTrue(app.scrollViews["sessions.screen"].waitForExistence(timeout: 3))
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(
             menu.waitForExistence(timeout: 3),
             "The Sessions root tab must expose the shared workspace menu."
@@ -3534,7 +3523,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         menu.tap()
 
         XCTAssertTrue(
-            app.buttons["quick-workspace.sessions"].waitForExistence(timeout: 3),
+            app.buttons["menu.chats"].waitForExistence(timeout: 3),
             "The Sessions root tab must present the same workspace drawer as every other root tab."
         )
     }
@@ -3745,7 +3734,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         workspaceItem.tap()
         let chats = app.buttons["quick-workspace.menu.chats"]
         XCTAssertTrue(chats.waitForExistence(timeout: 2), "The first tap must open navigation while history is held.")
-        app.buttons["quick-workspace.close"].tap()
+        app.buttons["menu.done"].tap()
         XCTAssertTrue(chats.waitForNonExistence(timeout: 2))
         XCTAssertFalse(app.otherElements["session.restore.loading"].exists)
         let composer = messageComposer(in: app)
@@ -3773,12 +3762,12 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launch()
         for destination in ["sessions", "home"] {
             if destination == "home" { openActivity(in: app) }
-            else { openSidebarDestination("quick-workspace.sessions", in: app) }
+            else { openSidebarDestination("menu.chats", in: app) }
             let session: XCUIElement
             if destination == "home" {
-                let rootMenu = app.buttons["quick-workspace.menu"]
+                let rootMenu = app.buttons["home.drawer.open"]
                 (rootMenu.exists ? rootMenu : app.buttons["workspace.menu"]).tap()
-                session = app.buttons["quick-workspace.session.demo-finance"]
+                session = app.buttons["menu.chat.demo-finance"]
             } else {
                 session = app.descendants(matching: .any).matching(identifier: "session.row.demo-finance").firstMatch
             }
@@ -3796,13 +3785,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
             let workspaceItem = app.buttons["chat.workspace-menu"]
             XCTAssertTrue(workspaceItem.waitForExistence(timeout: 5))
             workspaceItem.tap()
-            let action = app.buttons[destination == "home" ? "quick-workspace.menu.home" : "quick-workspace.sessions"]
+            // "home": ☰ › Hermes Tools.
+            let action = app.buttons[destination == "home" ? "menu.hermes-tools" : "menu.chats"]
             XCTAssertTrue(action.waitForExistence(timeout: 3))
             action.tap()
             let arrived = NSPredicate { _, _ in
-                (destination == "home" ? !app.otherElements["primary-navigation"].exists
-                    : app.buttons["tab.sessions"].isSelected)
-                    && app.scrollViews[destination == "home" ? "dashboard.screen" : "sessions.screen"].isHittable
+                (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                    : app.buttons["tab.sessions"].isSelected && app.scrollViews["sessions.screen"].isHittable)
                     && !app.otherElements["session.restore.loading"].exists
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: arrived, object: app)], timeout: 3), .completed)
@@ -3817,21 +3806,20 @@ final class BighelpLaunchTests: BighelpUITestCase {
         for (destination, throughSkills) in [("home", false), ("sessions", false), ("home", true), ("sessions", true)] {
             openSettings(in: app)
             if throughSkills {
-                openSidebarDestination("quick-workspace.menu.skills-&-tools", in: app)
+                openSkillsAndTools(in: app)
                 XCTAssertTrue(app.navigationBars["Skills & Tools"].waitForExistence(timeout: 3))
             }
-            let menu = app.buttons["quick-workspace.menu"].firstMatch
+            let menu = app.buttons["home.drawer.open"].firstMatch
             let nestedMenu = app.buttons["workspace.menu"].firstMatch
             (menu.exists && menu.isHittable ? menu : nestedMenu).tap()
-            let identifier = destination == "home" ? "quick-workspace.menu.home" : "quick-workspace.sessions"
+            let identifier = destination == "home" ? "menu.hermes-tools" : "menu.chats"  // "home": ☰ › Hermes Tools
             let action = app.buttons[identifier]
             XCTAssertTrue(action.waitForExistence(timeout: 3))
             action.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
             let arrived = NSPredicate { _, _ in
-                !app.otherElements["quick-workspace.drawer"].exists
-                    && (destination == "home" ? !app.otherElements["primary-navigation"].exists
-                        : app.buttons["tab.sessions"].isSelected)
-                    && app.scrollViews[destination == "home" ? "dashboard.screen" : "sessions.screen"].isHittable
+                !app.otherElements["navigation.menu"].exists
+                    && (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                        : app.buttons["tab.sessions"].isSelected && app.scrollViews["sessions.screen"].isHittable)
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: arrived, object: app)], timeout: 3), .completed)
         }
@@ -3845,23 +3833,23 @@ final class BighelpLaunchTests: BighelpUITestCase {
         for origin in ["home", "sessions"] {
             for destination in ["home", "sessions"] {
                 if origin == "home" { openActivity(in: app) }
-                else { openSidebarDestination("quick-workspace.sessions", in: app) }
-                openSidebarDestination("quick-workspace.new-chat", in: app)
+                else { openSidebarDestination("menu.chats", in: app) }
+                openSidebarDestination("menu.new-chat", in: app)
                 let composer = messageComposer(in: app)
                 XCTAssertTrue(composer.waitForExistence(timeout: 3))
                 composer.tap()
                 messageComposer(in: app).typeText("Retained draft")
                 openChatWorkspaceMenu(in: app)
-                let identifier = destination == "home" ? "quick-workspace.menu.home" : "quick-workspace.sessions"
+                let identifier = destination == "home" ? "menu.hermes-tools" : "menu.chats"  // "home": ☰ › Hermes Tools
                 let action = app.buttons[identifier]
                 XCTAssertTrue(action.waitForExistence(timeout: 3))
                 action.tap()
                 let departed = NSPredicate { _, _ in
                     !app.buttons["chat.options"].exists
-                        && !app.otherElements["quick-workspace.drawer"].exists
-                        && (destination == "home" ? !app.otherElements["primary-navigation"].exists
-                            : app.buttons["tab.sessions"].isHittable && app.buttons["tab.sessions"].isSelected)
-                        && app.scrollViews[destination == "home" ? "dashboard.screen" : "sessions.screen"].isHittable
+                        && !app.otherElements["navigation.menu"].exists
+                        && (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                            : app.buttons["tab.sessions"].isHittable && app.buttons["tab.sessions"].isSelected
+                                && app.scrollViews["sessions.screen"].isHittable)
                 }
                 let arrival = XCTNSPredicateExpectation(predicate: departed, object: app)
                 let result = XCTWaiter.wait(for: [arrival], timeout: 3)
@@ -3919,13 +3907,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
 
         openChatWorkspaceMenu(in: app)
-        XCTAssertTrue(app.buttons["quick-workspace.sessions"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["menu.chats"].waitForExistence(timeout: 3))
         XCTAssertFalse(
             app.keyboards.firstMatch.waitForExistence(timeout: 1),
             "Opening Quick Workspace should dismiss the keyboard."
         )
 
-        app.buttons["quick-workspace.sessions"].tap()
+        app.buttons["menu.chats"].tap()
         XCTAssertTrue(
             app.staticTexts["Sessions"].waitForExistence(timeout: 3),
             "The drawer action should leave the chat without restoring the keyboard."
@@ -4692,8 +4680,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        app.buttons["quick-workspace.menu"].tap()
-        let workspaces = app.buttons["quick-workspace.workspaces"]
+        app.buttons["home.drawer.open"].tap()
+        let workspaces = app.buttons["menu.folder"]
         XCTAssertTrue(workspaces.waitForExistence(timeout: 3))
         workspaces.tap()
 
@@ -4723,8 +4711,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
         }
         app.launch()
 
-        app.buttons["quick-workspace.menu"].tap()
-        let scheduledTasks = app.buttons["quick-workspace.menu.scheduled-tasks"]
+        app.buttons["home.drawer.open"].tap()
+        let scheduledTasks = app.buttons["menu.scheduled-tasks"]
         XCTAssertTrue(scheduledTasks.waitForExistence(timeout: 3))
         scheduledTasks.tap()
 
@@ -4786,9 +4774,9 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        app.buttons["quick-workspace.menu"].tap()
-        XCTAssertTrue(app.buttons["quick-workspace.workspaces"].waitForExistence(timeout: 3))
-        app.buttons["quick-workspace.workspaces"].tap()
+        app.buttons["home.drawer.open"].tap()
+        XCTAssertTrue(app.buttons["menu.folder"].waitForExistence(timeout: 3))
+        app.buttons["menu.folder"].tap()
 
         let create = app.buttons["hermes-workspaces.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 3))
@@ -4847,10 +4835,10 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures"]
         app.launch()
 
-        let navigation = app.buttons["quick-workspace.menu"]
+        let navigation = app.buttons["home.drawer.open"]
         XCTAssertTrue(navigation.waitForExistence(timeout: 5))
         navigation.tap()
-        let agents = app.buttons["quick-workspace.menu.agents"]
+        let agents = app.buttons["menu.agents"]
         XCTAssertTrue(agents.waitForExistence(timeout: 3))
         agents.tap()
         let actions = app.buttons["agent.finance"]
@@ -5318,7 +5306,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-use-multi-host-fixtures", "-reset-host-selection-fixture"]
         app.launch()
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.tap()
         let logo = app.descendants(matching: .any)["quick-workspace.instance-picker"].firstMatch

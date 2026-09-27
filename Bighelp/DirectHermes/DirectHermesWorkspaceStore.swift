@@ -10,7 +10,7 @@ final class DirectHermesWorkspaceStore {
     private(set) var address = ""
     private(set) var isConnecting = false
     private(set) var isConnected = false
-    private(set) var status = "Connect your Hermes host to this bighelp account."
+    private(set) var status = "Connect your Hermes host."
     private(set) var profiles: [DirectHermesProfile] = []
     private(set) var sessions: [DirectHermesSessionSummary] = []
     private(set) var localRecovery: [DirectHermesDraftStore.RecoveryRecord] = []

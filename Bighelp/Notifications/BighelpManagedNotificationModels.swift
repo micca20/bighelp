@@ -85,6 +85,10 @@ struct BighelpManagedCapabilities: Decodable, Sendable {
     let supportedEventTypes: [String]?
     let richLiveActivitySupported: Bool?
     let producerCapabilities: Producers
+    /// Present when the host seals notification content for this phone's key.
+    let sealedAlerts: SealedAlerts?
+    struct SealedAlerts: Decodable, Sendable { let version: Int }
+    var supportsSealedAlerts: Bool { sealedAlerts?.version == 2 }
     var supportsCompletionEnrollment: Bool {
         guard let supportedEventTypes else { return false }
         return Set(supportedEventTypes).isSuperset(of: ManagedNotificationValidation.eventTypes)

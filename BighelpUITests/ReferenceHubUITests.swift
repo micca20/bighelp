@@ -101,8 +101,8 @@ class BighelpUITestCase: XCTestCase {
     @MainActor
     func openRootTab(_ identifier: String, in app: XCUIApplication, timeout: TimeInterval = 20,
                      file: StaticString = #filePath, line: UInt = #line) {
-        let drawerRows = ["tab.agents": "home.drawer.agents", "tab.scheduled-tasks": "home.drawer.scheduled",
-                          "tab.profile": "home.drawer.settings"]
+        let drawerRows = ["tab.agents": "menu.agents", "tab.scheduled-tasks": "menu.scheduled-tasks",
+                          "tab.profile": "menu.settings"]
         let sidebar = ["tab.sessions": "chats", "tab.agents": "agents",
                        "tab.scheduled-tasks": "scheduledTasks", "tab.profile": "settings"]
         let deadline = Date.now.addingTimeInterval(timeout)
@@ -119,6 +119,10 @@ class BighelpUITestCase: XCTestCase {
                 if let menu {
                     menu.tap()
                     let item = app.buttons[row].firstMatch
+                    let list = app.descendants(matching: .any)["navigation.menu"].firstMatch
+                    _ = list.waitForExistence(timeout: 10)
+                    // Hosts come first, so later rows can sit below the fold.
+                    for _ in 0..<6 where !(item.exists && item.isHittable) { list.swipeUp() }
                     XCTAssertTrue(item.waitForExistence(timeout: 10), "Missing \(row)", file: file, line: line)
                     item.tap()
                     return
@@ -242,14 +246,17 @@ final class ReferenceHubUITests: BighelpUITestCase {
         captureFailureEvidence(app, checkpoint: "after-workspace-tap")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertTrue(drawer.waitForNonExistence(timeout: 5))
-        let home = app.buttons["quick-workspace.menu.home"].firstMatch
-        let homeExists = home.waitForExistence(timeout: 5)
-        if !homeExists { captureFailureEvidence(app, checkpoint: "workspace-home-missing") }
-        XCTAssertTrue(homeExists)
-        guard homeExists else { return }
-        home.tap()
+        let tools = app.buttons["menu.hermes-tools"].firstMatch
+        let toolsExist = tools.waitForExistence(timeout: 5)
+        if !toolsExist { captureFailureEvidence(app, checkpoint: "workspace-tools-missing") }
+        XCTAssertTrue(toolsExist)
+        guard toolsExist else { return }
+        tools.tap()
+        let activity = app.buttons["workspace.open.activity"].firstMatch
+        XCTAssertTrue(activity.waitForExistence(timeout: 5))
+        activity.tap()
         XCTAssertTrue(app.scrollViews["dashboard.screen"].waitForExistence(timeout: 5))
-        openSidebarDestination("quick-workspace.sessions", in: app)
+        openSidebarDestination("menu.chats", in: app)
         XCTAssertTrue(app.buttons["tab.sessions"].isSelected)
         XCTAssertEqual(app.state, .runningForeground)
     }
@@ -264,11 +271,11 @@ final class ReferenceHubUITests: BighelpUITestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.tap()
         XCTAssertFalse(app.buttons["quick-workspace.wiki"].exists)
-        app.buttons["quick-workspace.new-chat"].tap()
+        app.buttons["menu.new-chat"].tap()
         let editor = app.textViews["chat.composer.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         editor.tap()
@@ -346,7 +353,7 @@ final class ReferenceHubUITests: BighelpUITestCase {
             ("first-command", app.buttons.matching(NSPredicate(
                 format: "identifier BEGINSWITH %@", "reference-hub.command.")).firstMatch),
             ("options", app.buttons["chat.options"]),
-            ("workspace-home", app.buttons["quick-workspace.menu.home"].firstMatch),
+            ("workspace-tools", app.buttons["menu.hermes-tools"].firstMatch),
         ]
         var details = "Checkpoint: \(checkpoint)\nApp state: \(app.state.rawValue)\nApp frame: \(app.frame)\n"
         for (name, element) in elements {

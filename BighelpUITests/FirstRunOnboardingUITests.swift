@@ -75,7 +75,7 @@ final class FirstRunOnboardingUITests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays"]
         app.launch()
-        XCTAssertTrue(app.buttons["quick-workspace.menu"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["onboarding.get-started"].exists)
     }
 

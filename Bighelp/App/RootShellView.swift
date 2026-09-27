@@ -43,7 +43,6 @@ struct RootShellView: View {
     @State private var guidedPairingReference: BighelpLinkPairingReference?
     @State private var pendingIncomingChatSessionID: String?
     @State var isLinkAccountPresented = false
-    @State var isQuickWorkspacePresented = false
     @State var isHermesWorkspacePresented = false
     @State var sessionRestoreRequest: SessionRestoreRequest?
     @State var sessionRestoreTask: Task<Void, Never>?
@@ -274,6 +273,9 @@ struct RootShellView: View {
             Task { await currentHostRuntime?.refresh() }
         }
         .onOpenURL(perform: handleIncomingURL)
+        .onChange(of: acceptsIncomingLinks) { _, ready in
+            if ready { openPendingIncomingChatIfNeeded() }
+        }
         .onChange(of: BighelpExternalSessionOpenCenter.shared.pending, initial: true) { _, open in
             if let open { openExternalSession(open) }
         }
@@ -284,7 +286,7 @@ struct RootShellView: View {
         return hostRegistry?.selectedWorkspace
     }
 
-    private var hasConfiguredLinkHost: Bool {
+    var hasConfiguredLinkHost: Bool {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-test-no-configured-hosts") { return false }
         #endif
@@ -418,20 +420,6 @@ struct RootShellView: View {
                 .allowsHitTesting(!isBlockingSessionRestore)
                 .accessibilityElement(children: .contain)
                 .accessibilityHidden(isBlockingSessionRestore)
-                // Use the same native modal boundary as pushed-route drawers.
-                // An overlay can paint above TabView while its native rows retain input.
-                .sheet(isPresented: Binding(
-                    get: {
-                        WorkspaceMenuOwnership.shouldPresentRootOverlay(
-                            isPresented: isQuickWorkspacePresented,
-                            path: appState.path
-                        )
-                    },
-                    set: { if !$0 { dismissQuickWorkspace() } }
-                )) {
-                    quickWorkspaceOverlay
-                        .presentationDetents([.large])
-                }
                 .overlay {
                     if isBlockingSessionRestore, let request = sessionRestoreRequest {
                         sessionRestoreOverlay(request)
@@ -527,19 +515,8 @@ struct RootShellView: View {
                     }
                 }
                 // Ember lives only in chrome: the brand bar on root screens.
-                EmberBrandToolbarItem()
-
-                if settings.nerdModeEnabled {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button {
-                            presentQuickWorkspace()
-                        } label: {
-                            Image(systemName: "square.grid.2x2")
-                        }
-                        .accessibilityLabel("More")
-                        .accessibilityIdentifier("quick-workspace.menu")
-                    }
-                }
+                // Touch and hold it to switch hosts.
+                EmberBrandToolbarItem(linkDevices: linkDevices)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -849,7 +826,7 @@ struct RootShellView: View {
         Color.clear
             .frame(width: WorkspaceEdgeSwipeResolver.activationEdgeWidth)
             .contentShape(Rectangle())
-            .allowsHitTesting(action != .none && !isQuickWorkspacePresented)
+            .allowsHitTesting(action != .none && !isHomeDrawerPresented)
             .highPriorityGesture(
                 DragGesture(minimumDistance: 12, coordinateSpace: .local)
                     .onEnded { value in
@@ -869,185 +846,10 @@ struct RootShellView: View {
             .accessibilityHidden(true)
     }
 
-    private var quickWorkspaceOverlay: some View {
-        Group {
-            if nativeWorkspaceStore != nil {
-                nativeQuickWorkspaceDrawer
-            } else {
-                quickWorkspaceDrawer
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("quick-workspace.drawer")
-        .accessibilityAddTraits(.isModal)
-    }
-
-    /// Direct-host navigation does not construct a Link catalog or account picker.
-    private var nativeQuickWorkspaceDrawer: some View {
-        NavigationStack {
-            List {
-                if let hostRegistry {
-                    Section("Host") {
-                        ForEach(hostRegistry.hosts) { host in
-                            nativeDrawerRow(
-                                host.name,
-                                symbol: host.id == hostRegistry.selectedHostID ? "checkmark.circle.fill" : "server.rack",
-                                identifier: "quick-workspace.host.\(host.id)"
-                            ) {
-                                hostRegistry.select(host.id)
-                            }
-                            .accessibilityAddTraits(host.id == hostRegistry.selectedHostID ? .isSelected : [])
-                        }
-                        nativeDrawerRow("Add host", symbol: "plus", identifier: "quick-workspace.host.add") {
-                            hostRegistry.beginSetup()
-                        }
-                        if hasConfiguredLinkHost {
-                            nativeDrawerRow("bighelp account", symbol: "person.crop.circle",
-                                            identifier: "quick-workspace.host.account") {
-                                isLinkAccountPresented = true
-                            }
-                        }
-                    }
-                }
-                Section("Conversations") {
-                    nativeDrawerRow("New chat", symbol: "square.and.pencil", identifier: "quick-workspace.new-chat") {
-                        startNewChat(explicitAgentID: nil)
-                    }
-                    nativeDrawerRow("Chats", symbol: "bubble.left.and.bubble.right", identifier: "quick-workspace.sessions") {
-                        openSessions(filteredTo: nil)
-                    }
-                    nativeDrawerRow("Agents", symbol: "person.2", identifier: "quick-workspace.menu.agents") {
-                        appState.select(.agents)
-                    }
-                }
-                Section("Work") {
-                    nativeDrawerRow("Activity", symbol: "waveform.path", identifier: "quick-workspace.menu.home") {
-                        appState.select(.home)
-                    }
-                    nativeDrawerRow("Scheduled tasks", symbol: "calendar", identifier: "quick-workspace.menu.scheduled-tasks") {
-                        openScheduledTasks(filteredTo: nil)
-                    }
-                    nativeDrawerRow("Skills & tools", symbol: "wrench.and.screwdriver", identifier: "quick-workspace.menu.skills-&-tools") {
-                        openPrepared(.skillsAndTools)
-                    }
-                }
-                Section("Workspace") {
-                    nativeDrawerRow("Workspace", symbol: "square.grid.2x2", identifier: "quick-workspace.workspace") {
-                        appState.select(.workspace)
-                    }
-                    nativeDrawerRow("Settings", symbol: "gearshape", identifier: "quick-workspace.settings") {
-                        isUnifiedSettingsPresented = true
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(BighelpThemeCanvas(theme: theme))
-            .accessibilityIdentifier("navigation.menu")
-            .navigationTitle(EmberBrand.appName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: dismissQuickWorkspace)
-                        .accessibilityIdentifier("quick-workspace.close")
-                }
-            }
-        }
-    }
-
-    private func nativeDrawerRow(_ title: String, symbol: String, identifier: String,
-                                 action: @escaping () -> Void) -> some View {
-        Button {
-            dismissQuickWorkspace()
-            action()
-        } label: {
-            Label(title, systemImage: symbol)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private var quickWorkspaceDrawer: some View {
-        QuickWorkspaceDrawer(
-            content: quickWorkspaceContent,
-            hostDevices: linkDevices,
-            settings: settings,
-            sessionOrganizationAccountID: sessionOrganizationAccountID,
-            sessionOrganizationHostID: sessionOrganizationHostID,
-            agents: agents,
-            userIdentity: userIdentity,
-            activeWorkspaceName: activeHermesWorkspaceName,
-            selectedTab: appState.drawerSelectedTab,
-            onDismiss: dismissQuickWorkspace,
-            onNewChat: {
-                dismissQuickWorkspace()
-                startNewChat(explicitAgentID: nil)
-            },
-            onOpenHome: {
-                dismissQuickWorkspace()
-                appState.select(.home)
-            },
-            onOpenSessions: {
-                dismissQuickWorkspace()
-                openSessions(filteredTo: nil)
-            },
-            onOpenSession: { session in
-                dismissQuickWorkspace()
-                openSession(session)
-            },
-            onOpenAgents: {
-                dismissQuickWorkspace()
-                appState.select(.agents)
-            },
-            onOpenScheduledTasks: {
-                dismissQuickWorkspace()
-                openScheduledTasks(filteredTo: agents.resolvedAgent(explicitID: nil)?.id)
-            },
-            onOpenSkillsTools: {
-                dismissQuickWorkspace()
-                openPrepared(.skillsAndTools)
-            },
-            onOpenWorkspaceHub: {
-                dismissQuickWorkspace()
-                appState.select(.workspace)
-            },
-            onOpenWorkspaces: {
-                dismissQuickWorkspace()
-                presentHermesWorkspaces()
-            },
-            onSelectAgent: { agent in
-                dismissQuickWorkspace()
-                agents.select(agent.id)
-                startNewChat(explicitAgentID: agent.id)
-            },
-            onOpenMore: {
-                dismissQuickWorkspace()
-                appState.select(.profile)
-            }
-        )
-    }
-
+    /// Every way into the menu (☰, edge swipes, inner pages) opens the same ☰ sheet.
     private func presentQuickWorkspace() {
         BighelpKeyboard.dismiss()
-        if reduceMotion {
-            isQuickWorkspacePresented = true
-        } else {
-            withAnimation(.snappy(duration: 0.28)) {
-                isQuickWorkspacePresented = true
-            }
-        }
-    }
-
-    private func dismissQuickWorkspace() {
-        if reduceMotion {
-            isQuickWorkspacePresented = false
-        } else {
-            withAnimation(.snappy(duration: 0.24)) {
-                isQuickWorkspacePresented = false
-            }
-        }
+        isHomeDrawerPresented = true
     }
 
     private func performWorkspaceAction(_ action: WorkspaceSwipeAction) {
@@ -1206,30 +1008,11 @@ struct RootShellView: View {
                         } label: {
                             Image(systemName: "line.3.horizontal")
                         }
-                        .accessibilityLabel("Open Quick Workspace")
+                        .accessibilityLabel("Menu")
                         .accessibilityIdentifier("workspace.menu")
                     }
                 }
             }
-            .sheet(isPresented: $isQuickWorkspacePresented) {
-                routeWorkspaceDrawer
-            }
-    }
-
-    private var routeWorkspaceDrawer: some View {
-        Group {
-            Group {
-                if nativeWorkspaceStore != nil {
-                    nativeQuickWorkspaceDrawer
-                } else {
-                    quickWorkspaceDrawer
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("quick-workspace.drawer")
-        .accessibilityAddTraits(.isModal)
-        .presentationDetents([.large])
     }
 
     func startNewChat(explicitAgentID: String?) {
@@ -1265,7 +1048,7 @@ struct RootShellView: View {
         }
     }
 
-    private var activeHermesWorkspaceName: String {
+    var activeHermesWorkspaceName: String {
         hermesWorkspaces.catalog?.workspaces.first(where: \.isActive)?.name
             ?? "Workspace"
     }
@@ -1274,7 +1057,7 @@ struct RootShellView: View {
         agents.resolvedAgent(explicitID: nil)?.id ?? "default"
     }
 
-    private func presentHermesWorkspaces() {
+    func presentHermesWorkspaces() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(180))
             isHermesWorkspacePresented = true
@@ -1327,26 +1110,17 @@ struct RootShellView: View {
         switch route {
         case .home:
             appState.select(.home)
-        case .pairBighelpLink(let reference):
-            guard linkAccount.state == .ready else {
-                guidedPairingReference = reference
-                return
-            }
-            if readinessPresentation.allowsWorkspace {
-                pairingSheetRequest = (pairingSheetRequest
-                    ?? BighelpLinkPairingSheetRequest(reference: nil))
-                    .replacing(with: reference)
-            } else {
-                guidedPairingReference = reference
-            }
+        case .pairBighelpLink:
+            // The old Link pairing flow is retired; hosts connect directly.
+            return
         case .chat(let sessionID):
-            guard !requiresLinkAccount || readinessPresentation.allowsWorkspace else {
+            guard acceptsIncomingLinks else {
                 pendingIncomingChatSessionID = sessionID
                 return
             }
             openIncomingChat(sessionID: sessionID)
         case .agent(let tab):
-            guard !requiresLinkAccount || readinessPresentation.allowsWorkspace else { return }
+            guard acceptsIncomingLinks else { return }
             switch tab {
             case "feed": appState.select(.feed)
             case "ideas": appState.select(.ideas)
@@ -1355,7 +1129,7 @@ struct RootShellView: View {
             default: openHomeChat()
             }
         case .newChat(let agentID):
-            guard !requiresLinkAccount || readinessPresentation.allowsWorkspace else { return }
+            guard acceptsIncomingLinks else { return }
             // A widget names the default agent it rendered; if that profile was
             // removed since, fall back to whichever agent is default now.
             let known = agentID.flatMap { id in agents.profiles.contains(where: { $0.id == id }) ? id : nil }
@@ -1473,6 +1247,13 @@ struct RootShellView: View {
                 actionErrorMessage = "This conversation could not be opened. Try again from Chats."
             }
         }
+    }
+
+    /// Widgets, notifications and Shortcuts open once a Hermes host's workspace is ready.
+    private var acceptsIncomingLinks: Bool {
+        guard requiresLinkAccount else { return true }
+        guard let hostRegistry else { return false }
+        return hostRegistry.isWorkspaceReady && hostRegistry.selectedHostID != nil
     }
 
     private func openPendingIncomingChatIfNeeded() {

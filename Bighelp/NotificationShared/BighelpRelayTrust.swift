@@ -172,11 +172,21 @@ protocol BighelpNotificationRecipientKeyLoading: AnyObject {
 
 final class BighelpNotificationRecipientKeyStore: BighelpNotificationRecipientKeyLoading {
     private let accessGroup: String?
+    /// The content key for sealed notifications (managed alerts v2).
+    static let sealedAlertAccount = "sealed-alerts-p256-v2"
     private let service = "app.loopdy.mobile.link-push"
-    private let account = "p256-agreement-v1"
+    private let account: String
 
-    init(accessGroup: String? = BighelpNotificationKeychainAccess.group) {
+    init(accessGroup: String? = BighelpNotificationKeychainAccess.group, account: String = "p256-agreement-v1") {
         self.accessGroup = accessGroup
+        self.account = account
+    }
+
+    func remove() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw BighelpRelayTrustError.keychain(status)
+        }
     }
 
     func load() throws -> Data? {

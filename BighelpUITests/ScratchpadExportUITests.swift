@@ -53,7 +53,7 @@ final class ScratchpadExportUITests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-ui-v3", "-test-chat-sidebar-collapsed"]
         app.launch()
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.tap()
         app.buttons["quick-workspace.menu.scratchpad"].tap()

@@ -70,20 +70,20 @@ final class SimplifiedShellUITests: BighelpUITestCase {
         capture("agents-search-after-clear", in: app)
         XCTAssertTrue(app.buttons["agents.group.demo-agent-group"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
-        let menu = app.buttons["quick-workspace.menu"]
+        let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.exists)
         menu.tap()
-        let home = app.buttons["quick-workspace.menu.home"]
-        let tasks = app.buttons["quick-workspace.menu.scheduled-tasks"]
-        let skills = app.buttons["quick-workspace.menu.skills-&-tools"]
-        let agents = app.buttons["quick-workspace.menu.agents"]
-        for row in [home, agents, tasks, skills] { XCTAssertTrue(row.isHittable) }
-        XCTAssertLessThan(home.frame.maxY, agents.frame.midY)
+        let agents = app.buttons["menu.agents"]
+        let tasks = app.buttons["menu.scheduled-tasks"]
+        let tools = app.buttons["menu.hermes-tools"]
+        let settings = app.buttons["menu.settings"]
+        for row in [agents, tasks, tools, settings] { XCTAssertTrue(row.isHittable) }
         XCTAssertLessThan(agents.frame.maxY, tasks.frame.midY)
-        XCTAssertLessThan(tasks.frame.maxY, skills.frame.midY)
+        XCTAssertLessThan(tasks.frame.maxY, tools.frame.midY)
+        XCTAssertLessThan(tools.frame.maxY, settings.frame.midY)
         XCTAssertFalse(app.buttons["quick-workspace.menu.scratchpad"].exists)
         XCTAssertFalse(app.buttons["quick-workspace.wiki"].exists)
-        XCTAssertTrue(app.buttons["quick-workspace.new-chat"].exists)
+        XCTAssertTrue(app.buttons["menu.new-chat"].exists)
         capture("drawer-agents-and-tools", in: app)
         agents.tap()
         XCTAssertTrue(app.textFields["agents.search"].waitForExistence(timeout: 3))

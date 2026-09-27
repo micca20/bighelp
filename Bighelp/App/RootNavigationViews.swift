@@ -162,9 +162,37 @@ struct ConversationRootSidebar: View {
     let onOpen: (ConversationRootDestination) -> Void
     let onNewChat: () -> Void
     var showsAdvanced = false
+    @Environment(\.bighelpHostRegistry) private var hostRegistry
 
     var body: some View {
         List {
+            // Same hosts as the ☰ menu: tap one to switch.
+            let hosts = BighelpMenuHosts.current(registry: hostRegistry, linkDevices: nil)
+            if !hosts.hosts.isEmpty || hosts.add != nil {
+                Section("Hosts") {
+                    ForEach(hosts.hosts) { host in
+                        Button { hosts.select(host.id) } label: {
+                            Label(host.name, systemImage: host.isSelected ? "checkmark.circle.fill" : "desktopcomputer")
+                                .foregroundStyle(host.isSelected ? theme.action : theme.primaryText)
+                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityAddTraits(host.isSelected ? .isSelected : [])
+                        .accessibilityIdentifier("menu.host.\(host.id)")
+                    }
+                    if let add = hosts.add {
+                        Button(action: add) {
+                            Label("Add host", systemImage: "plus")
+                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("menu.host.add")
+                    }
+                }
+            }
+
             Section {
                 Button(action: onNewChat) {
                     Label("New Chat", systemImage: "square.and.pencil")
@@ -189,12 +217,10 @@ struct ConversationRootSidebar: View {
                 destinationButton(.settings)
             }
 
+            // Activity, logs and the rest of the host's tools are inside Hermes Tools.
             if showsAdvanced {
                 Section("Advanced") {
-                    destinationButton(.activity)
                     destinationButton(.workspace)
-                    destinationButton(.directLinks)
-                    destinationButton(.diagnostics)
                 }
             }
         }
