@@ -80,22 +80,42 @@ final class BighelpVoiceSettingsClient: VoiceSettingsClient {
 @MainActor
 final class VoiceSettingsPreviewClient: VoiceSettingsClient {
     private var saved: [String: VoiceSettingsConfiguration] = [:]
+
+    private static let initial = VoiceSettingsConfiguration(
+        revision: "fixture-1", providerID: "openai",
+        providers: (VoiceProviderSpec.builtIn + [VoiceProviderSpec(id: "kokoro", title: "kokoro", kind: .custom)])
+            .map { spec in
+                VoiceProviderConfiguration(spec: spec, voiceID: spec.voiceField == nil ? "" : spec.defaultVoice,
+                                           apiKeyConfigured: spec.id == "openai", model: spec.defaultModel,
+                                           serverURL: "")
+            })
+
     func load(agentID: String) async throws -> VoiceSettingsConfiguration {
-        saved[agentID] ?? VoiceSettingsConfiguration(revision: "fixture-1", providerID: "openai", providers: [
-            .init(id: "openai", title: "OpenAI", voiceID: "alloy", apiKeyConfigured: true),
-            .init(id: "elevenlabs", title: "ElevenLabs", voiceID: "", apiKeyConfigured: false),
-        ])
+        saved[agentID] ?? Self.initial
     }
+
     func update(agentID: String, settings: VoiceSettingsUpdate) async throws -> VoiceSettingsConfiguration {
         let old = try await load(agentID: agentID)
         guard old.revision == settings.expectedRevision else { throw VoiceSettingsError.conflict }
         let updated = VoiceSettingsConfiguration(revision: UUID().uuidString, providerID: settings.providerID,
             providers: old.providers.map {
-                $0.id == settings.providerID ? VoiceProviderConfiguration(id: $0.id, title: $0.title,
-                    voiceID: settings.voiceID, apiKeyConfigured: $0.apiKeyConfigured || settings.apiKey != nil) : $0
+                guard $0.id == settings.providerID else { return $0 }
+                var provider = VoiceProviderConfiguration(id: $0.id, title: $0.title,
+                    voiceID: $0.hasVoice ? settings.voiceID : "",
+                    apiKeyConfigured: $0.apiKeyConfigured || settings.apiKey != nil,
+                    model: settings.model ?? $0.model, serverURL: settings.serverURL ?? $0.serverURL,
+                    kind: $0.kind, hasVoice: $0.hasVoice, hasModel: $0.hasModel,
+                    needsAPIKey: $0.needsAPIKey, supportsServerURL: $0.supportsServerURL)
+                if provider.hasModel, provider.model.isEmpty,
+                   let spec = VoiceProviderSpec.builtIn(provider.id) { provider.model = spec.defaultModel }
+                return provider
             })
         saved[agentID] = updated
         return updated
+    }
+
+    func playSample(agentID: String) async throws {
+        try await Task.sleep(for: .milliseconds(300))
     }
 }
 #endif

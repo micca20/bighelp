@@ -101,6 +101,7 @@ struct MessageBubble: View {
     @State private var isCopied = false
     @State private var isReactionPickerPresented = false
     @State private var contentCache = ChatMessageContentCache()
+    @AppStorage(ChatLayoutPreferences.textSizeKey) private var chatTextSize: ChatTextSize = .standard
 
     init(
         messageID: String = "",
@@ -372,7 +373,7 @@ struct MessageBubble: View {
                 onSelect: { isSelectingText = true },
                 onFork: onFork,
                 onReact: canReact ? { isReactionPickerPresented = true } : nil,
-                textScale: isInterimReply ? ChatInterimReplyStyle.textScale : 1
+                textScale: (isInterimReply ? ChatInterimReplyStyle.textScale : 1) * chatTextSize.scale
             )
             .modifier(BighelpV3MessageSurface(
                 role: role,

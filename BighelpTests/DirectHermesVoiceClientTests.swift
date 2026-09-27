@@ -21,10 +21,23 @@ struct DirectHermesVoiceClientTests {
         let revisionIsHex = result.revision.allSatisfy { $0.isHexDigit }
         #expect(revisionIsHex)
         #expect(result.providerID == "openai")
-        #expect(result.providers == [
-            VoiceProviderConfiguration(id: "openai", title: "OpenAI TTS", voiceID: "alloy", apiKeyConfigured: true),
-            VoiceProviderConfiguration(id: "elevenlabs", title: "ElevenLabs", voiceID: "pNInz6obpgDQGcFmaJgB", apiKeyConfigured: false),
-        ])
+        // Every Hermes speech provider is offered, local ones first.
+        #expect(result.providers.map(\.id) == VoiceProviderSpec.builtIn.map(\.id))
+        let openAI = try #require(result.providers.first { $0.id == "openai" })
+        #expect(openAI.title == "OpenAI")
+        #expect(openAI.voiceID == "alloy")
+        #expect(openAI.model == "gpt-4o-mini-tts")
+        #expect(openAI.apiKeyConfigured)
+        #expect(openAI.supportsServerURL)
+        let elevenLabs = try #require(result.providers.first { $0.id == "elevenlabs" })
+        #expect(elevenLabs.voiceID == "pNInz6obpgDQGcFmaJgB")
+        #expect(!elevenLabs.apiKeyConfigured)
+        let piper = try #require(result.providers.first { $0.id == "piper" })
+        #expect(piper.kind == .onYourComputer)
+        #expect(piper.voiceID == "en_US-lessac-medium")
+        #expect(!piper.needsAPIKey)
+        let neuTTS = try #require(result.providers.first { $0.id == "neutts" })
+        #expect(!neuTTS.hasVoice)
         #expect(transport.voiceCalls == [
             .init(operation: .workspaceConfigGet, payload: ["profile": .string("finance")], owner: owner),
             .init(operation: .keysList, payload: ["profile": .string("finance")], owner: owner),
@@ -292,6 +305,91 @@ private extension DirectHermesVoiceClientTests {
     static func owner() throws -> WorkspaceOwner {
         let authority = try WorkspaceAuthority.fixture(id: "direct-voice-tests")
         return WorkspaceOwner(authority: authority, authenticationGeneration: UUID(), connectionGeneration: UUID())
+    }
+
+    @Test func directSettingsListsTheHostsCustomCommandProviders() async throws {
+        let owner = try Self.owner()
+        let transport = DirectHermesVoiceTransportFixture(owner: owner)
+        var config = Self.configResponse(providerID: "kokoro")
+        var tts = config["tts"]?.object ?? [:]
+        tts["providers"] = .object([
+            "kokoro": .object(["type": .string("command"), "command": .string("kokoro -o {output_path}")]),
+            "empty": .object(["command": .string("  ")]),
+        ])
+        config["tts"] = .object(tts)
+        transport.results[WorkspaceOperation.workspaceConfigGet.rawValue] = config
+        transport.results[WorkspaceOperation.keysList.rawValue] = Self.keysResponse(openAI: false, elevenLabs: false)
+        let client = DirectHermesVoiceSettingsClient(workspace: transport, owner: owner, currentOwner: { owner })
+
+        let result = try await client.load(agentID: "finance")
+
+        #expect(result.providerID == "kokoro")
+        let custom = result.providers.filter { $0.kind == .custom }
+        #expect(custom.map(\.id) == ["kokoro"])
+        #expect(custom.first?.hasVoice == false)
+        #expect(custom.first?.needsAPIKey == false)
+    }
+
+    @Test func directSettingsSelectingALocalProviderWritesItsVoiceAndNoKey() async throws {
+        let owner = try Self.owner()
+        let transport = DirectHermesVoiceTransportFixture(owner: owner)
+        transport.results[WorkspaceOperation.keysList.rawValue] = Self.keysResponse(openAI: true, elevenLabs: false)
+        transport.results[WorkspaceOperation.workspaceConfigSet.rawValue] = ["ok": .boolean(true)]
+        var saved = Self.configResponse(providerID: "piper")
+        var tts = saved["tts"]?.object ?? [:]
+        tts["piper"] = .object(["voice": .string("en_GB-alba-medium")])
+        saved["tts"] = .object(tts)
+        transport.sequences[WorkspaceOperation.workspaceConfigGet.rawValue] = [
+            Self.configResponse(), Self.configResponse(), saved,
+        ]
+        let client = DirectHermesVoiceSettingsClient(workspace: transport, owner: owner, currentOwner: { owner })
+        let baseline = try await client.load(agentID: "finance")
+        transport.resetCalls()
+
+        let result = try await client.update(agentID: "finance", settings: VoiceSettingsUpdate(
+            expectedRevision: baseline.revision, providerID: "piper", voiceID: "en_GB-alba-medium", apiKey: nil))
+
+        #expect(result.providerID == "piper")
+        #expect(!transport.voiceCalls.contains { $0.operation == .keysSet })
+        #expect(transport.voiceCalls.contains(.init(operation: .workspaceConfigSet, payload: [
+            "profile": .string("finance"),
+            "config": .object(["tts": .object([
+                "provider": .string("piper"),
+                "piper": .object(["voice": .string("en_GB-alba-medium")]),
+            ])]),
+        ], owner: owner)))
+    }
+
+    @Test func directSettingsPointsOpenAIAtASelfHostedServer() async throws {
+        let owner = try Self.owner()
+        let transport = DirectHermesVoiceTransportFixture(owner: owner)
+        transport.results[WorkspaceOperation.keysList.rawValue] = Self.keysResponse(openAI: true, elevenLabs: false)
+        transport.results[WorkspaceOperation.workspaceConfigSet.rawValue] = ["ok": .boolean(true)]
+        var saved = Self.configResponse()
+        var tts = saved["tts"]?.object ?? [:]
+        tts["openai"] = .object(["voice": .string("af_bella"), "base_url": .string("http://10.0.0.5:8880/v1"),
+                                 "model": .string("kokoro")])
+        saved["tts"] = .object(tts)
+        transport.sequences[WorkspaceOperation.workspaceConfigGet.rawValue] = [
+            Self.configResponse(), Self.configResponse(), saved,
+        ]
+        let client = DirectHermesVoiceSettingsClient(workspace: transport, owner: owner, currentOwner: { owner })
+        let baseline = try await client.load(agentID: "finance")
+        transport.resetCalls()
+
+        let result = try await client.update(agentID: "finance", settings: VoiceSettingsUpdate(
+            expectedRevision: baseline.revision, providerID: "openai", voiceID: "af_bella", apiKey: nil,
+            model: "kokoro", serverURL: "http://10.0.0.5:8880/v1"))
+
+        #expect(result.providers.first { $0.id == "openai" }?.serverURL == "http://10.0.0.5:8880/v1")
+        #expect(transport.voiceCalls.contains(.init(operation: .workspaceConfigSet, payload: [
+            "profile": .string("finance"),
+            "config": .object(["tts": .object([
+                "provider": .string("openai"),
+                "openai": .object(["voice": .string("af_bella"), "model": .string("kokoro"),
+                                   "base_url": .string("http://10.0.0.5:8880/v1")]),
+            ])]),
+        ], owner: owner)))
     }
 
     static func configResponse(

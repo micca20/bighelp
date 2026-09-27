@@ -222,7 +222,7 @@ extension ChatView {
         switch row {
         case .bottom: 0
         case .workTrailHeader, .activityDetail: BighelpTokens.space8
-        default: BighelpTokens.space16
+        default: chatDensity.messageSpacing
         }
     }
     private var displayedTranscriptRows: [ChatTurnDisplayRow] {

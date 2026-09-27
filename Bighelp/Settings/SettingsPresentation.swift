@@ -88,7 +88,7 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .agentsAndPersonalities: "Manage how Hermes agents present themselves"
         case .chat: "Reasoning, tool calls, inline UI, and voice"
         case .notifications: "Optional host enrollment, iOS access, and provider topics"
-        case .appearance: "Theme, color mode, and Reflective Vision"
+        case .appearance: "Theme, color mode, chat layout and Reflective Vision"
         case .permissions: "iOS access, status, and recovery"
         case .connectivityAndNotifications: "The computers your agents run on"
         case .help: "Report a problem, guides and version"

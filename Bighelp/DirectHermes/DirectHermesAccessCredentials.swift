@@ -1,24 +1,62 @@
 import Foundation
 import Security
 
-/// A Cloudflare Access service token, for a Hermes host published through a
-/// Cloudflare Tunnel. bighelp sends it as `CF-Access-Client-Id` and
-/// `CF-Access-Client-Secret` on every request and socket to that exact HTTPS
-/// address, and nowhere else.
+/// Credentials for whatever guards a Hermes address before Hermes itself:
+/// a Cloudflare Access service token (for a Cloudflare Tunnel), or a proxy's
+/// username and password (HTTP basic auth on nginx, Caddy, Traefik and the
+/// like). bighelp sends them on every request and socket to that exact address,
+/// and nowhere else.
 struct DirectHermesAccessCredentials: Codable, Equatable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case cloudflareAccess
+        case basic
+    }
+
+    let kind: Kind
+    /// The Cloudflare client ID, or the proxy username.
     let clientID: String
+    /// The Cloudflare client secret, or the proxy password.
     let clientSecret: String
 
+    /// A Cloudflare Access service token.
     init(clientID: String, clientSecret: String) throws {
         let id = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let secret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard Self.valid(id), Self.valid(secret) else { throw DirectHermesError.invalidAccessCredentials }
+        kind = .cloudflareAccess
         self.clientID = id
         self.clientSecret = secret
     }
 
+    /// A proxy's username and password. Passwords keep their spaces.
+    init(username: String, password: String) throws {
+        let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty, user.utf8.count <= 256, !user.contains(":"),
+              !user.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              !password.isEmpty, password.utf8.count <= 512,
+              !password.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            throw DirectHermesError.invalidAccessCredentials
+        }
+        kind = .basic
+        clientID = user
+        clientSecret = password
+    }
+
     var headers: [String: String] {
-        ["CF-Access-Client-Id": clientID, "CF-Access-Client-Secret": clientSecret]
+        switch kind {
+        case .cloudflareAccess:
+            ["CF-Access-Client-Id": clientID, "CF-Access-Client-Secret": clientSecret]
+        case .basic:
+            ["Authorization": "Basic " + Data("\(clientID):\(clientSecret)".utf8).base64EncodedString()]
+        }
+    }
+
+    /// Basic auth may also go to a plain-HTTP address on a private network the
+    /// person allowed, like their Hermes session. Cloudflare Access is HTTPS only.
+    func canSend(to endpoint: DirectHermesEndpoint) -> Bool {
+        endpoint.baseURL.scheme == "https"
+            || (kind == .basic && endpoint.allowPrivateHTTP
+                && DirectHermesEndpoint.isPrivateNetworkHost(endpoint.host))
     }
 
     /// Header-safe: printable ASCII, no spaces, bounded.
@@ -26,17 +64,30 @@ struct DirectHermesAccessCredentials: Codable, Equatable, Sendable {
         !value.isEmpty && value.utf8.count <= 512 && value.unicodeScalars.allSatisfy { (0x21...0x7e).contains($0.value) }
     }
 
-    private enum CodingKeys: String, CodingKey { case clientID, clientSecret }
+    private enum CodingKeys: String, CodingKey { case kind, clientID, clientSecret }
     init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(clientID: values.decode(String.self, forKey: .clientID),
-                      clientSecret: values.decode(String.self, forKey: .clientSecret))
+        let id = try values.decode(String.self, forKey: .clientID)
+        let secret = try values.decode(String.self, forKey: .clientSecret)
+        // Items saved before basic auth have no kind: they are Cloudflare Access tokens.
+        switch try values.decodeIfPresent(Kind.self, forKey: .kind) ?? .cloudflareAccess {
+        case .cloudflareAccess: try self.init(clientID: id, clientSecret: secret)
+        case .basic: try self.init(username: id, password: secret)
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(kind, forKey: .kind)
+        try values.encode(clientID, forKey: .clientID)
+        try values.encode(clientSecret, forKey: .clientSecret)
     }
 }
 
 /// Device-local Keychain storage, one item per host address. While a host is
-/// being set up its token is staged in memory (used for requests) and only
-/// saved once a connection succeeds.
+/// being set up its credentials are staged in memory (used for requests) and
+/// only saved once a connection succeeds. The Keychain service name predates
+/// basic auth and stays, so saved tokens keep working.
 final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     static let shared = DirectHermesAccessCredentialStore()
 
@@ -54,18 +105,23 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     var serviceForTesting: String { service }
     #endif
 
-    /// Never sent over plain HTTP.
+    /// Only for the exact address, and never over the open internet in plain HTTP.
     func credentials(for endpoint: DirectHermesEndpoint) -> DirectHermesAccessCredentials? {
-        guard endpoint.baseURL.scheme == "https" else { return nil }
+        guard endpoint.baseURL.scheme == "https" || endpoint.allowPrivateHTTP else { return nil }
         let key = endpoint.identity
         let known: DirectHermesAccessCredentials?? = lock.withLock {
             if let value = staged[key] { return .some(value) }
             return cache[key]
         }
-        if let known { return known }
-        let loaded = load(key)
-        lock.withLock { cache[key] = .some(loaded) }
-        return loaded
+        let value: DirectHermesAccessCredentials?
+        if let known {
+            value = known
+        } else {
+            value = load(key)
+            lock.withLock { cache[key] = .some(value) }
+        }
+        guard let value, value.canSend(to: endpoint) else { return nil }
+        return value
     }
 
     func headers(for endpoint: DirectHermesEndpoint) -> [String: String] {
@@ -73,7 +129,12 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     }
 
     func hasSavedCredentials(for endpoint: DirectHermesEndpoint) -> Bool {
-        endpoint.baseURL.scheme == "https" && load(endpoint.identity) != nil
+        savedCredentials(for: endpoint) != nil
+    }
+
+    func savedCredentials(for endpoint: DirectHermesEndpoint) -> DirectHermesAccessCredentials? {
+        guard let value = load(endpoint.identity), value.canSend(to: endpoint) else { return nil }
+        return value
     }
 
     /// Use these for a host being set up; nil stops using staged values.

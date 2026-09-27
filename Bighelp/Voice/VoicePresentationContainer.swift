@@ -60,7 +60,7 @@ private struct LiveVoiceUnavailableView: View {
             Text("Live voice isn't available")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(theme.primaryText)
-            Text("Your Hermes computer doesn't support live voice yet. Turn-based voice listens on this phone and answers in the voice set up on your computer.")
+            Text("Your Hermes computer doesn't support live voice yet. TTS voice mode listens on this phone and answers in the voice set up on your computer.")
                 .font(.body)
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
@@ -68,7 +68,7 @@ private struct LiveVoiceUnavailableView: View {
             Spacer()
             if let onUseTurnBased {
                 Button(action: onUseTurnBased) {
-                    Text("Use turn-based voice")
+                    Text("Use TTS voice mode")
                         .font(.headline)
                         .foregroundStyle(theme.actionForeground)
                         .frame(maxWidth: .infinity, minHeight: 52)

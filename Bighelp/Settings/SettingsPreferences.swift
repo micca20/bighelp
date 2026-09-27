@@ -67,17 +67,21 @@ enum VoiceConversationMode: String, CaseIterable, Identifiable, Sendable {
 
     var id: Self { self }
 
+    /// Stored raw values predate these names: `codexLive` is GPT Live 1 and
+    /// `turnBased` is TTS.
     var title: String {
         switch self {
-        case .codexLive: "Codex Live"
-        case .turnBased: "Turn-based"
+        case .codexLive: "GPT Live 1"
+        case .turnBased: "TTS"
         }
     }
 
     var detail: String {
         switch self {
-        case .codexLive: "A continuous conversation that can keep talking while Hermes works."
-        case .turnBased: "Each completed phrase is sent to Hermes as a separate turn."
+        case .codexLive:
+            "A natural, back-and-forth conversation with OpenAI's GPT Live 1. It can keep talking while your agent works. Uses your Codex subscription or an OpenAI API key."
+        case .turnBased:
+            "This phone turns your words into text on the device, and your agent's speech provider reads each reply aloud. The provider can run on your own computer."
         }
     }
 }

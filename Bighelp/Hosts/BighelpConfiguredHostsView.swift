@@ -52,8 +52,10 @@ struct BighelpConfiguredHostView: View {
                     LabeledContent("Computer", value: host.name)
                     DisclosureGroup("Advanced connection details") {
                         Text(host.endpoint.identity).bighelpFont(.code).textSelection(.enabled)
-                        if DirectHermesAccessCredentialStore.shared.hasSavedCredentials(for: host.endpoint) {
-                            Label("Cloudflare Access service token saved", systemImage: "lock.shield")
+                        if let access = DirectHermesAccessCredentialStore.shared.savedCredentials(for: host.endpoint) {
+                            Label(access.kind == .basic ? "Proxy username and password saved"
+                                                        : "Cloudflare Access service token saved",
+                                  systemImage: "lock.shield")
                                 .bighelpFont(.metadata).foregroundStyle(.secondary)
                                 .accessibilityIdentifier("hosts.cloudflare-access")
                         }

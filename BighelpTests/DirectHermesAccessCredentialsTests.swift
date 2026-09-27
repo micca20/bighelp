@@ -17,6 +17,46 @@ struct DirectHermesAccessCredentialsTests {
         }
     }
 
+    @Test func proxyPasswordsBecomeABasicAuthHeader() throws {
+        let login = try DirectHermesAccessCredentials(username: " tester ", password: "bh proxy pass 1")
+        #expect(login.kind == .basic)
+        #expect(login.headers == ["Authorization": "Basic " + Data("tester:bh proxy pass 1".utf8).base64EncodedString()])
+        for (user, password) in [("", "x"), ("a:b", "x"), ("tester", ""), ("line\nbreak", "x"), ("tester", "tab\tpass")] {
+            #expect(throws: DirectHermesError.invalidAccessCredentials) {
+                try DirectHermesAccessCredentials(username: user, password: password)
+            }
+        }
+    }
+
+    @Test func proxyPasswordsGoToPrivateHTTPButNeverToThePublicInternetInPlainHTTP() throws {
+        let store = DirectHermesAccessCredentialStore(service: "app.loopdy.mobile.tests.cloudflare-access-\(UUID().uuidString)")
+        let login = try DirectHermesAccessCredentials(username: "tester", password: "secret")
+        let vpn = try DirectHermesEndpoint(address: "http://10.8.0.5:9119", allowPrivateHTTP: true)
+        store.stage(login, for: vpn)
+        #expect(store.headers(for: vpn)["Authorization"]?.hasPrefix("Basic ") == true)
+        let secure = try DirectHermesEndpoint(address: "https://hermes.example.com")
+        store.stage(login, for: secure)
+        #expect(store.credentials(for: secure) == login)
+        // Plain HTTP to a public address can't even be entered as a host.
+        #expect(throws: (any Error).self) { try DirectHermesEndpoint(address: "http://hermes.example.com", allowPrivateHTTP: true) }
+    }
+
+    @Test func tokensSavedBeforeBasicAuthStillLoadAsCloudflareAccess() throws {
+        let old = Data(#"{"clientID":"0123456789abcdef.access","clientSecret":"ffff"}"#.utf8)
+        let decoded = try JSONDecoder().decode(DirectHermesAccessCredentials.self, from: old)
+        #expect(decoded.kind == .cloudflareAccess)
+        let login = try DirectHermesAccessCredentials(username: "tester", password: "has spaces ")
+        let roundTrip = try JSONDecoder().decode(DirectHermesAccessCredentials.self, from: JSONEncoder().encode(login))
+        #expect(roundTrip == login)
+    }
+
+    @Test func discoveryTellsAPasswordProxyFromOtherBlocks() {
+        #expect(HostAuthenticationDiscovery.gate(challenge: #"Basic realm="restricted""#) == .passwordProxy)
+        #expect(HostAuthenticationDiscovery.gate(challenge: "basic") == .passwordProxy)
+        #expect(HostAuthenticationDiscovery.gate(challenge: "Bearer") == .blocked)
+        #expect(HostAuthenticationDiscovery.gate(challenge: nil) == .blocked)
+    }
+
     @Test func aStagedTokenIsUsedButOnlySavedAfterConnecting() throws {
         let store = DirectHermesAccessCredentialStore(service: "app.loopdy.mobile.tests.cloudflare-access-\(UUID().uuidString)")
         let endpoint = try DirectHermesEndpoint(address: "https://hermes-\(UUID().uuidString.prefix(8).lowercased()).example.com")

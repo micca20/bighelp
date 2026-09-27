@@ -144,18 +144,20 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launchArguments = ["-use-demo-fixtures", "-voice-settings-fixture"]
         app.launch()
         openSettings(in: app)
-        let chatSettings = settingsRow("settings.menu.chat", in: app)
-        XCTAssertTrue(chatSettings.waitForExistence(timeout: 3))
-        chatSettings.tap()
-        let voiceSettings = app.buttons["settings.chat.voice-settings"]
-        for _ in 0..<5 where !voiceSettings.isHittable { app.swipeUp() }
+        let voiceSettings = settingsRow("settings.chat.voice-settings", in: app)
         XCTAssertTrue(voiceSettings.waitForExistence(timeout: 3))
         guard voiceSettings.exists else { return }
         voiceSettings.tap()
+        // The speech provider belongs to TTS voice mode.
+        let voiceMode = app.segmentedControls["voice.settings.conversation-mode"]
+        XCTAssertTrue(voiceMode.waitForExistence(timeout: 3))
+        voiceMode.buttons["TTS"].tap()
         let provider = app.buttons["voice.settings.provider"]
         XCTAssertTrue(provider.waitForExistence(timeout: 3))
         provider.tap()
-        app.buttons["ElevenLabs"].tap()
+        let elevenLabs = app.buttons["voice.provider.elevenlabs"]
+        for _ in 0..<4 where !(elevenLabs.exists && elevenLabs.isHittable) { app.swipeUp() }
+        elevenLabs.tap()
         let voice = app.textFields["voice.settings.voice-id"]
         XCTAssertTrue(voice.waitForExistence(timeout: 3))
         voice.tap()
@@ -169,7 +171,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let save = app.buttons["voice.settings.save"]
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        XCTAssertTrue(app.staticTexts["Voice settings saved."].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForSavedVoiceSettings(save))
         XCTAssertFalse(save.isEnabled)
         XCTAssertEqual(app.buttons.matching(identifier: "voice.settings.save").count, 1)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
@@ -177,23 +179,35 @@ final class BighelpLaunchTests: BighelpUITestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
+        for _ in 0..<4 where !provider.isHittable { app.swipeDown() }
         provider.tap()
-        app.buttons["OpenAI"].tap()
+        let openAI = app.buttons["voice.provider.openai"]
+        for _ in 0..<4 where !(openAI.exists && openAI.isHittable) { app.swipeUp() }
+        openAI.tap()
         voice.tap()
         voice.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
             count: (voice.value as? String ?? "").count))
         voice.typeText("coral")
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        XCTAssertTrue(app.staticTexts["Voice settings saved."].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForSavedVoiceSettings(save))
         XCTAssertFalse(save.isEnabled)
         app.navigationBars["Voice"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(voiceSettings.waitForExistence(timeout: 3))
         voiceSettings.tap()
         XCTAssertTrue(voice.waitForExistence(timeout: 3))
         XCTAssertEqual(voice.value as? String, "coral")
-        XCTAssertTrue(app.staticTexts["API key saved on host"].exists)
+        let keyStatus = app.staticTexts["API key saved on your computer"]
+        for _ in 0..<3 where !keyStatus.exists { app.swipeUp() }
+        XCTAssertTrue(keyStatus.exists)
         XCTAssertFalse(app.buttons["voice.settings.save"].isEnabled)
+    }
+
+    /// The Save button reads "Saved" once the host confirms, wherever the page is scrolled.
+    @MainActor
+    func waitForSavedVoiceSettings(_ save: XCUIElement) -> Bool {
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'Saved'"), object: save)
+        return XCTWaiter().wait(for: [saved], timeout: 5) == .completed
     }
 
     @MainActor

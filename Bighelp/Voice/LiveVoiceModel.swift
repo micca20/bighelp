@@ -528,7 +528,7 @@ final class LiveVoiceModel {
         case .authenticationRequired?:
             return "Sign in to your computer again, then try live voice."
         case .unavailable?:
-            return "Live voice isn't set up on your computer. Use turn-based voice instead."
+            return "Live voice isn't set up on your computer. Use TTS voice mode instead."
         case .rejected(let code)? where code == "voice_already_active":
             return "Another live voice call is still open with your computer. End it, then try again."
         case .rejected(let code)? where code == "profile_not_found":
@@ -538,9 +538,9 @@ final class LiveVoiceModel {
         case .ownerChanged?:
             return "Your connection to your computer changed. Close voice and open it again."
         case .some:
-            return "Your computer couldn't start the Codex voice call. Try again, or use turn-based voice."
+            return "Your computer couldn't start the Codex voice call. Try again, or use TTS voice mode."
         case nil:
-            return "Live voice couldn't connect. Try again, or use turn-based voice."
+            return "Live voice couldn't connect. Try again, or use TTS voice mode."
         }
     }
 
@@ -562,7 +562,7 @@ final class LiveVoiceModel {
         case "explicit_api_key_mode_required":
             "API-key live voice needs an OpenAI key on your computer."
         default:
-            "Codex couldn't start the voice call. Try again, or use turn-based voice."
+            "Codex couldn't start the voice call. Try again, or use TTS voice mode."
         }
     }
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-private enum VoiceSettingsField { case voice, key }
+private enum VoiceSettingsField { case voice, model, server, key }
 
 enum CodexLiveVoicePluginAvailability: Equatable, Sendable {
     case unknown
@@ -37,6 +37,9 @@ struct VoiceSettingsView: View {
     @State private var agentID: String
     @State private var store: VoiceSettingsStore?
     @State private var confirmAPIBilling = false
+    /// Choosing a provider pushes a page; that isn't leaving Voice settings.
+    @State private var isChoosingProvider = false
+    @State private var loadedTaskID: String?
     @FocusState private var focusedField: VoiceSettingsField?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -62,7 +65,9 @@ struct VoiceSettingsView: View {
         Form {
             VoicePreferenceSections(settings: settings, confirmAPIBilling: $confirmAPIBilling)
 
-            if client != nil, scope != nil, !agents.isEmpty {
+            if settings.voiceConversationMode == .codexLive {
+                // GPT Live 1 speaks for itself; the speech provider is TTS-only.
+            } else if client != nil, scope != nil, !agents.isEmpty {
                 Section {
                     Picker("Agent", selection: $agentID) {
                         ForEach(agents) { Text($0.name).tag($0.id) }
@@ -71,16 +76,17 @@ struct VoiceSettingsView: View {
                 } header: {
                     Text("Agent")
                 } footer: {
-                    Text("Speech settings are saved to this agent on the selected host.")
+                    Text("Each agent has its own speech provider and voice, saved on your computer.")
                 }
                 if agents.contains(where: { $0.id == agentID }) {
                     if let store, store.agentID == agentID {
-                        VoiceSettingsEditor(store: store, focusedField: $focusedField)
+                        VoiceSettingsEditor(store: store, focusedField: $focusedField,
+                                            isChoosingProvider: $isChoosingProvider)
                     }
                 }
             } else {
-                Section("Agent speech") {
-                    Text("Connect to a host to change its speech provider, API key, and voice.")
+                Section("Speech provider") {
+                    Text("Connect to your computer to choose your agents' speech provider and voice.")
                         .foregroundStyle(theme.secondaryText)
                 }
             }
@@ -104,18 +110,42 @@ struct VoiceSettingsView: View {
             if !ids.contains(agentID) { agentID = agents.first(where: \.isDefault)?.id ?? ids.first ?? "" }
         }
         .toolbar {
+            if settings.voiceConversationMode == .turnBased {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     focusedField = nil
                     Task { await store?.save() }
                 } label: {
-                    if store?.isSaving == true { ProgressView() } else { Text("Save") }
+                    if store?.isSaving == true {
+                        ProgressView()
+                    } else if store?.confirmation != nil, store?.canSave != true {
+                        // Visible wherever the page is scrolled.
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                            Text("Saved")
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Saved")
+                    } else {
+                        Text("Save")
+                    }
                 }
                 .disabled(store?.canSave != true)
                 .accessibilityIdentifier("voice.settings.save")
             }
+            }
+        }
+        .navigationDestination(isPresented: $isChoosingProvider) {
+            if let store, let configuration = store.configuration {
+                VoiceProviderList(providers: configuration.providers, selection: store.providerID) {
+                    store.selectProvider($0)
+                }
+            }
         }
         .task(id: loadTaskID) {
+            // Back from the provider list: keep the loaded settings and edits.
+            if loadedTaskID == loadTaskID, store?.configuration != nil { return }
+            loadedTaskID = loadTaskID
             store?.invalidate()
             store = nil
             guard let client, scope != nil, agents.contains(where: { $0.id == agentID }) else { return }
@@ -123,7 +153,7 @@ struct VoiceSettingsView: View {
             store = current
             await current.load()
         }
-        .onDisappear { store?.invalidate() }
+        .onDisappear { if !isChoosingProvider { store?.invalidate() } }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store?.clearAPIKey() }
         }
@@ -154,21 +184,25 @@ private struct VoicePreferenceSections: View {
 
     var body: some View {
         Section {
-            Picker("Conversation", selection: $settings.voiceConversationMode) {
-                Text(VoiceConversationMode.codexLive.title).tag(VoiceConversationMode.codexLive)
+            Picker("Voice mode", selection: $settings.voiceConversationMode) {
                 Text(VoiceConversationMode.turnBased.title).tag(VoiceConversationMode.turnBased)
+                Text(VoiceConversationMode.codexLive.title).tag(VoiceConversationMode.codexLive)
             }
+            .pickerStyle(.segmented)
+            .frame(minHeight: BighelpTokens.hitTarget)
             .accessibilityIdentifier("voice.settings.conversation-mode")
             Text(settings.voiceConversationMode.detail)
                 .bighelpFont(.metadata)
                 .foregroundStyle(.secondary)
         } header: {
-            Text("Conversation")
+            Text("Voice mode")
+        } footer: {
+            Text("Used when you tap the microphone in a chat.")
         }
 
         if settings.voiceConversationMode == .codexLive {
             Section {
-                Picker("Provider", selection: provider) {
+                Picker("Sign in with", selection: provider) {
                     Text(LiveVoiceProvider.codexSubscription.title)
                         .tag(LiveVoiceProvider.codexSubscription)
                     Text(LiveVoiceProvider.apiKey.title)
@@ -182,9 +216,9 @@ private struct VoicePreferenceSections: View {
                 }
                 .accessibilityIdentifier("voice.settings.live-voice")
             } header: {
-                Text("Live voice")
+                Text("GPT Live 1")
             } footer: {
-                Text("Provider credentials stay on your host. API key voice may incur separate usage charges.")
+                Text("Sign-ins stay on your computer. An API key may add separate OpenAI charges.")
             }
             HostPluginFeatureSection(feature: .liveVoice)
         } else {
@@ -201,7 +235,7 @@ private struct VoicePreferenceSections: View {
                     }
                 }
             } header: {
-                Text("Turn-based voice")
+                Text("Listening")
             } footer: {
                 Text(settings.voiceMode.detail)
             }
@@ -213,50 +247,21 @@ private struct VoicePreferenceSections: View {
 private struct VoiceSettingsEditor: View {
     @Bindable var store: VoiceSettingsStore
     @FocusState.Binding var focusedField: VoiceSettingsField?
+    @Binding var isChoosingProvider: Bool
 
     var body: some View {
         Group {
             if let configuration = store.configuration {
+                providerSection(configuration)
+            }
+            if let confirmation = store.confirmation {
                 Section {
-                    Picker("Provider", selection: Binding(get: { store.providerID }, set: { store.selectProvider($0) })) {
-                        ForEach(configuration.providers) { Text($0.title).tag($0.id) }
-                    }
-                    .accessibilityIdentifier("voice.settings.provider")
-                    .disabled(store.isSaving || store.isLoading)
-
-                    if store.supportsEditing {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Voice ID")
-                            TextField(store.providerID == "openai" ? "For example, alloy" : "ElevenLabs voice ID", text: $store.voiceID)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .focused($focusedField, equals: .voice)
-                                .accessibilityIdentifier("voice.settings.voice-id")
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("API key")
-                            SecureField(store.selectedProvider?.apiKeyConfigured == true
-                                ? "Saved — enter a replacement" : "Enter API key", text: $store.apiKey)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .privacySensitive()
-                                .focused($focusedField, equals: .key)
-                                .accessibilityIdentifier("voice.settings.api-key")
-                        }
-                        Text(store.selectedProvider?.apiKeyConfigured == true ? "API key saved on host" : "API key required")
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("voice.settings.key-status")
-                    } else {
-                        Text("This agent uses \(store.selectedProvider?.title ?? store.providerID). Choose OpenAI or ElevenLabs to edit its voice and key here.")
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(.secondary)
-                    }
-                } header: { Text("Agent speech") }
-                footer: {
-                    Text("Leave the API key blank to keep the saved key. Changes apply to this agent’s next spoken reply.")
+                    Label(confirmation, systemImage: "checkmark.circle")
+                        .accessibilityIdentifier("voice.settings.confirmation")
                 }
-                .disabled(store.isSaving)
+            }
+            if store.configuration != nil {
+                sampleSection
             }
 
             if store.isLoading {
@@ -269,14 +274,212 @@ private struct VoiceSettingsEditor: View {
                         .disabled(store.isLoading || store.isSaving)
                 }
             }
-            if let confirmation = store.confirmation {
-                Section {
-                    Label(confirmation, systemImage: "checkmark.circle")
-                        .accessibilityIdentifier("voice.settings.confirmation")
+        }
+    }
+
+    private func providerSection(_ configuration: VoiceSettingsConfiguration) -> some View {
+        let selected = store.selectedProvider
+        return Section {
+            Button {
+                focusedField = nil
+                isChoosingProvider = true
+            } label: {
+                HStack {
+                    LabeledContent("Provider", value: selected?.title ?? store.providerID)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("voice.settings.provider")
+            .disabled(store.isSaving || store.isLoading)
+
+            if let selected {
+                Text(summary(for: selected))
+                    .bighelpFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice.settings.provider-summary")
+            }
+            if selected?.hasVoice == true {
+                field("Voice", placeholder: "Voice name or ID", text: $store.voiceID, focus: .voice,
+                      identifier: "voice.settings.voice-id")
+            }
+            if selected?.hasModel == true {
+                field("Model", placeholder: "Automatic", text: $store.model, focus: .model,
+                      identifier: "voice.settings.model")
+            }
+            if selected?.supportsServerURL == true {
+                field("Server", placeholder: "OpenAI (leave blank)", text: $store.serverURL, focus: .server,
+                      identifier: "voice.settings.server-url", keyboard: .URL)
+            }
+            if let selected, selected.needsAPIKey {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("API key")
+                    SecureField(selected.apiKeyConfigured ? "Saved — enter a replacement" : "Enter API key",
+                                text: $store.apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .privacySensitive()
+                        .focused($focusedField, equals: .key)
+                        .accessibilityIdentifier("voice.settings.api-key")
+                }
+                Text(selected.apiKeyConfigured ? "API key saved on your computer" : "API key required")
+                    .bighelpFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice.settings.key-status")
+            }
+        } header: {
+            Text("Speech provider")
+        } footer: {
+            Text(footer(for: selected))
+        }
+        .disabled(store.isSaving)
+    }
+
+    private var sampleSection: some View {
+        Section {
+            Button {
+                focusedField = nil
+                Task { await store.playSample() }
+            } label: {
+                HStack {
+                    Label("Play a sample", systemImage: "play.circle")
+                    Spacer()
+                    if store.isPlayingSample { ProgressView() }
+                }
+            }
+            .disabled(!store.canPlaySample)
+            .accessibilityIdentifier("voice.settings.play-sample")
+            if let error = store.sampleError {
+                Text(error)
+                    .bighelpFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voice.settings.sample-error")
+            }
+        } footer: {
+            if store.hasUnsavedChanges { Text("Save to hear your changes.") }
+        }
+    }
+
+    private func field(_ title: String, placeholder: String, text: Binding<String>, focus: VoiceSettingsField,
+                       identifier: String, keyboard: UIKeyboardType = .default) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+            TextField(placeholder, text: text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(keyboard)
+                .focused($focusedField, equals: focus)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func summary(for provider: VoiceProviderConfiguration) -> String {
+        switch provider.kind {
+        case .onYourComputer:
+            provider.hasVoice ? "Runs on your computer. Your agent's words never leave it."
+                : "Runs on your computer. Its voice is set up there."
+        case .custom: "A speech command set up on your computer."
+        case .free: "Free Microsoft voices. No account or key needed."
+        case .cloud:
+            provider.needsAPIKey ? "Uses your own \(provider.title) account." : "Set up on your computer."
+        }
+    }
+
+    private func footer(for provider: VoiceProviderConfiguration?) -> String {
+        switch provider?.kind {
+        case .onYourComputer:
+            "Install it once by running hermes setup tts on your computer, then play a sample here."
+        case .cloud where provider?.supportsServerURL == true:
+            "To use your own OpenAI-compatible server, like Kokoro or Speaches, enter its address. Those servers usually accept any key. Leave the key blank to keep the saved one."
+        case .cloud where provider?.needsAPIKey == true:
+            "Leave the API key blank to keep the saved one. Changes apply to this agent's next spoken reply."
+        default:
+            "Changes apply to this agent's next spoken reply."
+        }
+    }
+}
+
+/// Every speech provider on one page, grouped by where it runs.
+@MainActor
+private struct VoiceProviderList: View {
+    let providers: [VoiceProviderConfiguration]
+    let selection: String
+    let onSelect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @BighelpThemeReader private var theme
+
+    var body: some View {
+        List {
+            ForEach(VoiceProviderSpec.Kind.allCases, id: \.self) { kind in
+                let items = providers.filter { $0.kind == kind }
+                if !items.isEmpty {
+                    Section {
+                        ForEach(items) { row($0) }
+                    } header: {
+                        Text(kind.title)
+                    } footer: {
+                        Text(footer(kind))
+                    }
+                    .listRowBackground(theme.surface)
                 }
             }
         }
+        .bighelpFormSurface()
+        .scrollContentBackground(.hidden)
+        .background(theme.canvas.ignoresSafeArea())
+        .foregroundStyle(theme.primaryText)
+        .tint(theme.action)
+        .navigationTitle("Speech provider")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 
+    private func row(_ provider: VoiceProviderConfiguration) -> some View {
+        let isSelected = provider.id == selection
+        return Button {
+            onSelect(provider.id)
+            dismiss()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.title).foregroundStyle(theme.primaryText)
+                    Text(detail(provider)).bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark").foregroundStyle(theme.action).accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight: BighelpTokens.hitTarget)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(provider.title)
+        .accessibilityValue(detail(provider))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("voice.provider." + provider.id)
+    }
+
+    private func detail(_ provider: VoiceProviderConfiguration) -> String {
+        switch provider.kind {
+        case .onYourComputer, .free: "No account or key"
+        case .custom: "A speech command on your computer"
+        case .cloud:
+            !provider.needsAPIKey ? "Set up on your computer"
+                : provider.apiKeyConfigured ? "API key saved" : "Needs an API key"
+        }
+    }
+
+    private func footer(_ kind: VoiceProviderSpec.Kind) -> String {
+        switch kind {
+        case .onYourComputer: "Your agent's words never leave your computer. Install one once by running hermes setup tts there."
+        case .custom: "Set up in your agent's config.yaml under tts.providers."
+        case .free: "Microsoft's free online voices."
+        case .cloud: "Billed to your own account with that service. OpenAI also works with self-hosted OpenAI-compatible servers."
+        }
     }
 }
 

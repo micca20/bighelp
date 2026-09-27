@@ -36,7 +36,7 @@ enum LiveVoiceControlError: Error, LocalizedError, Sendable {
         switch self {
         case .invalidResponse: "Your computer sent back a voice answer the app couldn't use. Try again."
         case .wrongOwner: "This voice call no longer belongs to this chat. Close voice and open it again."
-        case .unavailable: "Live voice isn't available on your computer right now. Try again, or use turn-based voice."
+        case .unavailable: "Live voice isn't available on your computer right now. Try again, or use TTS voice mode."
         case .timedOut: "Your computer didn't answer in time. Try again."
         }
     }

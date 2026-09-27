@@ -11,7 +11,29 @@ private struct HostSetupAccessChanges: ViewModifier {
 
 enum HostSetupAccessError: LocalizedError {
     case needsHTTPS
-    var errorDescription: String? { "Cloudflare Access needs an https:// address." }
+    /// A proxy in front of Hermes asked for a username and password.
+    case proxyPasswordRequired
+    case proxyPasswordRejected
+    case blockedBeforeSignIn
+    case loginPage
+    case invalidProxyCredentials
+
+    var errorDescription: String? {
+        switch self {
+        case .needsHTTPS:
+            "Cloudflare Access needs an https:// address."
+        case .proxyPasswordRequired:
+            "This address is protected by a username and password, set on a proxy in front of Hermes. Enter them below, then tap Continue."
+        case .proxyPasswordRejected:
+            "The proxy in front of Hermes didn't accept that username and password. Check them and try again."
+        case .blockedBeforeSignIn:
+            "Something in front of Hermes, like a proxy or firewall, turned bighelp away before sign-in. Hermes itself never blocks this step. If the proxy uses a username and password, turn on Username and password under Advanced connection."
+        case .invalidProxyCredentials:
+            "Check the username and password. A username can't contain a colon."
+        case .loginPage:
+            "This address sends bighelp to a login page it can't use. If it's Cloudflare Access, add a service token under Advanced connection. Otherwise, use an address that reaches Hermes directly."
+        }
+    }
 }
 
 struct HostSetupDraft: Equatable {
@@ -44,6 +66,13 @@ struct HostSetupView: View {
     @State private var usesCloudflareAccess = false
     @State private var accessClientID = ""
     @State private var accessClientSecret = ""
+    /// A proxy's basic-auth username and password; never kept in the retained draft.
+    @State private var usesProxyPassword = false
+    /// Set when the address itself asked for a password; opening the fields
+    /// this way must not restart discovery and clear the explanation.
+    @State private var needsProxyPassword = false
+    @State private var proxyUsername = ""
+    @State private var proxyPassword = ""
     @State private var token = ""
     @State private var username = ""
     @State private var password = ""
@@ -130,6 +159,7 @@ struct HostSetupView: View {
                         Text("For home Wi-Fi, a VPN or Tailscale, such as 192.168.1.20, 10.0.0.5 or hermes.local. Connect this device to that network first.")
                             .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
                         if hostToAuthenticate == nil {
+                            proxyPasswordFields
                             cloudflareAccessFields
                         }
                     } label: {
@@ -224,12 +254,16 @@ struct HostSetupView: View {
             pendingID = host.id
             workspace = registry.workspace(for: host)
         }
-        .onChange(of: address) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
+        .onChange(of: address) { _, _ in needsProxyPassword = false; invalidateDiscovery(); saveRetainedDraft() }
         .onChange(of: port) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
         .onChange(of: name) { _, _ in saveRetainedDraft() }
         .onChange(of: allowPrivateHTTP) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
-        .modifier(HostSetupAccessChanges(values: [usesCloudflareAccess ? "on" : "off", accessClientID, accessClientSecret],
+        .modifier(HostSetupAccessChanges(values: [usesCloudflareAccess ? "on" : "off", accessClientID, accessClientSecret,
+                                                  usesProxyPassword ? "on" : "off", proxyUsername, proxyPassword],
                                           onChange: invalidateDiscovery))
+        // One kind of gate per address.
+        .onChange(of: usesProxyPassword) { _, on in if on { usesCloudflareAccess = false } }
+        .onChange(of: usesCloudflareAccess) { _, on in if on { usesProxyPassword = false; needsProxyPassword = false } }
         .onChange(of: method) { _, _ in token = ""; password = ""; provider = defaultProvider }
         .onChange(of: provider) { _, _ in password = "" }
         .onChange(of: registry.accountScope) { _, _ in cancel(); dismiss() }
@@ -297,7 +331,7 @@ struct HostSetupView: View {
                     if discovery.supportsDashboard { Text("No sign-in").tag(Method.dashboard) }
                     if discovery.supportsToken { Text(discovery.requiresAuthentication ? "Access token" : "Session token").tag(Method.token) }
                     if discovery.supportsPassword { Text("Username & password").tag(Method.password) }
-                    if discovery.nativePKCE { Text("Dashboard login").tag(Method.browser) }
+                    if discovery.nativePKCE { Text("Browser sign-in").tag(Method.browser) }
                 }.accessibilityIdentifier("direct-hermes.auth-picker")
             }
             if method == .token && discovery.supportsToken {
@@ -305,31 +339,54 @@ struct HostSetupView: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityIdentifier("direct-hermes.token")
             } else if method == .browser && discovery.nativePKCE {
-                Picker("Provider", selection: $provider) {
-                    Text("Automatic").tag("")
-                    ForEach(discovery.providers) { provider in
-                        Text(provider.name).tag(provider.id)
-                    }
-                }.accessibilityIdentifier("host-setup.provider")
-            } else if method == .password && discovery.supportsPassword {
-                Picker("Provider", selection: $provider) {
-                    ForEach(discovery.providers.filter(\.supportsPassword)) { provider in
-                        Text(provider.name).tag(provider.id)
-                    }
+                // One provider needs no choice.
+                if discovery.providers.count > 1 {
+                    Picker("Provider", selection: $provider) {
+                        Text("Automatic").tag("")
+                        ForEach(discovery.providers) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }.accessibilityIdentifier("host-setup.provider")
                 }
-                .accessibilityIdentifier("host-setup.provider")
+            } else if method == .password && discovery.supportsPassword {
+                if discovery.providers.filter(\.supportsPassword).count > 1 {
+                    Picker("Provider", selection: $provider) {
+                        ForEach(discovery.providers.filter(\.supportsPassword)) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .accessibilityIdentifier("host-setup.provider")
+                }
                 TextField("Username", text: $username).textContentType(.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityIdentifier("direct-hermes.username")
                 SecureField("Password", text: $password).textContentType(.password)
                     .accessibilityIdentifier("direct-hermes.password")
             }
-            if method == .dashboard {
-                Text("Connect using your dashboard’s existing access. No sign-in is required by this host.")
-                    .bighelpFont(.metadata).foregroundStyle(.secondary)
-            }
+            Text(methodDetail(discovery))
+                .bighelpFont(.metadata).foregroundStyle(.secondary)
+                .accessibilityIdentifier("host-setup.method-detail")
 
         } header: { Text("Sign in") }
+    }
+
+    private func methodDetail(_ discovery: HostAuthenticationDiscovery) -> String {
+        switch method {
+        case .dashboard:
+            "Connect using your dashboard’s existing access. No sign-in is required by this host."
+        case .token where discovery.requiresAuthentication:
+            "An access token issued by this host’s sign-in provider."
+        case .token:
+            "The dashboard’s session token, set on your computer as HERMES_DASHBOARD_SESSION_TOKEN."
+        case .password:
+            "The username and password for your Hermes dashboard."
+        case .browser:
+            if discovery.providers.count == 1, let only = discovery.providers.first {
+                "Opens \(only.name) sign-in in Safari, then brings you back here."
+            } else {
+                "Opens your Hermes sign-in page in Safari, for single sign-on like Authentik, Keycloak or Nous Portal, then brings you back here."
+            }
+        }
     }
 
     private var defaultProvider: String {
@@ -356,11 +413,28 @@ struct HostSetupView: View {
             defer { if requestID == owner { isWorking = false } }
             do {
                 let endpoint = try HostAddressInput.endpoint(address: address, port: port, allowPrivateHTTP: allowPrivateHTTP)
-                try stageCloudflareAccess(for: endpoint)
-                let result = try await HostAuthenticationDiscovery.discover(endpoint: endpoint)
+                let sentProxyPassword = try stageAccess(for: endpoint)
+                let result: HostAuthenticationDiscovery
+                do {
+                    result = try await HostAuthenticationDiscovery.discover(endpoint: endpoint)
+                } catch let gate as HostAuthenticationDiscovery.Gate {
+                    switch gate {
+                    case .passwordProxy:
+                        guard requestID == owner else { return }
+                        needsProxyPassword = true
+                        showsConnectionOptions = true
+                        throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
+                                                : HostSetupAccessError.proxyPasswordRequired
+                    case .blocked:
+                        throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
+                                                : HostSetupAccessError.blockedBeforeSignIn
+                    case .loginPage:
+                        throw HostSetupAccessError.loginPage
+                    }
+                }
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration, !Task.isCancelled else { return }
                 discovery = result
-                method = result.supportsDashboard ? .dashboard : result.nativePKCE ? .browser : .token
+                method = Method(rawValue: HostAuthenticationDiscovery.preferredMethod(for: result).rawValue) ?? .token
                 provider = defaultProvider
             } catch {
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration else { return }
@@ -416,7 +490,7 @@ struct HostSetupView: View {
     }
     private func invalidateDiscovery() {
         cancel()
-        unstageCloudflareAccess()
+        unstageAccess()
         if hostToAuthenticate == nil, connectedHost == nil, let pendingID {
             registry.discardPending(pendingID)
             self.pendingID = nil
@@ -432,7 +506,7 @@ struct HostSetupView: View {
     private func finish() {
         notifications?.cancel()
         cancel()
-        unstageCloudflareAccess()
+        unstageAccess()
         onFinished?()
         registry.finishSetup()
         dismiss()
@@ -456,20 +530,58 @@ struct HostSetupView: View {
             .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
     }
 
-    /// Requests during setup use the entered token; it's saved once the connection works.
-    private func stageCloudflareAccess(for endpoint: DirectHermesEndpoint) throws {
+    @ViewBuilder
+    private var proxyPasswordFields: some View {
+        Toggle("Username and password", isOn: Binding(
+            get: { usesProxyPassword || needsProxyPassword },
+            set: { on in
+                usesProxyPassword = on
+                if !on { needsProxyPassword = false }
+            }))
+            .accessibilityIdentifier("host-setup.proxy-password")
+        if usesProxyPassword || needsProxyPassword {
+            TextField("Username", text: $proxyUsername)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .textContentType(.username)
+                .accessibilityIdentifier("host-setup.proxy-username")
+            SecureField("Password", text: $proxyPassword)
+                .textContentType(.password)
+                .privacySensitive()
+                .accessibilityIdentifier("host-setup.proxy-password-field")
+        }
+        Text("For a Hermes address behind a proxy that asks for a username and password, like basic auth on nginx, Caddy or Traefik. bighelp sends them only to this address and keeps them in Keychain.")
+            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
+    }
+
+    /// Requests during setup use the entered credentials; they're saved once the
+    /// connection works. Returns whether a proxy password is being sent.
+    @discardableResult
+    private func stageAccess(for endpoint: DirectHermesEndpoint) throws -> Bool {
         let store = DirectHermesAccessCredentialStore.shared
-        guard usesCloudflareAccess, hostToAuthenticate == nil else {
+        guard hostToAuthenticate == nil else {
             store.stage(nil, for: endpoint)
-            return
+            return false
+        }
+        if usesProxyPassword || needsProxyPassword, !proxyUsername.isEmpty, !proxyPassword.isEmpty {
+            guard let credentials = try? DirectHermesAccessCredentials(username: proxyUsername, password: proxyPassword)
+            else { throw HostSetupAccessError.invalidProxyCredentials }
+            // Never to a plain-HTTP address on the open internet.
+            guard credentials.canSend(to: endpoint) else { throw HostSetupAccessError.blockedBeforeSignIn }
+            store.stage(credentials, for: endpoint)
+            return true
+        }
+        guard usesCloudflareAccess else {
+            store.stage(nil, for: endpoint)
+            return false
         }
         guard endpoint.baseURL.scheme == "https" else { throw HostSetupAccessError.needsHTTPS }
         store.stage(try DirectHermesAccessCredentials(clientID: accessClientID, clientSecret: accessClientSecret),
                     for: endpoint)
+        return false
     }
 
     /// An abandoned setup never leaves a token in use; a connected host already saved it.
-    private func unstageCloudflareAccess() {
+    private func unstageAccess() {
         guard connectedHost == nil, let endpoint = discovery?.endpoint else { return }
         DirectHermesAccessCredentialStore.shared.stage(nil, for: endpoint)
     }

@@ -168,6 +168,10 @@ struct ChatView: View {
     @State private var refreshTask: Task<Void, Never>?
     @State private var refreshError: String?
     @State var headerHeight: CGFloat = 0
+    /// Full screen height, for the Auto avatar size.
+    @State private var screenHeight: CGFloat = 0
+    @State private var bottomSafeArea: CGFloat = 0
+    @AppStorage(ChatLayoutPreferences.densityKey) var chatDensity: ChatDensity = .comfortable
     @State var composerHeight: CGFloat = 0
 
     init(
@@ -514,7 +518,8 @@ struct ChatView: View {
                         // The Chat tab keeps its bottom bar under the composer.
                         if homeChrome.isEnabled, homeChrome.isHome, let selection = homeChrome.tabSelection,
                            !isDraftFocused {
-                            FloatingTabBar(selection: selection)
+                            FloatingTabBar(selection: selection,
+                                           homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: bottomSafeArea))
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
@@ -522,6 +527,10 @@ struct ChatView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+            } action: { screenHeight = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomSafeArea = $0 }
     }
 
     /// Each control samples the transcript, never an opaque toolbar slab.
@@ -569,6 +578,7 @@ struct ChatView: View {
             groupIdentity: model.isBotMode ? AnyView(conversationHeader) : nil,
             options: AnyView(chatOptionsMenu),
             chrome: homeChrome,
+            screenHeight: screenHeight,
             beforeAction: dismissKeyboard,
             onBack: { dismiss() }
         )

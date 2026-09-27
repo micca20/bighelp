@@ -16,14 +16,50 @@ struct HostAuthenticationDiscovery: Equatable {
     var supportsPassword: Bool { nativePKCE && !providers.filter(\.supportsPassword).isEmpty }
     var supportsBrowser: Bool { nativePKCE && !providers.isEmpty }
 
+    /// Hermes's status check needs no sign-in, so a refusal there comes from
+    /// something in front of Hermes.
+    enum Gate: Error, Equatable {
+        /// A proxy asked for a username and password (HTTP basic auth).
+        case passwordProxy
+        /// Refused for another reason: a firewall, forward-auth or allow list.
+        case blocked
+        /// Sent to a login page, such as Cloudflare Access without a token.
+        case loginPage
+    }
+
     @MainActor
     static func discover(endpoint: DirectHermesEndpoint) async throws -> Self {
         let authenticator = DirectHermesAuthenticator(endpoint: endpoint)
         defer { authenticator.http.invalidate() }
-        let discovery = try await authenticator.discoverAuthentication()
+        let discovery: DirectHermesAuthenticationDiscovery
+        do {
+            discovery = try await authenticator.discoverAuthentication()
+        } catch DirectHermesError.invalidCredentials {
+            let response = try? await authenticator.http.send(route: "/api/status")
+            throw gate(challenge: response?.http.value(forHTTPHeaderField: "WWW-Authenticate"))
+        } catch DirectHermesError.redirectRefused {
+            throw Gate.loginPage
+        }
         return Self(endpoint: endpoint, requiresAuthentication: discovery.authRequired,
             nativePKCE: discovery.supportsNativePKCE,
             providers: discovery.providers.map { Provider(id: $0.name, name: $0.displayName, supportsPassword: $0.supportsPassword) })
+    }
+
+    enum Method: String, Equatable { case dashboard, token, password, browser }
+
+    /// The method a host most likely wants: none when it isn't gated, the
+    /// credential form when every sign-in provider takes a password, the
+    /// browser for single sign-on, and a token when it offers nothing else.
+    static func preferredMethod(for discovery: Self) -> Method {
+        if discovery.supportsDashboard { return .dashboard }
+        if discovery.supportsPassword, discovery.providers.allSatisfy(\.supportsPassword) { return .password }
+        if discovery.nativePKCE { return .browser }
+        return .token
+    }
+
+    static func gate(challenge: String?) -> Gate {
+        let scheme = challenge?.trimmingCharacters(in: .whitespaces).prefix(6).lowercased() ?? ""
+        return scheme.hasPrefix("basic") ? .passwordProxy : .blocked
     }
 }
 

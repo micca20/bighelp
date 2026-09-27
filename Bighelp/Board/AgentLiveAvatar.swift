@@ -186,6 +186,9 @@ struct AgentHeroHeader: View {
     var avatarSize: CGFloat = 84
     /// Replaces the activity line, e.g. "Updating…" while a chat reloads.
     var status: String? = nil
+    /// Hidden by choice (Settings › Chat layout): the chip shows only while
+    /// there's a status, and holding the avatar offers Switch agent.
+    var showsName = true
     let onAvatarTap: () -> Void
     let onNameTap: () -> Void
     @Environment(\.agentActivityInIsland) private var activityInIsland
@@ -202,12 +205,24 @@ struct AgentHeroHeader: View {
             .accessibilityValue(activity.label)
             .accessibilityHint("Opens activity, approvals, schedules and identity.")
             .accessibilityIdentifier("agent.hero.avatar")
+            .contextMenu {
+                if !showsName {
+                    Button("Open profile", systemImage: "person.crop.circle", action: onAvatarTap)
+                    Button("Switch agent", systemImage: "arrow.left.arrow.right", action: onNameTap)
+                }
+            }
+            .accessibilityActions {
+                if !showsName { Button("Switch agent", action: onNameTap) }
+            }
+            if showsName || statusLine != nil {
             Button(action: onNameTap) {
                 VStack(spacing: 1) {
-                    Text(displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.primaryText)
-                        .lineLimit(1)
+                    if showsName {
+                        Text(displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
+                    }
                     if let line = statusLine {
                         Text(line)
                             .font(.caption2.weight(.medium))
@@ -227,9 +242,12 @@ struct AgentHeroHeader: View {
             .accessibilityValue(statusLine ?? "")
             .accessibilityHint("Switch agents or open a group chat.")
             .accessibilityIdentifier("agent.hero.name")
+            .transition(.opacity)
+            }
         }
         .animation(.snappy, value: activity)
         .animation(.snappy, value: status)
+        .animation(.snappy, value: avatarSize)
     }
 
     private var statusLine: String? {

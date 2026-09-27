@@ -60,6 +60,7 @@ enum ChatMessageGrouping {
 
 struct BighelpV3MessageSurface: ViewModifier {
     @Environment(\.chatMessageContinuesGroup) private var continuesGroup
+    @AppStorage(ChatLayoutPreferences.densityKey) private var density: ChatDensity = .comfortable
     let role: TimelineRole
     let theme: BighelpTheme
     let increasedContrast: Bool
@@ -70,8 +71,8 @@ struct BighelpV3MessageSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.leading, isInterim ? BighelpTokens.space12 : 0)
-            .padding(.horizontal, isInterim ? 0 : BighelpV3MessagePresentation.horizontalContentPadding)
-            .padding(.vertical, isInterim ? BighelpTokens.space4 : 10)
+            .padding(.horizontal, isInterim ? 0 : density.bubbleHorizontalPadding)
+            .padding(.vertical, isInterim ? BighelpTokens.space4 : density.bubbleVerticalPadding)
             .background(shape.fill(isInterim ? Color.clear : fillColor))
             .overlay {
                 if increasedContrast, !isInterim {

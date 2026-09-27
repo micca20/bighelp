@@ -72,6 +72,7 @@ struct RootShellView: View {
 
     @State var isUnifiedSettingsPresented = false
     @State private var isKeyboardVisible = false
+    @State private var rootBottomSafeArea: CGFloat = 0
     @State private var afterSettingsDismiss: (() -> Void)?
     // Agent home (Muse-style): board data, the profile, the switcher and the ☰ drawer.
     @State var agentBoard = AgentBoardStore()
@@ -526,10 +527,12 @@ struct RootShellView: View {
                                onNewChat: appState.selectedTab == .sessions ? {
                                    appState.chatOpenedFromList = true
                                    startNewChat(explicitAgentID: nil)
-                               } : nil)
+                               } : nil,
+                               homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: rootBottomSafeArea))
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { rootBottomSafeArea = $0 }
         .overlay(alignment: .bottomTrailing) {
             if appState.path.isEmpty, appState.selectedTab == .sessions, usesPersistentSidebar {
                 RootComposeButton(identifier: "root.new-chat.floating") { startNewChat(explicitAgentID: nil) }

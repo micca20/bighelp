@@ -13,6 +13,12 @@ extension SettingsView {
             .pickerStyle(.segmented)
             .frame(minHeight: BighelpTokens.hitTarget)
             .accessibilityIdentifier("settings.appearance")
+            NavigationLink {
+                ChatLayoutSettingsView()
+            } label: {
+                settingLabel("Chat layout", detail: "Avatar, name, text size and spacing")
+            }
+            .accessibilityIdentifier("settings.appearance.chat-layout")
         } header: {
             Text("Appearance")
         } footer: {
@@ -175,18 +181,44 @@ extension SettingsView {
         .listRowBackground(theme.surface)
     }
 
-    private var chatBasics: some View {
+    /// What the microphone in a chat opens, right on the Settings page, with
+    /// the speech provider and voice one tap further.
+    private var voiceBasics: some View {
         Section {
+            Picker("Voice mode", selection: $settings.voiceConversationMode) {
+                Text(VoiceConversationMode.turnBased.title).tag(VoiceConversationMode.turnBased)
+                Text(VoiceConversationMode.codexLive.title).tag(VoiceConversationMode.codexLive)
+            }
+            .pickerStyle(.segmented)
+            .frame(minHeight: BighelpTokens.hitTarget)
+            .accessibilityIdentifier("settings.voice.mode")
+
             NavigationLink {
                 VoiceSettingsView(settings: settings, agents: agents,
                     selectedAgentID: agentDirectory?.selectedAgentID,
                     client: voiceSettingsClient, scope: voiceSettingsScope,
                     isCurrent: voiceSettingsIsCurrent)
             } label: {
-                settingLabel("Voice", detail: "Playback and per-agent speech settings")
+                if settings.voiceConversationMode == .codexLive {
+                    settingLabel("GPT Live 1 settings", detail: "Sign-in and voice")
+                } else {
+                    settingLabel("Speech provider and voice", detail: "Each agent's voice, including ones that run on your computer")
+                }
             }
             .accessibilityIdentifier("settings.chat.voice-settings")
+        } header: {
+            Text("Voice")
+        } footer: {
+            Text("TTS listens on this phone and reads replies aloud with your agent's speech provider. GPT Live 1 is a live conversation with OpenAI.")
+                .bighelpFont(.metadata)
+        }
+        .listRowBackground(theme.surface)
+    }
 
+    var voiceExperience: some View { voiceBasics }
+
+    private var chatBasics: some View {
+        Section {
             Toggle(isOn: $settings.responseHapticsEnabled) {
                 settingLabel(
                     "Response haptics",

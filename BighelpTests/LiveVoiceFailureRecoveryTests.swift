@@ -34,7 +34,7 @@ struct LiveVoiceFailureRecoveryTests {
         model.start()
         for _ in 0..<200 where model.phase != .failed { try await Task.sleep(for: .milliseconds(10)) }
         #expect(model.phase == .failed)
-        #expect(model.errorMessage == "Your computer couldn't start the Codex voice call. Try again, or use turn-based voice.")
+        #expect(model.errorMessage == "Your computer couldn't start the Codex voice call. Try again, or use TTS voice mode.")
 
         // The screen must hear that cleanup finished, or Start stays greyed out.
         #expect(!model.canStart)
@@ -57,9 +57,9 @@ struct LiveVoiceFailureRecoveryTests {
         #expect(LiveVoiceModel.safeMessage(WorkspaceClientError.rejected(code: "voice_already_active"))
             == "Another live voice call is still open with your computer. End it, then try again.")
         #expect(LiveVoiceModel.safeMessage(WorkspaceClientError.unavailable(.unsupportedOperation))
-            == "Live voice isn't set up on your computer. Use turn-based voice instead.")
+            == "Live voice isn't set up on your computer. Use TTS voice mode instead.")
         #expect(LiveVoiceModel.safeMessage(WorkspaceClientError.transportUnavailable)
-            == "Your computer couldn't start the Codex voice call. Try again, or use turn-based voice.")
+            == "Your computer couldn't start the Codex voice call. Try again, or use TTS voice mode.")
         #expect(LiveVoiceModel.safeMessage(LiveVoiceControlError.unavailable)
             == LiveVoiceControlError.unavailable.localizedDescription)
         // The plugin's fixed provider reasons (loopdy-plugin #50).
@@ -70,7 +70,7 @@ struct LiveVoiceFailureRecoveryTests {
         #expect(LiveVoiceModel.safeMessage(WorkspaceClientError.rejected(code: "voice_provider_setup_timeout"))
             == "Codex took too long to start the call. Try again.")
         #expect(LiveVoiceModel.safeMessage(WorkspaceClientError.rejected(code: "voice_provider_failed"))
-            == "Codex couldn't start the voice call. Try again, or use turn-based voice.")
+            == "Codex couldn't start the voice call. Try again, or use TTS voice mode.")
     }
 }
 

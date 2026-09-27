@@ -147,6 +147,7 @@ struct SettingsView: View {
             BighelpDeferredSection { assistantBasics }
             BighelpDeferredSection { appearance }
             BighelpDeferredSection { chatExperience }
+            BighelpDeferredSection { voiceExperience }
             BighelpDeferredSection {
                 settingsMenuGroup("Notifications & Access", sections: [.notifications, .permissions])
             }
@@ -359,6 +360,7 @@ struct SettingsView: View {
         case .chat:
             settingsPage(title: section.title) {
                 chatExperience
+                voiceExperience
                 advancedChat
             }
         case .appearance:

@@ -37,8 +37,12 @@ struct AgentHomeChatHeader: View {
     let groupIdentity: AnyView?
     let options: AnyView
     let chrome: AgentHomeChrome
+    /// Full screen height, for the Auto avatar size.
+    var screenHeight: CGFloat = 0
     let beforeAction: () -> Void
     let onBack: () -> Void
+    @AppStorage(ChatLayoutPreferences.avatarSizeKey) private var avatarSize: ChatAvatarSize = .automatic
+    @AppStorage(ChatLayoutPreferences.showsAgentNameKey) private var showsAgentName = true
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -47,7 +51,9 @@ struct AgentHomeChatHeader: View {
                     groupIdentity
                 } else {
                     AgentHeroHeader(agentID: agentID, displayName: displayName, imageURL: imageURL,
-                                    activity: activity, avatarSize: 76, status: status,
+                                    activity: activity,
+                                    avatarSize: avatarSize.points(screenHeight: screenHeight),
+                                    status: status, showsName: showsAgentName,
                                     onAvatarTap: { beforeAction(); chrome.onProfile(agentID) },
                                     onNameTap: { beforeAction(); chrome.onSwitchAgent() })
                         // Who the chat is with, like the name chip in the iPad header.

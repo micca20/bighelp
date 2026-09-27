@@ -34,10 +34,17 @@ final class DirectHermesSessionDelegate: NSObject, URLSessionDataDelegate, @unch
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
+        switch challenge.protectionSpace.authenticationMethod {
+        case NSURLAuthenticationMethodServerTrust:
             completionHandler(.performDefaultHandling, nil)
-        } else {
-            // No automatic HTTP Basic, client-certificate, or shared credential-store login.
+        case NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodDefault:
+            // A password proxy in front of Hermes. Answer with no credential so the
+            // 401 reaches the app, which explains it or sends the password the person
+            // entered for this address. These sessions have no credential store,
+            // so nothing is ever supplied automatically.
+            completionHandler(.rejectProtectionSpace, nil)
+        default:
+            // No client-certificate or other automatic login.
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }

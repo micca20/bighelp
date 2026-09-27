@@ -144,7 +144,9 @@ struct DirectHermesEndpoint: Codable, Equatable, Sendable {
 
     /// Names that only resolve inside a private network (mDNS, home routers,
     /// ICANN's reserved .internal, company intranets). Public DNS never serves them.
-    static let privateNameSuffixes = ["local", "lan", "internal", "home.arpa", "intranet", "corp", "localdomain", "private"]
+    /// `.localhost` names always mean this device (RFC 6761).
+    static let privateNameSuffixes = ["local", "lan", "internal", "home.arpa", "intranet", "corp", "localdomain", "private",
+                                      "localhost"]
 
     /// Plain HTTP stays on a network the person controls: this device, home or
     /// office Wi-Fi, a VPN or Tailscale. Public names and addresses need HTTPS.

@@ -51,6 +51,8 @@ struct FloatingTabBar: View {
 
     @Binding var selection: AppTab
     let onNewChat: (() -> Void)?
+    /// Points the bar drops into the home indicator's area.
+    let homeIndicatorSink: CGFloat
 
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,9 +61,17 @@ struct FloatingTabBar: View {
     @ScaledMetric(relativeTo: .caption2) private var iconSize: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var captionHeight: CGFloat = 28
 
-    init(selection: Binding<AppTab>, onNewChat: (() -> Void)? = nil) {
+    init(selection: Binding<AppTab>, onNewChat: (() -> Void)? = nil, homeIndicatorSink: CGFloat = 0) {
         self._selection = selection
         self.onNewChat = onNewChat
+        self.homeIndicatorSink = homeIndicatorSink
+    }
+
+    /// Like the system tab bar, the bar sits low, just above the home
+    /// indicator, instead of a full safe-area inset above it. Clamped so a
+    /// keyboard's inset never pushes it off screen.
+    static func homeIndicatorSink(forBottomInset inset: CGFloat) -> CGFloat {
+        min(max(0, inset - 14), 20)
     }
 
     var body: some View {
@@ -90,6 +100,7 @@ struct FloatingTabBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, isVerticallyCompact ? 4 : 8)
         .frame(maxWidth: .infinity)
+        .padding(.bottom, -homeIndicatorSink)
     }
 
     private var isVerticallyCompact: Bool { verticalSizeClass == .compact }
