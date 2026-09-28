@@ -12,6 +12,38 @@ final class CanvasStreamingFixtureClient: ConversationFixtureClient, StreamingCo
     weak var catalog: SessionCatalogStore?
     private let toolStress = ProcessInfo.processInfo.arguments.contains("-test-tool-stream")
     private let silentReply = ProcessInfo.processInfo.arguments.contains("-test-silent-reply")
+    private let tableReply = ProcessInfo.processInfo.arguments.contains("-test-table-reply")
+
+    /// A reply with a pipe table, a divider and a checklist, streamed in pieces.
+    private func runTableReply(onDraft: @escaping (TimelineItem) -> Void) async throws -> ConversationResponse {
+        let id = "table-reply-\(UUID().uuidString)"
+        let text = """
+        You're most likely looking at about **$320**. These are the flat rates on [poorjohns.com/prices.html](https://example.com/prices):
+
+        | Likely cause | Labor | Materials | Total |
+        |---|---:|---:|---:|
+        | **Tank bolt / gasket** (most likely) | $300 | $20 | **$320** |
+        | Fill valve, if the leak is at the supply hookup | $250 | $20 | $270 |
+        | Supply line, if it's the hose | $215 | $20 | $235 |
+        | Shutoff valve, if yours doesn't fully close | $300 | $20 | $320 |
+        | **Cracked tank → toilet replacement** (worst case) | $400 | toilet cost | $400 + toilet |
+
+        ---
+
+        - [x] Photo of the leak
+        - [ ] Book the visit
+        """
+        func reply(_ text: String, delivery: String) -> TimelineItem {
+            TimelineItem(id: id, role: .assistant, sender: .agent(id: senderID, snapshot: .init(name: "Canvas fixture")),
+                         content: .message(text), metadata: .init(source: "UI fixture", delivery: delivery))
+        }
+        let lines = text.components(separatedBy: "\n")
+        for count in stride(from: 2, through: lines.count, by: 3) {
+            try await Task.sleep(for: .milliseconds(120))
+            onDraft(reply(lines.prefix(count).joined(separator: "\n"), delivery: "Streaming"))
+        }
+        return ConversationResponse(items: [reply(text, delivery: "Delivered")])
+    }
     private var toolRun = 0
 
     /// Streams a bare marker the way Hermes does ("NO" on the way to "NO_REPLY").
@@ -147,6 +179,7 @@ final class CanvasStreamingFixtureClient: ConversationFixtureClient, StreamingCo
     func send(message: String, conversationID: String, onDraft: @escaping (TimelineItem) -> Void) async throws -> ConversationResponse {
         if toolStress { return try await runToolStream(onDraft: onDraft) }
         if silentReply { return try await runSilentReply(onDraft: onDraft) }
+        if tableReply { return try await runTableReply(onDraft: onDraft) }
         var text = "CANVAS STREAM START\n"
         var item = TimelineItem(id: "canvas-stream-\(UUID().uuidString)", role: .assistant,
                                 sender: .agent(id: senderID, snapshot: TimelineSenderSnapshot(name: "Canvas fixture")),

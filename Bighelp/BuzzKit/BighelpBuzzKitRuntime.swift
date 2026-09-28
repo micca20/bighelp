@@ -335,6 +335,7 @@ final class BighelpBuzzKitRuntime {
         }
         #endif
         if sdk.isConfigured {
+            if BuzzKit.delegate == nil { BuzzKit.delegate = BighelpBuzzKitPresentation.shared }
             if case .notConfigured = state { state = .configured }
             observeActivitiesIfNeeded()
             return true
@@ -366,6 +367,8 @@ final class BighelpBuzzKitRuntime {
             pushEnvironment: environment.sdkValue,
             automaticPushHandling: false
         ))
+        // Foreground presentation: quiet for the chat you're looking at.
+        BuzzKit.delegate = BighelpBuzzKitPresentation.shared
         state = .configured
         observeActivitiesIfNeeded()
         return true

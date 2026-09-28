@@ -139,7 +139,7 @@ struct MessageBubble: View {
         let interaction = ChatBubbleInteraction(document: document, canFork: onFork != nil,
             canReact: canReact,
             canonicalSource: references.hasValidAppendix || references.failure != nil
-                || !projection.cardProjection.cardIDs.isEmpty ? text : nil)
+                || projection.cardProjection.hasRichContent ? text : nil)
         let presentation = ChatMessagePresentation.resolve(role: role, delivery: delivery)
         VStack(alignment: role == .human ? .trailing : .leading,
                spacing: uiV3Enabled ? BighelpTokens.space4 : 0) {
@@ -148,11 +148,11 @@ struct MessageBubble: View {
                     maximumWidthFraction: uiV3Enabled
                         ? BighelpV3MessagePresentation.maximumWidthFraction(
                             role: role,
-                            hasRichContent: !projection.cardProjection.cardIDs.isEmpty
+                            hasRichContent: projection.cardProjection.hasRichContent
                         )
                         : presentation.maximumWidthFraction,
                     contentFitsWidth: uiV3Enabled
-                        ? projection.cardProjection.cardIDs.isEmpty
+                        ? !projection.cardProjection.hasRichContent
                         : presentation.contentFitsWidth
                 ) {
                     messageContent(
@@ -324,7 +324,7 @@ struct MessageBubble: View {
         presentation: ChatMessagePresentation,
         interaction: ChatBubbleInteraction
     ) -> some View {
-        if role == .assistant, !cardProjection.cardIDs.isEmpty {
+        if role == .assistant, cardProjection.hasRichContent {
             if uiV3Enabled {
                 mixedAssistantContent(cardProjection, interaction: interaction, proseLineSpacing: 5)
                     .modifier(BighelpV3MessageSurface(
@@ -455,6 +455,11 @@ struct MessageBubble: View {
                     case .card(let card):
                         BighelpCardView(card: card)
                     }
+                case .table(let table):
+                    ChatMarkdownTableView(table: table,
+                                          textColor: isPendingSubmission ? theme.secondaryText : theme.primaryText)
+                case .rule:
+                    ChatMarkdownRuleView()
                 }
             }
         }

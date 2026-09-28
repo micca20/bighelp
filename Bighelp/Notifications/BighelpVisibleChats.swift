@@ -34,4 +34,13 @@ final class BighelpVisibleChats {
     func isShowing(thread: String) -> Bool {
         !thread.isEmpty && threadIdentifiers.contains(thread)
     }
+
+    /// For callbacks that don't promise the main thread (BuzzKit's foreground
+    /// presentation). The system calls them on main; otherwise this waits for it.
+    nonisolated static func isShowingFromAnyThread(thread: String) -> Bool {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated { shared.isShowing(thread: thread) }
+        }
+        return DispatchQueue.main.sync { MainActor.assumeIsolated { shared.isShowing(thread: thread) } }
+    }
 }

@@ -55,13 +55,14 @@ struct MarkdownMessageView: View {
         case .unorderedList(let items):
             VStack(alignment: .leading, spacing: ChatMarkdownLayoutPolicy.listRowSpacing) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    let task = MarkdownTaskItem.split(item)
                     HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
-                        Text("•")
+                        Text(task.done.map(MarkdownTaskItem.marker(done:)) ?? "•")
                             .frame(
                                 width: ChatMarkdownLayoutPolicy.unorderedMarkerWidth,
                                 alignment: .trailing
                             )
-                        inlineText(item)
+                        inlineText(task.text)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -112,6 +113,10 @@ struct MarkdownMessageView: View {
                 RoundedRectangle(cornerRadius: BighelpTokens.radius12)
                     .stroke(theme.border, lineWidth: BighelpTokens.hairline)
             }
+        case .table(let table):
+            ChatMarkdownTableView(table: table, textColor: resolvedPrimaryText)
+        case .rule:
+            ChatMarkdownRuleView()
         }
     }
 

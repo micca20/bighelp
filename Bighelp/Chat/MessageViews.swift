@@ -53,10 +53,13 @@ struct TimelineSenderResolver {
         if item.role == .assistant, case .message(let text) = item.content {
             let prose = ReferenceCodec.decode(text).prose
             let projection = ChatCardMessageProjection(source: prose, role: .assistant)
-            description = projection.cardIDs.isEmpty ? text : projection.segments.map { segment in
+            let hasOnlyText = projection.segments.allSatisfy { if case .markdown = $0 { true } else { false } }
+            description = hasOnlyText ? text : projection.segments.map { segment in
                 switch segment {
                 case .markdown(let document): document.visiblePlainText
                 case .card(let card): card.title
+                case .table(let table): MarkdownDocument(blocks: [.table(table)]).visiblePlainText
+                case .rule: ""
                 }
             }.filter { !$0.isEmpty }.joined(separator: ". ")
         } else {

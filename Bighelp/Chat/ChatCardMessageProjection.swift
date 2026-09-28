@@ -6,6 +6,28 @@ struct ChatCardMessageProjection: Equatable, Sendable {
     enum Segment: Equatable, Sendable {
         case markdown(MarkdownDocument)
         case card(BighelpCardEnvelope)
+        /// A pipe table, drawn as a grid; the text around it stays selectable text.
+        case table(MarkdownTable)
+        case rule
+    }
+
+    /// Text runs stay one selectable document; tables and rules become their own segments.
+    static func segments(for document: MarkdownDocument) -> [Segment] {
+        var segments: [Segment] = []
+        var run: [MarkdownBlock] = []
+        func flush() {
+            if !run.isEmpty { segments.append(.markdown(MarkdownDocument(blocks: run))) }
+            run.removeAll()
+        }
+        for block in document.blocks {
+            switch block {
+            case .table(let table): flush(); segments.append(.table(table))
+            case .rule: flush(); segments.append(.rule)
+            default: run.append(block)
+            }
+        }
+        flush()
+        return segments.isEmpty ? [.markdown(document)] : segments
     }
 
     static let fenceLanguage = "loopdy-card"
@@ -14,9 +36,14 @@ struct ChatCardMessageProjection: Equatable, Sendable {
     let segments: [Segment]
     let cardIDs: Set<String>
 
+    /// Cards, tables or rules: the message is drawn part by part at full width.
+    var hasRichContent: Bool {
+        !cardIDs.isEmpty || segments.contains { if case .markdown = $0 { false } else { true } }
+    }
+
     init(source: String, role: TimelineRole) {
         guard role == .assistant else {
-            segments = [.markdown(MarkdownDocument(source))]
+            segments = Self.segments(for: MarkdownDocument(source))
             cardIDs = []
             return
         }
@@ -35,7 +62,7 @@ struct ChatCardMessageProjection: Equatable, Sendable {
             guard !markdownLines.isEmpty else { return }
             let source = markdownLines.joined(separator: "\n")
             if !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                projected.append(.markdown(MarkdownDocument(source)))
+                projected.append(contentsOf: Self.segments(for: MarkdownDocument(source)))
             }
             markdownLines.removeAll(keepingCapacity: true)
         }
@@ -97,7 +124,7 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         }
 
         flushMarkdown()
-        segments = projected.isEmpty ? [.markdown(MarkdownDocument(normalized))] : projected
+        segments = projected.isEmpty ? Self.segments(for: MarkdownDocument(normalized)) : projected
         cardIDs = identities
     }
 }

@@ -21,10 +21,22 @@ final class NotificationService: BuzzKitNotificationService, @unchecked Sendable
         }
         content.title = opened.title
         content.body = opened.body
+        // The app keeps alerts for the chat on screen quiet by reading the chat from
+        // the push data; a sealed alert carries it only as the thread.
+        if !request.content.threadIdentifier.isEmpty, var loopdy = content.userInfo["loopdy"] as? [String: Any] {
+            loopdy["sessionReference"] = request.content.threadIdentifier
+            var userInfo = content.userInfo
+            userInfo["loopdy"] = loopdy
+            content.userInfo = userInfo
+        }
         setPending((contentHandler, content.copy() as? UNNotificationContent ?? content))
         let box = UncheckedBox((request: request, content: content))
+        // The picture comes from the phone's cache after the first alert. A first
+        // download still running after a moment finishes in the background for
+        // next time; the alert doesn't wait for it.
+        let avatar = Task { await sealed.avatarFile(for: opened) }
         Task {
-            if let file = await sealed.avatarFile(for: opened),
+            if let file = await Self.value(of: avatar, within: .milliseconds(1500)),
                let attachment = try? UNNotificationAttachment(identifier: "bk.image", url: file) {
                 box.value.content.attachments = [attachment]
             }
@@ -49,11 +61,42 @@ final class NotificationService: BuzzKitNotificationService, @unchecked Sendable
         lock.withLock { pending = value }
     }
 
+    /// The task's value, or nil once `limit` passes (the task keeps running).
+    private static func value(of task: Task<URL?, Never>, within limit: Duration) async -> URL? {
+        let once = ResumeOnce()
+        return await withCheckedContinuation { continuation in
+            once.set(continuation)
+            Task { once.resume(await task.value) }
+            Task {
+                try? await Task.sleep(for: limit)
+                once.resume(nil)
+            }
+        }
+    }
+
     private func takePending() -> (handler: (UNNotificationContent) -> Void, content: UNNotificationContent)? {
         lock.withLock {
             defer { pending = nil }
             return pending
         }
+    }
+}
+
+/// Resumes a continuation with whichever value arrives first.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URL?, Never>?
+
+    func set(_ continuation: CheckedContinuation<URL?, Never>) {
+        lock.withLock { self.continuation = continuation }
+    }
+
+    func resume(_ value: URL?) {
+        let pending = lock.withLock { () -> CheckedContinuation<URL?, Never>? in
+            defer { continuation = nil }
+            return continuation
+        }
+        pending?.resume(returning: value)
     }
 }
 

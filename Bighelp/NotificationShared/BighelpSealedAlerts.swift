@@ -189,9 +189,11 @@ struct BighelpSealedNotification: Sendable {
         return content
     }
 
-    /// Downloads and opens the avatar into a temporary image file for the notification.
-    func avatarFile(for content: BighelpSealedAlert.Content, session: URLSession = .shared) async -> URL? {
-        guard let avatar = content.avatar, let avatarURL else { return nil }
+    /// The avatar as a temporary image file for the notification: from the phone's
+    /// cache when this picture was opened before, otherwise downloaded and opened.
+    func avatarFile(for content: BighelpSealedAlert.Content, session: URLSession = .shared,
+                    cache: BighelpNotificationAvatarCache = .shared) async -> URL? {
+        guard let avatar = content.avatar else { return nil }
         let fileExtension = switch avatar.mimeType {
         case "image/png": "png"
         case "image/jpeg": "jpg"
@@ -199,16 +201,78 @@ struct BighelpSealedNotification: Sendable {
         default: ""
         }
         guard !fileExtension.isEmpty else { return nil }
-        var request = URLRequest(url: avatarURL)
-        request.timeoutInterval = 12
-        guard let (blob, response) = try? await session.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200, blob.count <= 2_000_000,
-              let image = try? BighelpSealedAlert.openAvatar(blob, avatar: avatar, grantID: envelope.grantID)
-        else { return nil }
+        let image: Data
+        if let cached = cache.image(sha256: avatar.sha256) {
+            image = cached
+        } else {
+            guard let avatarURL else { return nil }
+            var request = URLRequest(url: avatarURL)
+            request.timeoutInterval = 12
+            guard let (blob, response) = try? await session.data(for: request),
+                  (response as? HTTPURLResponse)?.statusCode == 200, blob.count <= 2_000_000,
+                  let opened = try? BighelpSealedAlert.openAvatar(blob, avatar: avatar, grantID: envelope.grantID)
+            else { return nil }
+            cache.store(opened, sha256: avatar.sha256)
+            image = opened
+        }
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString).appendingPathExtension(fileExtension)
         guard (try? image.write(to: file, options: .completeFileProtectionUntilFirstUserAuthentication)) != nil else { return nil }
         return file
+    }
+}
+
+/// Opened agent pictures kept on the phone by their SHA-256, so later alerts
+/// from the same agent attach the picture without a download. Entries are
+/// checked against their hash on read; the newest 32 are kept.
+struct BighelpNotificationAvatarCache: Sendable {
+    static let appGroup = "group.app.loopdy.mobile.buzzkit"
+    static let limit = 32
+
+    let directory: URL?
+
+    static var shared: BighelpNotificationAvatarCache {
+        BighelpNotificationAvatarCache(directory: FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
+            .appendingPathComponent("SealedAlertAvatars", isDirectory: true))
+    }
+
+    func image(sha256: String) -> Data? {
+        guard let file = file(sha256), let data = try? Data(contentsOf: file) else { return nil }
+        guard Self.hex(SHA256.hash(data: data)) == sha256.lowercased() else {
+            try? FileManager.default.removeItem(at: file)
+            return nil
+        }
+        return data
+    }
+
+    func store(_ image: Data, sha256: String) {
+        guard let directory, let file = file(sha256),
+              Self.hex(SHA256.hash(data: image)) == sha256.lowercased() else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? image.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        prune(directory)
+    }
+
+    private func file(_ sha256: String) -> URL? {
+        guard let directory, sha256.utf8.count == 64, sha256.allSatisfy(\.isHexDigit) else { return nil }
+        return directory.appendingPathComponent(sha256.lowercased())
+    }
+
+    private func prune(_ directory: URL) {
+        let key = URLResourceKey.contentModificationDateKey
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [key]), files.count > Self.limit else { return }
+        let newestFirst = files.sorted {
+            let first = (try? $0.resourceValues(forKeys: [key]).contentModificationDate) ?? .distantPast
+            let second = (try? $1.resourceValues(forKeys: [key]).contentModificationDate) ?? .distantPast
+            return first > second
+        }
+        for stale in newestFirst.dropFirst(Self.limit) { try? FileManager.default.removeItem(at: stale) }
+    }
+
+    private static func hex(_ digest: SHA256.Digest) -> String {
+        digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 

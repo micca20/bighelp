@@ -131,9 +131,10 @@ enum ChatNativeMarkdownAttributedBuilder {
                 style: style
             ))
         case .unorderedList(let items):
+            let tasks = items.map(MarkdownTaskItem.split)
             appendList(
-                items: items,
-                markers: items.map { _ in "•" },
+                items: tasks.map(\.text),
+                markers: tasks.map { $0.done.map(MarkdownTaskItem.marker(done:)) ?? "•" },
                 markerWidth: ChatMarkdownLayoutPolicy.unorderedMarkerWidth,
                 spacingAfter: spacingAfter,
                 style: style,
@@ -195,6 +196,33 @@ enum ChatNativeMarkdownAttributedBuilder {
                     textColor: style.primaryText,
                     paragraphStyle: codeParagraph,
                     backgroundColor: style.codeBackground
+                )
+            ))
+        case .table(let table):
+            // Chat bubbles draw tables as their own grid (ChatMarkdownTableView);
+            // anywhere else gets one line per row.
+            let rows = [table.header] + table.rows
+            for (offset, row) in rows.enumerated() {
+                let isLast = offset == rows.count - 1
+                result.append(inline(
+                    row.joined(separator: "  ·  "),
+                    role: .body,
+                    textColor: offset == 0 ? style.secondaryText : style.primaryText,
+                    paragraphStyle: paragraphStyle(
+                        spacingAfter: isLast ? spacingAfter : ChatMarkdownLayoutPolicy.listRowSpacing,
+                        style: style
+                    ),
+                    style: style
+                ))
+                if !isLast { result.append(NSAttributedString(string: "\n")) }
+            }
+        case .rule:
+            result.append(NSAttributedString(
+                string: "———",
+                attributes: attributes(
+                    font: font(role: .body, style: style),
+                    textColor: style.secondaryText,
+                    paragraphStyle: paragraphStyle(spacingAfter: spacingAfter, style: style)
                 )
             ))
         }

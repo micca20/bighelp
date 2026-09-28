@@ -38,6 +38,31 @@ enum MarkdownBlock: Equatable, Sendable {
     case orderedList(start: Int, items: [String])
     case quote(markdown: String)
     case code(language: String?, text: String)
+    /// A GitHub-style pipe table. Chats draw it as its own grid (ChatMarkdownTableView).
+    case table(MarkdownTable)
+    /// A thematic break: a line of three or more `-`, `*` or `_`.
+    case rule
+}
+
+struct MarkdownTable: Equatable, Sendable {
+    enum Alignment: Equatable, Sendable { case leading, center, trailing }
+
+    /// Cells are inline Markdown. Every row has one cell per column.
+    let header: [String]
+    let alignments: [Alignment]
+    let rows: [[String]]
+}
+
+/// `- [ ] item` and `- [x] item` in a list.
+enum MarkdownTaskItem {
+    static func split(_ item: String) -> (done: Bool?, text: String) {
+        for (prefix, done) in [("[ ] ", false), ("[x] ", true), ("[X] ", true)] where item.hasPrefix(prefix) {
+            return (done, String(item.dropFirst(prefix.count)))
+        }
+        return (nil, item)
+    }
+
+    static func marker(done: Bool) -> String { done ? "☑" : "☐" }
 }
 
 struct MarkdownDocument: Equatable, Sendable {
@@ -45,7 +70,11 @@ struct MarkdownDocument: Equatable, Sendable {
     let visiblePlainText: String
 
     init(_ source: String) {
-        blocks = Self.parse(source)
+        self.init(blocks: Self.parse(source))
+    }
+
+    init(blocks: [MarkdownBlock]) {
+        self.blocks = blocks
         visiblePlainText = blocks.map(Self.plainText).joined(separator: "\n\n")
     }
 
@@ -97,6 +126,26 @@ struct MarkdownDocument: Equatable, Sendable {
                 }
                 continue
             }
+            // A line of `===` or `---` under text makes that text a heading (Setext).
+            if !paragraph.isEmpty, let level = setextLevel(trimmed) {
+                let text = paragraph.joined(separator: " ")
+                paragraph.removeAll(keepingCapacity: true)
+                result.append(.heading(level: level, markdown: text))
+                index += 1
+                continue
+            }
+            if isRule(trimmed) {
+                flushParagraph()
+                result.append(.rule)
+                index += 1
+                continue
+            }
+            if let found = pipeTable(startingAt: index, in: lines) {
+                flushParagraph()
+                result.append(.table(found.table))
+                index = found.next
+                continue
+            }
             if let heading = heading(from: trimmed) {
                 flushParagraph()
                 result.append(heading)
@@ -146,6 +195,82 @@ struct MarkdownDocument: Equatable, Sendable {
         return result
     }
 
+    private static func setextLevel(_ line: String) -> Int? {
+        guard line.count >= 3 else { return nil }
+        if line.allSatisfy({ $0 == "=" }) { return 1 }
+        if line.allSatisfy({ $0 == "-" }) { return 2 }
+        return nil
+    }
+
+    private static func isRule(_ line: String) -> Bool {
+        let marks = line.filter { $0 != " " }
+        guard marks.count >= 3, let mark = marks.first, "-*_".contains(mark) else { return false }
+        return marks.allSatisfy { $0 == mark }
+    }
+
+    /// A header row, a delimiter row (`|---|:--:|`), then body rows until a line without a pipe.
+    private static func pipeTable(startingAt index: Int, in lines: [String]) -> (table: MarkdownTable, next: Int)? {
+        guard index + 1 < lines.count, lines[index].contains("|") else { return nil }
+        let header = tableCells(lines[index])
+        guard !header.isEmpty, let alignments = tableAlignments(lines[index + 1]),
+              alignments.count == header.count else { return nil }
+        var rows: [[String]] = []
+        var cursor = index + 2
+        while cursor < lines.count {
+            let line = lines[cursor]
+            guard line.contains("|"), !line.trimmingCharacters(in: .whitespaces).isEmpty else { break }
+            let cells = tableCells(line)
+            rows.append(Array((cells + Array(repeating: "", count: header.count)).prefix(header.count)))
+            cursor += 1
+        }
+        return (MarkdownTable(header: header, alignments: alignments, rows: rows), cursor)
+    }
+
+    private static func tableAlignments(_ line: String) -> [MarkdownTable.Alignment]? {
+        guard line.contains("-") else { return nil }
+        var alignments: [MarkdownTable.Alignment] = []
+        for cell in tableCells(line) {
+            let dashes = cell.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            guard !dashes.isEmpty, dashes.allSatisfy({ $0 == "-" }) else { return nil }
+            switch (cell.hasPrefix(":"), cell.hasSuffix(":")) {
+            case (true, true): alignments.append(.center)
+            case (false, true): alignments.append(.trailing)
+            default: alignments.append(.leading)
+            }
+        }
+        return alignments.isEmpty ? nil : alignments
+    }
+
+    /// Splits on pipes outside code spans; `\|` is a literal pipe.
+    private static func tableCells(_ line: String) -> [String] {
+        var row = line.trimmingCharacters(in: .whitespaces)
+        if row.hasPrefix("|") { row.removeFirst() }
+        if row.hasSuffix("|"), !row.hasSuffix("\\|") { row.removeLast() }
+        var cells: [String] = []
+        var current = ""
+        var inCode = false
+        var escaped = false
+        for character in row {
+            if escaped {
+                current.append(character == "|" ? "|" : "\\\(character)")
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "`" {
+                inCode.toggle()
+                current.append(character)
+            } else if character == "|", !inCode {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+
     private static func heading(from line: String) -> MarkdownBlock? {
         let count = line.prefix(while: { $0 == "#" }).count
         guard (1...6).contains(count), line.dropFirst(count).first == " " else { return nil }
@@ -182,11 +307,16 @@ struct MarkdownDocument: Equatable, Sendable {
         case .heading(_, let markdown), .paragraph(let markdown), .quote(let markdown):
             inlinePlainText(markdown)
         case .unorderedList(let items):
-            items.map(inlinePlainText).joined(separator: "\n")
+            items.map { inlinePlainText(MarkdownTaskItem.split($0).text) }.joined(separator: "\n")
         case .orderedList(_, let items):
             items.map(inlinePlainText).joined(separator: "\n")
         case .code(_, let text):
             text
+        case .table(let table):
+            ([table.header] + table.rows).map { $0.map(inlinePlainText).joined(separator: "\t") }
+                .joined(separator: "\n")
+        case .rule:
+            ""
         }
     }
 
