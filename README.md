@@ -50,8 +50,9 @@ xcodegen generate
 open Bighelp.xcodeproj
 ```
 
-Run the **bighelp** scheme. bighelp was bighelp's original name, and the code
-still uses it. `Config/Local.xcconfig` is git-ignored. Simulator builds work
+Run the **Bighelp** scheme. The app was first called Loopdy, so some stored
+names (bundle IDs, settings keys, the plugin's `loopdy` id) still use it.
+`Config/Local.xcconfig` is git-ignored. Simulator builds work
 with it empty. To run on a real iPhone, change the bundle IDs and app groups in
 `project.yml` to ones your Apple team owns.
 
