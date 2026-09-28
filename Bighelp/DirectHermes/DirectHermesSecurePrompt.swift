@@ -924,7 +924,10 @@ struct DirectHermesSecurePromptOverlay: View {
 
     var body: some View {
         let _ = store.revision
-        EmptyView()
+        // A sheet needs a real view to hang from; EmptyView never presents one.
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
             .sheet(item: store.presentationBinding()) { prompt in
                 DirectHermesSecurePromptView(
                     store: store,

@@ -101,6 +101,77 @@ struct DirectHermesAccessCredentialsTests {
         #expect(plain.accessHeaders.isEmpty)
     }
 
+    // MARK: Custom headers (issue #1)
+
+    @Test func customHeadersAreValidatedAndReservedNamesRefused() throws {
+        let header = try DirectHermesCustomHeader(name: " X-Access-Id ", value: " abc123 ")
+        #expect(header.name == "X-Access-Id" && header.value == "abc123")
+        for reserved in ["Authorization", "cookie", "Host", "Sec-WebSocket-Key", "X-Hermes-Session-Token",
+                         "X-Loopdy-Request-ID", "CF-Access-Client-Id", "Content-Type"] {
+            #expect(throws: DirectHermesCustomHeader.Problem.reserved(reserved)) {
+                try DirectHermesCustomHeader(name: reserved, value: "x")
+            }
+        }
+        #expect(throws: DirectHermesCustomHeader.Problem.invalidName("Bad Name")) {
+            try DirectHermesCustomHeader(name: "Bad Name", value: "x")
+        }
+        #expect(throws: DirectHermesCustomHeader.Problem.invalidValue("X-Id")) {
+            try DirectHermesCustomHeader(name: "X-Id", value: "line\nbreak")
+        }
+        #expect(throws: DirectHermesCustomHeader.Problem.duplicate("x-id")) {
+            try DirectHermesCustomHeader.list([("X-Id", "a"), ("x-id", "b")])
+        }
+        // Blank rows are ignored.
+        #expect(try DirectHermesCustomHeader.list([("", ""), ("X-Id", "a")]).map(\.name) == ["X-Id"])
+        #expect(throws: DirectHermesCustomHeader.Problem.tooMany) {
+            try DirectHermesCustomHeader.list((0..<17).map { ("X-H\($0)", "v") })
+        }
+    }
+
+    @Test func customHeadersAreSavedPerAddressAndSentAlongsideTheToken() throws {
+        let store = DirectHermesAccessCredentialStore(service: "app.loopdy.mobile.tests.cloudflare-access-\(UUID().uuidString)")
+        let endpoint = try DirectHermesEndpoint(address: "https://hermes-\(UUID().uuidString.prefix(8).lowercased()).example.com")
+        let other = try DirectHermesEndpoint(address: "https://other-\(UUID().uuidString.prefix(8).lowercased()).example.com")
+        defer { store.remove(for: endpoint) }
+        let headers = try DirectHermesCustomHeader.list([("X-Access-Id", "id-1"), ("X-Access-Secret", "s3cret")])
+        store.stageCustomHeaders(headers, for: endpoint)
+        store.stage(try DirectHermesAccessCredentials(clientID: id, clientSecret: secret), for: endpoint)
+        #expect(store.savedCustomHeaders(for: endpoint).isEmpty, "Staged, not saved, until the connection works")
+        let sent = store.headers(for: endpoint)
+        #expect(sent["X-Access-Id"] == "id-1" && sent["X-Access-Secret"] == "s3cret" && sent["CF-Access-Client-Id"] == id)
+        #expect(store.headers(for: other).isEmpty, "Never to another address")
+        try store.commitStaged(for: endpoint)
+        let relaunched = DirectHermesAccessCredentialStore(service: store.serviceForTesting)
+        #expect(relaunched.customHeaders(for: endpoint) == headers)
+        // Editing a saved host replaces both at once; removing clears everything.
+        try relaunched.replace(access: nil, customHeaders: [headers[0]], for: endpoint)
+        #expect(DirectHermesAccessCredentialStore(service: store.serviceForTesting).headers(for: endpoint) == ["X-Access-Id": "id-1"])
+        relaunched.remove(for: endpoint)
+        #expect(DirectHermesAccessCredentialStore(service: store.serviceForTesting).headers(for: endpoint).isEmpty)
+    }
+
+    @Test func customHeadersStayOffThePublicInternetInPlainHTTP() throws {
+        let store = DirectHermesAccessCredentialStore(service: "app.loopdy.mobile.tests.cloudflare-access-\(UUID().uuidString)")
+        let vpn = try DirectHermesEndpoint(address: "http://10.8.0.5:9119", allowPrivateHTTP: true)
+        let headers = try DirectHermesCustomHeader.list([("X-Access-Id", "id-1")])
+        store.stageCustomHeaders(headers, for: vpn)
+        #expect(store.headers(for: vpn) == ["X-Access-Id": "id-1"], "A private network the person allowed")
+        #expect(DirectHermesAccessCredentialStore.mayCarrySecrets(vpn))
+    }
+
+    @Test func everyHostRequestAndSocketCarriesCustomHeaders() throws {
+        let endpoint = try DirectHermesEndpoint(address: "https://hermes-\(UUID().uuidString.prefix(8).lowercased()).example.com")
+        let shared = DirectHermesAccessCredentialStore.shared
+        shared.stageCustomHeaders(try DirectHermesCustomHeader.list([("X-Pangolin-Id", "abc")]), for: endpoint)
+        defer { shared.stageCustomHeaders(nil, for: endpoint) }
+        let http = DirectHermesHTTP(endpoint: endpoint)
+        defer { http.invalidate() }
+        #expect((http.session.configuration.httpAdditionalHeaders as? [String: String])?["X-Pangolin-Id"] == "abc")
+        var socket = URLRequest(url: URL(string: "wss://example.com/api/ws")!)
+        http.applyAccessHeaders(to: &socket)
+        #expect(socket.value(forHTTPHeaderField: "X-Pangolin-Id") == "abc")
+    }
+
     @Test func cloudflareAccessRefusalsAreRecognized() throws {
         func response(_ status: Int, _ headers: [String: String]) -> HTTPURLResponse {
             HTTPURLResponse(url: URL(string: "https://hermes.example.com/api/status")!, statusCode: status,

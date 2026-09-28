@@ -130,6 +130,16 @@ final class NativeWorkspaceLifecycleCoordinator {
         )
     }
 
+    /// Deletes an agent's profile the way Profiles does: reviewed, its chats
+    /// retired first, then confirmed absent and the app refreshed.
+    func deleteAgent(profileID: String) async throws {
+        let review = try await profileLifecycleClient.prepareDelete(profileID: profileID)
+        let result = try await profileLifecycleClient.delete(reviewed: review) { [self] change in
+            try await retireProfileOwnership(change)
+        }
+        try await onProfileChanged(result)
+    }
+
     func profileLifecycleView(selectedProfileID: String) -> ProfileLifecycleView {
         ProfileLifecycleView(
             hostName: hostName,

@@ -38,7 +38,6 @@ struct ChatCompletedTurnTests {
             return turn
         }
         #expect(folds.count == 1)
-        #expect(folds.first?.isContinuation == false)
         #expect(folds.first?.entries.map(\.id) == [entries[1].id])
         #expect(visibleIDs(rows) == [user.id, final.id])
         #expect(expandedIDs(rows) == entries.map(\.id))
@@ -198,7 +197,7 @@ struct ChatCompletedTurnTests {
         #expect(durations == [20.25, 2])
     }
 
-    @Test func verifierFollowupPreservesMiddleAnswerAndChronology() {
+    @Test func verifierFollowupKeepsEveryMessageVisibleWithOneFold() {
         let entries: [ChatTranscriptEntry] = [
             .message(message("user", time: 100, human: true)),
             .message(message("I will check the configuration.", time: 101)),
@@ -212,15 +211,110 @@ struct ChatCompletedTurnTests {
             guard case .message(let item) = entry else { return nil as String? }
             return item.id
         })
-        #expect(expandedIDs(rows) == entries.map(\.id))
+        // One fold holds all of the turn's work, in order, where the work began;
+        // the middle answer and the final reply stay outside it.
+        #expect(expandedIDs(rows) == ["message:user", "message:I will check the configuration.",
+                                      "activity:inspection", "activity:inspection-second", "activity:verifier",
+                                      entries[4].id, entries[6].id])
         let folds = rows.compactMap { row -> ChatCompletedTurn? in
             guard case .completed(let turn) = row else { return nil }
             return turn
         }
-        #expect(folds.count == 2)
-        #expect(folds.first?.entries.count == 2)
-        #expect(folds.map(\.label) == ["Worked for 10s", "More completed work"])
+        #expect(folds.count == 1)
+        #expect(folds.first?.entries.count == 3)
+        #expect(folds.map(\.label) == ["Worked for 10s"])
         #expect(Set(rows.map(\.id)).count == rows.count)
+    }
+
+    @Test func workOnBothSidesOfInterimMessagesFoldsOnceInOrder() {
+        let entries: [ChatTranscriptEntry] = [
+            .message(message("user", time: 100, human: true)),
+            activity("first"),
+            .message(message("interim one", time: 102)),
+            activity("second"),
+            .message(message("interim two", time: 104)),
+            activity("third"),
+            .message(message("final", time: 108, duration: 8_000)),
+        ]
+        let rows = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true)
+        #expect(rows.map(\.id) == ["message:user", "completed-turn:activity:first",
+                                    "message:interim one", "message:interim two", "message:final"])
+        guard case .completed(let fold)? = rows.first(where: { if case .completed = $0 { true } else { false } }) else {
+            Issue.record("Expected one fold")
+            return
+        }
+        #expect(fold.label == "Worked for 8s")
+        guard case .activity(let merged)? = fold.mergedActivity else {
+            Issue.record("Expected merged activity")
+            return
+        }
+        #expect(merged.id == "first")
+        #expect(merged.events.map(\.eventID) == ["first", "second", "third"])
+    }
+
+    @Test func backToBackReasoningSharesOneThinkingRow() {
+        func event(_ id: String, _ kind: ChatActivityKind, running: Bool = false, ms: Int? = 2_000) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: "session", turnID: "turn", kind: kind,
+                              lifecycle: running ? .running : .succeeded, title: id, summary: nil,
+                              detail: kind == .reasoning ? "Thought \(id)" : nil, occurredAt: 0,
+                              durationMilliseconds: kind == .reasoning ? ms : nil,
+                              toolCallID: kind == .tool ? "call-\(id)" : nil)
+        }
+        let turn = ChatActivityTurn(id: "turn", events: [
+            event("r1", .reasoning), event("r2", .reasoning), event("t1", .tool),
+            event("r3", .reasoning), event("r4", .reasoning, running: true),
+        ])
+        let segments = ChatActivityTurnPresentation(turn: turn).segments
+        #expect(segments.count == 3)
+        guard segments.count == 3, case .thinking(let first) = segments[0], case .workTrail = segments[1],
+              case .thinking(let last) = segments[2] else {
+            Issue.record("Expected thinking groups")
+            return
+        }
+        #expect(first.map(\.eventID) == ["r1", "r2"])
+        #expect(ChatReasoningGroupRow.title(for: first) == "Thought for 4s")
+        #expect(ChatReasoningGroupRow.title(for: last) == "Thinking…")
+        #expect(ChatReasoningGroupRow.title(for: [event("a", .reasoning), event("b", .reasoning, ms: nil)])
+                == "Thought process")
+
+        // The timeline draws each group as one row.
+        let rows = ChatCanvasTranscriptProjection.rows(from: [.entry(.activity(turn))],
+                                                       disclosures: ChatActivityDisclosureStore())
+        let thinkingRows = rows.filter { $0.id.contains("card:") }
+        #expect(thinkingRows.count == 2)
+    }
+
+    @Test func aThinkingGroupRemembersItsOpenStateAsItGrows() {
+        func reasoning(_ id: String, running: Bool) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: "session", turnID: "turn", kind: .reasoning,
+                              lifecycle: running ? .running : .succeeded, title: id, summary: nil,
+                              detail: id, occurredAt: 0)
+        }
+        let store = ChatActivityDisclosureStore()
+        let one = [reasoning("a", running: true)]
+        #expect(store.isExpanded(reasoning: one), "Open while thinking")
+        store.setExpanded(false, reasoning: one)
+        let two = one + [reasoning("b", running: true)]
+        #expect(!store.isExpanded(reasoning: two), "Closing it holds as more thinking arrives")
+        #expect(!store.isExpanded(reasoning: [reasoning("x", running: false)]), "Finished thinking starts closed")
+    }
+
+    @Test func expandedFoldDrawsReasoningAcrossInterimMessagesAsOneGroup() {
+        func reasoning(_ id: String) -> ChatTranscriptEntry {
+            .activity(ChatActivityTurn(id: id, events: [ChatActivityEvent(
+                eventID: id, sessionID: "session", turnID: "turn", kind: .reasoning, lifecycle: .succeeded,
+                title: id, summary: nil, detail: "Thought \(id)", occurredAt: 0, durationMilliseconds: 1_000)]))
+        }
+        let entries: [ChatTranscriptEntry] = [
+            .message(message("user", time: 100, human: true)), reasoning("r1"),
+            .message(message("interim", time: 101)), reasoning("r2"),
+            .message(message("final", time: 103, duration: 3_000)),
+        ]
+        let rows = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true)
+        let store = ChatActivityDisclosureStore()
+        store.setCompletedTurnExpanded(true, id: "completed-turn:activity:r1")
+        let canvas = ChatCanvasTranscriptProjection.rows(from: rows, disclosures: store)
+        #expect(canvas.filter { $0.id.contains("card:") }.count == 1)
     }
 
     @Test func streamingMessagePreventsPrematureFoldingDuringIdleGap() {
@@ -269,7 +363,13 @@ struct ChatCompletedTurnTests {
         let reopened = ChatCompletedTurnProjection.rows(from: project(restored), isSending: false, enabled: true)
         #expect(original.map(\.id) == reopened.map(\.id))
         #expect(visibleIDs(reopened) == record.items.map(\.id))
-        #expect(expandedIDs(reopened) == entries.map(\.id))
+        // The turn's work sits in one fold where it began; every message keeps its order.
+        func isActivity(_ entry: ChatTranscriptEntry) -> Bool { if case .activity = entry { true } else { false } }
+        var expected = entries.filter { !isActivity($0) }.map(\.id)
+        if let firstWork = entries.firstIndex(where: isActivity) {
+            expected.insert(contentsOf: entries.filter(isActivity).map(\.id), at: firstWork)
+        }
+        #expect(expandedIDs(reopened) == expected)
         let unfolded = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: false)
         #expect(unfolded.map(\.id) == entries.map(\.id))
         #expect(ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true).map(\.id) == original.map(\.id))

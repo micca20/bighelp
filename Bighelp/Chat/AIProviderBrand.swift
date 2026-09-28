@@ -13,7 +13,11 @@ struct AIProviderOfficialArtworkGeometry: Equatable, Sendable {
 
 enum AIProviderBrand: String, CaseIterable, Equatable, Sendable {
     case openAI
+    /// ChatGPT sign-in through Codex, apart from OpenAI's API.
+    case codex
     case anthropic
+    /// A Claude subscription (Claude Code), apart from Anthropic's API.
+    case claude
     case google
     case nous
     case openRouter
@@ -45,6 +49,8 @@ enum AIProviderBrand: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
+        case .claude: "Claude"
+        case .codex: "Codex"
         case .google: "Google"
         case .nous: "Nous Research"
         case .openRouter: "OpenRouter"
@@ -76,6 +82,8 @@ enum AIProviderBrand: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .openAI: .official(assetName: "ProviderLogoOpenAI")
         case .anthropic: .official(assetName: "ProviderLogoAnthropic")
+        case .claude: .official(assetName: "ProviderLogoClaude")
+        case .codex: .official(assetName: "ProviderLogoCodex")
         case .google: .official(assetName: "ProviderLogoGoogle")
         case .openRouter: .official(assetName: "ProviderLogoOpenRouter")
         case .mistral: .official(assetName: "ProviderLogoMistral")
@@ -105,6 +113,13 @@ enum AIProviderBrand: String, CaseIterable, Equatable, Sendable {
                 opticalScale: 2,
                 clipsToFrame: false
             )
+        case .codex:
+            // The glyph fills about 75% of its canvas; bring it level with other marks.
+            AIProviderOfficialArtworkGeometry(
+                insetFraction: 0.10,
+                opticalScale: 1.3,
+                clipsToFrame: false
+            )
         default:
             AIProviderOfficialArtworkGeometry(
                 insetFraction: 0.10,
@@ -118,6 +133,8 @@ enum AIProviderBrand: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .openAI: "◎"
         case .anthropic: "AI"
+        case .claude: "C"
+        case .codex: "CX"
         case .google: "G"
         case .nous: "N"
         case .openRouter: "OR"
@@ -184,10 +201,11 @@ enum AIProviderBrandRegistry {
 
     private static let aliases: [String: AIProviderBrand] = [
         "openai": .openAI,
-        "openaicodex": .openAI,
-        "codex": .openAI,
+        "openaicodex": .codex,
+        "codex": .codex,
         "anthropic": .anthropic,
-        "claude": .anthropic,
+        "claude": .claude,
+        "claudecode": .claude,
         "google": .google,
         "googlegemini": .google,
         "gemini": .google,

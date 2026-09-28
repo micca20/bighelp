@@ -13,6 +13,8 @@ struct VoicePresentationContainer: View {
     let onWorkspaceTap: () -> Void
     /// Switches Settings to turn-based voice and reopens voice.
     var onUseTurnBased: (() -> Void)? = nil
+    /// The chat's live work, so the avatar acts out what the agent is doing.
+    var chatActivity: () -> AgentActivityKind = { .idle }
 
     var body: some View {
         Group {
@@ -20,12 +22,13 @@ struct VoicePresentationContainer: View {
                 VoiceView(model: presentation.model, agentID: agentID,
                           agentImageURL: agentImageURL,
                           permissionCenter: permissionCenter,
-                          onEnded: onEnded, onWorkspaceTap: onWorkspaceTap)
+                          onEnded: onEnded, onWorkspaceTap: onWorkspaceTap,
+                          chatActivity: chatActivity)
             } else if let live = presentation.liveModel {
                 NavigationStack {
                     LiveVoiceView(model: live, agentID: agentID,
                                   agentImageURL: agentImageURL, onEnded: onEnded,
-                                  onUseTurnBased: onUseTurnBased)
+                                  onUseTurnBased: onUseTurnBased, chatActivity: chatActivity)
                 }
             } else {
                 NavigationStack {

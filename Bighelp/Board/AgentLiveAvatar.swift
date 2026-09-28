@@ -33,6 +33,8 @@ struct AgentLiveAvatar: View {
     var showsBadge = true
     /// Off on the island's stage, where the pet walks around bare.
     var showsBackdrop = true
+    /// How the face rests with no work (voice mode shows listening).
+    var restingState: AgentLiveState = .idle
 
     @Environment(\.companionStore) private var companionStore
     @Environment(\.agentActivityInIsland) private var activityInIsland
@@ -94,7 +96,7 @@ struct AgentLiveAvatar: View {
 
     private var liveState: AgentLiveState {
         switch activity {
-        case .idle: .idle
+        case .idle: restingState
         case .replying, .messaging: .speaking
         case .done, .publishing: .happy
         case .waiting: .nudge

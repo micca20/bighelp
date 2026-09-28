@@ -276,3 +276,90 @@ struct ChatActivityRow: View {
     @BighelpThemeReader private var theme: BighelpTheme
 
 }
+
+/// Back-to-back reasoning as one Thinking / Thought process row, with each
+/// entry on its own line inside.
+struct ChatReasoningGroupRow: View {
+    let events: [ChatActivityEvent]
+    let onDisclosureChange: () -> Void
+
+    @Environment(\.chatActivityDisclosureStore) private var disclosures
+    @State private var localExpanded: Bool?
+
+    private var isRunning: Bool { events.contains { $0.lifecycle == .running } }
+    private var isExpanded: Bool {
+        disclosures?.isExpanded(reasoning: events) ?? localExpanded ?? isRunning
+    }
+    private var identifier: String { events.first?.eventID ?? "reasoning" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+            Button {
+                onDisclosureChange()
+                let expanded = !isExpanded
+                if let disclosures { disclosures.setExpanded(expanded, reasoning: events) }
+                else { localExpanded = expanded }
+            } label: {
+                header
+                    .frame(minHeight: BighelpTokens.hitTarget)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isRunning ? "Thinking. Working" : "Thinking. Done")
+            .accessibilityValue(ChatActivityDisclosureAccessibility.value(isExpanded: isExpanded))
+            .accessibilityHint(isExpanded ? "Collapses reasoning text." : "Expands reasoning text.")
+            .accessibilityIdentifier("chat.activity.\(identifier)")
+
+            if isExpanded, !lines.isEmpty {
+                VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                    ForEach(lines, id: \.id) { line in
+                        Text(line.text)
+                            .bighelpFont(.label, weight: .regular)
+                            .foregroundStyle(theme.secondaryText)
+                            .lineSpacing(3)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("chat.reasoning-content.\(line.id)")
+                    }
+                }
+                .modifier(ChatInterimReplyStyle(theme: theme))
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
+            BighelpAnimatedMark(isActive: isRunning, height: 16)
+                .frame(width: 20, height: 20)
+            Text(ChatReasoningGroupRow.title(for: events))
+                .bighelpFont(.label)
+                .foregroundStyle(theme.secondaryText)
+                .bighelpActiveCallShimmer(isActive: isRunning, color: .white)
+            Spacer(minLength: BighelpTokens.space8)
+            Image(systemName: "chevron.right")
+                .bighelpFont(.metadata, weight: .semibold)
+                .foregroundStyle(theme.tertiaryText)
+                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, BighelpTokens.space8)
+        .padding(.vertical, BighelpTokens.space4)
+    }
+
+    private var lines: [(id: String, text: String)] {
+        events.compactMap { event in event.reasoningText.map { (event.eventID, $0) } }
+    }
+
+    /// "Thinking…" while any entry runs, then the total time when every entry
+    /// has one, like a single reasoning row.
+    static func title(for events: [ChatActivityEvent]) -> String {
+        if events.contains(where: { $0.lifecycle == .running }) { return "Thinking…" }
+        let durations = events.compactMap(\.durationMilliseconds).filter { (0..<86_400_000).contains($0) }
+        let total = durations.reduce(0, +)
+        guard durations.count == events.count, (1_000..<86_400_000).contains(total) else { return "Thought process" }
+        let seconds = total / 1_000
+        return seconds < 60 ? "Thought for \(seconds)s" : "Thought for \(seconds / 60)m \(seconds % 60)s"
+    }
+
+    @BighelpThemeReader private var theme: BighelpTheme
+}

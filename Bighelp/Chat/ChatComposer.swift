@@ -6,6 +6,7 @@ struct ChatComposer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.nerdModeEnabled) private var nerdModeEnabled
+    @Environment(\.providerUsage) private var providerUsage
     @Environment(WorkspaceConnectionKeeper.self) private var connectionKeeper: WorkspaceConnectionKeeper?
     @ScaledMetric(relativeTo: .body) private var compactDraftLineHeight: CGFloat = 22
     @Bindable var model: ChatModel
@@ -220,7 +221,8 @@ struct ChatComposer: View {
                 onContextSelect: {
                     isSessionContextPresented = true
                     onDismissKeyboard()
-                }
+                },
+                onShowProviderUsage: providerUsageAction
             )
             .padding(.leading, horizontalSizeClass == .regular ? companionRailReservation : 0)
             .padding(.trailing, companionRailReservation)
@@ -260,6 +262,10 @@ struct ChatComposer: View {
                     }
                     .accessibilityIdentifier("chat.composer.menu.context")
                 }
+                if providerUsage?.isAvailable == true {
+                    Button("Provider usage", systemImage: "gauge.with.dots.needle.50percent") { showProviderUsage() }
+                        .accessibilityIdentifier("chat.composer.menu.provider-usage")
+                }
             } label: {
                 Label("Session actions", systemImage: "ellipsis")
                     .labelStyle(.iconOnly)
@@ -270,6 +276,22 @@ struct ChatComposer: View {
             .buttonStyle(.plain)
             .background(theme.incomingMessageBackground, in: .circle)
             .accessibilityIdentifier("chat.composer.session-actions")
+        }
+    }
+
+    private var providerUsageAction: (() -> Void)? {
+        guard providerUsage?.isAvailable == true else { return nil }
+        return { showProviderUsage() }
+    }
+
+    /// Closes the context popover first; a popover and the overlay can't show together.
+    private func showProviderUsage() {
+        let wasPresented = isSessionContextPresented
+        isSessionContextPresented = false
+        onDismissKeyboard()
+        Task { @MainActor in
+            if wasPresented { try? await Task.sleep(for: .milliseconds(350)) }
+            providerUsage?.show(agentID: model.memberIDs.first ?? "default")
         }
     }
 

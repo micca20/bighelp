@@ -4812,14 +4812,75 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertEqual(path.value as? String, "/srv/workspaces/loopdy-native")
 
         app.buttons["hermes-workspaces.create.submit"].tap()
-        let created = app.buttons["hermes-workspace.fixture-loopdy-native"]
+        let created = app.buttons["hermes-workspace.fixture-bighelp-native"]
         XCTAssertTrue(created.waitForExistence(timeout: 3))
 
-        app.buttons["hermes-workspace.archive.fixture-loopdy-native"].tap()
+        app.buttons["hermes-workspace.archive.fixture-bighelp-native"].tap()
         let confirmation = app.buttons["Archive Workspace"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
         confirmation.tap()
         XCTAssertFalse(created.waitForExistence(timeout: 1))
+    }
+
+    @MainActor
+    func testNewWorkspaceBrowsesHomeFoldersAndAcceptsTildePaths() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures"]
+        app.launch()
+
+        app.buttons["home.drawer.open"].tap()
+        XCTAssertTrue(app.buttons["menu.folder"].waitForExistence(timeout: 3))
+        app.buttons["menu.folder"].tap()
+        let create = app.buttons["hermes-workspaces.create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 3))
+        create.tap()
+
+        // Nothing typed yet: home's folders, hidden ones left out.
+        let projects = app.buttons.matching(identifier: "hermes-workspaces.folder-suggestion.2").firstMatch
+        XCTAssertTrue(projects.waitForExistence(timeout: 3))
+        XCTAssertEqual(projects.label, "Projects")
+        XCTAssertFalse(app.buttons[".config"].exists)
+        saveWorkspaceBrowse("workspace-1-home", app)
+
+        // Tapping opens the folder, fills the path, and names the workspace.
+        projects.tap()
+        let path = app.textFields["hermes-workspaces.create.path"]
+        XCTAssertEqual(path.value as? String, "~/Projects")
+        XCTAssertEqual(app.textFields["hermes-workspaces.create.name"].value as? String, "Projects")
+        let native = app.buttons["hermes-workspaces.folder-suggestion.0"]
+        XCTAssertTrue(native.waitForExistence(timeout: 3))
+        XCTAssertEqual(native.label, "bighelp-native")
+        saveWorkspaceBrowse("workspace-2-projects", app)
+
+        app.buttons["hermes-workspaces.folder-up"].tap()
+        XCTAssertEqual(path.value as? String, "~")
+
+        // Typing narrows the list to matching folders.
+        path.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        path.typeText("/Projects/gar")
+        let garden = app.buttons["hermes-workspaces.folder-suggestion.0"]
+        XCTAssertTrue(garden.waitForExistence(timeout: 3))
+        XCTAssertEqual(garden.label, "garden-planner")
+        garden.tap()
+        XCTAssertEqual(path.value as? String, "~/Projects/garden-planner")
+        XCTAssertTrue(app.staticTexts["Full path: /Users/demo/Projects/garden-planner"].waitForExistence(timeout: 3))
+        saveWorkspaceBrowse("workspace-3-typed", app)
+
+        app.buttons["hermes-workspaces.create.submit"].tap()
+        let created = app.buttons["hermes-workspace.fixture-garden-planner"]
+        XCTAssertTrue(created.waitForExistence(timeout: 3))
+        XCTAssertTrue(created.label.contains("/Users/demo/Projects/garden-planner"), created.label)
+    }
+
+    @MainActor
+    private func saveWorkspaceBrowse(_ name: String, _ app: XCUIApplication) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+        guard let folder = ProcessInfo.processInfo.environment["BIGHELP_WORKSPACE_EVIDENCE"] else { return }
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
     }
 
     @MainActor

@@ -71,7 +71,7 @@ enum BighelpShortcutServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .connectionUnavailable:
-            "bighelp could not connect to your host. Open bighelp to check your account and connection, then run the shortcut again."
+            "bighelp couldn't reach your host. Check that it's online and connected, then try again."
         case .agentUnavailable:
             "That agent is not available in Hermes."
         case .sessionUnavailable:
@@ -339,14 +339,43 @@ final class BighelpShortcutService: @unchecked Sendable {
     }
 
     func startVoiceChat(agentID: String?) async throws -> BighelpShortcutVoiceResult {
+        // Show the voice stage now; reconnecting and creating the chat take a few seconds.
+        let launch = VoiceLaunchState.shared
+        launch.begin(agent: nil)
+        do {
+            let (workspace, result) = try await openChat(agentID: agentID) { workspace, agent in
+                launch.update(agent: .init(id: agent.id, name: agent.name,
+                                           imageURL: workspace.agents.avatarURL(for: agent)))
+            }
+            workspace.appState.requestVoiceMode(for: result.sessionID)
+            return result
+        } catch {
+            launch.finish()
+            throw error
+        }
+    }
+
+    /// A new chat started from outside the app (a widget or link). The app
+    /// drops its host connection in the background, so wait for a host that
+    /// answers (reconnecting once) before creating the chat on it.
+    func openNewChat(agentID: String?) async throws {
+        _ = try await openChat(agentID: agentID)
+    }
+
+    private func openChat(
+        agentID: String?,
+        onAgent: (@MainActor (BighelpShortcutWorkspace, AgentProfile) -> Void)? = nil
+    ) async throws -> (BighelpShortcutWorkspace, BighelpShortcutVoiceResult) {
         let workspace = try await liveWorkspace()
-        let agent = try resolveAgent(explicitID: agentID, in: workspace)
+        // A widget remembers the agent it last drew; if that agent is gone, use the default.
+        let known = agentID.flatMap { id in workspace.agents.profiles.contains { $0.id == id } ? id : nil }
+        let agent = try resolveAgent(explicitID: known, in: workspace)
+        onAgent?(workspace, agent)
         let outcome = try await workspace.newChatCoordinator.start(explicitAgentID: agent.id)
         guard case .opened(let sessionID, _) = outcome else {
             throw BighelpShortcutServiceError.sessionUnavailable
         }
-        workspace.appState.requestVoiceMode(for: sessionID)
-        return BighelpShortcutVoiceResult(sessionID: sessionID, agentName: agent.name)
+        return (workspace, BighelpShortcutVoiceResult(sessionID: sessionID, agentName: agent.name))
     }
 
     private func resolveAgent(

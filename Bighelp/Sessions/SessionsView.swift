@@ -50,6 +50,9 @@ struct SessionsView: View {
     /// Starts a Hermes hosted group chat (Bot Mode). Nil when the host can't create rooms.
     let onNewGroupChat: (() -> Void)?
     let onSelect: (SessionSummary) -> Void
+    /// The Agents list's hold menu for the "Your agents" rail.
+    var agentActionsConfig: AgentActionsConfig? = nil
+    @State private var agentActions = AgentActions()
 
     init(
         model: SessionsModel,
@@ -60,7 +63,8 @@ struct SessionsView: View {
         sessionOrganizationHostID: String? = nil,
         onStartChat: ((String?) -> Void)? = nil,
         onNewGroupChat: (() -> Void)? = nil,
-        onSelect: @escaping (SessionSummary) -> Void
+        onSelect: @escaping (SessionSummary) -> Void,
+        agentActionsConfig: AgentActionsConfig? = nil
     ) {
         self.onNewGroupChat = onNewGroupChat
         model.showsCronSessions = settings.showCronSessions
@@ -72,6 +76,17 @@ struct SessionsView: View {
         self.sessionOrganizationHostID = sessionOrganizationHostID
         self.onStartChat = onStartChat
         self.onSelect = onSelect
+        self.agentActionsConfig = agentActionsConfig
+    }
+
+    /// Same as holding an agent in Agents; "Group chats" opens that list filtered.
+    private func performAgentAction(_ action: AgentRowMenuAction, agent: AgentProfile, config: AgentActionsConfig) {
+        guard action == .groups else {
+            agentActions.perform(action, agent: agent, config: config)
+            return
+        }
+        guard let owner = config.owner, let onAction = config.onAction else { return }
+        onAction(AgentWorkspaceActionRequest(owner: owner, action: .openAgentGroups(profileID: agent.id)))
     }
 
     var body: some View {
@@ -182,6 +197,7 @@ struct SessionsView: View {
                 Text(message)
             }
         }
+        .agentActionsPresentation(agentActions, config: agentActionsConfig)
     }
 
     private func nativeDirectory(model: SessionsModel) -> some View {
@@ -346,6 +362,13 @@ struct SessionsView: View {
                                 }
                             }
                             .buttonStyle(.bighelpTilePress)
+                            .contextMenu {
+                                if let agentActionsConfig {
+                                    AgentActionMenuItems(actions: agentActions, agent: profile, config: agentActionsConfig) { action in
+                                        performAgentAction(action, agent: profile, config: agentActionsConfig)
+                                    }
+                                }
+                            }
                             .accessibilityLabel("New chat with \(profile.name)")
                             .accessibilityValue(state == .idle ? "" : state.label)
                             .accessibilityIdentifier("sessions.start-with.\(profile.id)")

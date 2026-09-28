@@ -38,6 +38,7 @@ struct BighelpApp: App {
     private let subagentStreamAcceptanceFixture: SubagentStreamAcceptanceFixtureController?
     private let watchApprovalBridge: BighelpWatchApprovalBridge?
     @State private var newChatCoordinator: NewChatCoordinator
+    private let shortcutService: BighelpShortcutService
     @State private var reflectiveVisionCamera: ReflectiveVisionCamera
     @State private var providerLogoStore: ProviderLogoStore?
     private let requiresLinkAccount: Bool
@@ -199,6 +200,7 @@ struct BighelpApp: App {
         subagentStreamAcceptanceFixture = composition.subagentStreamAcceptanceFixture
         watchApprovalBridge = composition.watchApprovalBridge
         _newChatCoordinator = State(initialValue: composition.newChatCoordinator)
+        shortcutService = composition.shortcutService
         _reflectiveVisionCamera = State(initialValue: ReflectiveVisionCamera())
         requiresLinkAccount = composition.requiresLinkAccount
         clearLocalCache = composition.clearLocalCache
@@ -211,6 +213,35 @@ struct BighelpApp: App {
         #else
         false
         #endif
+    }
+
+    /// The main screen for the current host (or the local fixtures).
+    private func rootShell(native: NativeWorkspaceRuntime?, navigation: AppState) -> RootShellView {
+        RootShellView(
+            appState: navigation,
+            settings: settings,
+            featureStore: native?.features ?? featureStore,
+            sessionCatalog: native?.sessions ?? sessionCatalog,
+            agents: native?.agents ?? agentDirectory,
+            agentRuntimeDefaults: native?.defaults ?? agentRuntimeDefaults,
+            botModeRooms: native?.rooms ?? botModeRooms,
+            linkAccount: linkAccount,
+            linkDevices: linkDevices,
+            permissionCenter: permissionCenter,
+            permissionsOnboarding: permissionsOnboarding,
+            personalities: native?.personalities ?? personalities,
+            skillsAndTools: native?.skillsAndTools ?? skillsAndTools,
+            hermesWorkspaces: native?.projects ?? hermesWorkspaces,
+            projectGitClient: native?.projectGitClient ?? projectGitClient,
+            userIdentity: userIdentity,
+            newChatCoordinator: native?.newChat ?? newChatCoordinator,
+            shortcutService: shortcutService,
+            requiresLinkAccount: requiresLinkAccount,
+            clearLocalCache: clearLocalCache,
+            nativeRuntime: native,
+            nativeWorkspaceError: nativeWorkspaces.errorMessage,
+            agentIsland: agentIsland
+        )
     }
 
     var body: some Scene {
@@ -275,34 +306,12 @@ struct BighelpApp: App {
                     )
                 } else {
                     NavigationStack(path: $navigation.path) {
-                        RootShellView(
-                            appState: navigation,
-                            settings: settings,
-                            featureStore: native?.features ?? featureStore,
-                            sessionCatalog: native?.sessions ?? sessionCatalog,
-                            agents: native?.agents ?? agentDirectory,
-                            agentRuntimeDefaults: native?.defaults ?? agentRuntimeDefaults,
-                            botModeRooms: native?.rooms ?? botModeRooms,
-                            linkAccount: linkAccount,
-                            linkDevices: linkDevices,
-                            permissionCenter: permissionCenter,
-                            permissionsOnboarding: permissionsOnboarding,
-                            personalities: native?.personalities ?? personalities,
-                            skillsAndTools: native?.skillsAndTools ?? skillsAndTools,
-                            hermesWorkspaces: native?.projects ?? hermesWorkspaces,
-                            projectGitClient: native?.projectGitClient ?? projectGitClient,
-                            userIdentity: userIdentity,
-                            newChatCoordinator: native?.newChat ?? newChatCoordinator,
-                            requiresLinkAccount: requiresLinkAccount,
-                            clearLocalCache: clearLocalCache,
-                            nativeRuntime: native,
-                            nativeWorkspaceError: nativeWorkspaces.errorMessage,
-                            agentIsland: agentIsland
-                        )
+                        rootShell(native: native, navigation: navigation)
                     }
                     // Around the Dynamic Island: which agent is working, on what.
                     .environment(\.agentActivityInIsland, agentIsland.isAvailable)
                     .overlay(alignment: .top) { AgentActivityIslandLayer(model: agentIsland) }
+                    .modifier(VoiceLaunchCoverOverlay())
                     .statusBarHidden(agentIsland.hidesStatusBar)
                     .animation(.snappy, value: agentIsland.hidesStatusBar)
                 }

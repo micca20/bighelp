@@ -217,6 +217,22 @@ extension SettingsView {
 
     var voiceExperience: some View { voiceBasics }
 
+    /// Which providers the Provider Usage overlay shows.
+    var providerUsageSection: some View {
+        Section {
+            NavigationLink {
+                // Pushed screens don't reliably inherit the store; hand it over.
+                ProviderUsageSettingsView().environment(\.providerUsage, providerUsage)
+            } label: {
+                settingLabel("Show and hide providers", detail: "Choose which plans and balances Provider Usage shows")
+            }
+            .accessibilityIdentifier("settings.provider-usage")
+        } header: {
+            Text("Provider Usage")
+        }
+        .listRowBackground(theme.surface)
+    }
+
     private var chatBasics: some View {
         Section {
             Toggle(isOn: $settings.responseHapticsEnabled) {

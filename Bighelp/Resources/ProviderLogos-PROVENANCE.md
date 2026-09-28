@@ -34,6 +34,38 @@ Retrieved and re-verified 2026-08-31. Provider names and marks remain trademarks
 - Usage basis: the supplied archive identifies these as the approved Anthropic symbol variants for light and dark presentation.
 - Placement restrictions honored by renderer: exact light and dark vector geometry and styles render transparently with no enclosing well, frame, recoloring, or effects; Asset Catalog text packaging adds only a terminal newline. Original aspect ratio and 10% renderer clear space are retained.
 
+## Claude
+
+- Official source: https://commons.wikimedia.org/wiki/File:Claude_AI_symbol.svg (CC0 public domain dedication, credit https://www.anthropic.com), supplied by the maintainer 2026-09-27
+- Version: Commons file current on 2026-09-27
+- Semantic asset name: `ProviderLogoClaude`
+- Any source filename: `Claude_AI_symbol.svg`
+- Any source SHA-256: `5de1221c77cc91e748066fd642ad0eee1c1fa65328814f5178166f901e599709`
+- Any bundled filename: `ProviderLogoClaude-Light.svg`
+- Any bundled SHA-256: `d732eb5ce1731ef8006e2fca0c3f8310315cbb2cb4de4203a06d77edc77facc0`
+- Dark source filename: `Claude_AI_symbol.svg`
+- Dark source SHA-256: `5de1221c77cc91e748066fd642ad0eee1c1fa65328814f5178166f901e599709`
+- Dark bundled filename: `ProviderLogoClaude-Dark.svg`
+- Dark bundled SHA-256: `d732eb5ce1731ef8006e2fca0c3f8310315cbb2cb4de4203a06d77edc77facc0`
+- Usage basis: identifies Claude subscriptions (Claude Code sign-in) apart from Anthropic's API, which keeps `ProviderLogoAnthropic`. Claude is a trademark of Anthropic. The source's `hsl(14.8, 63.1%, 59.6%)` fill is written as its hex equivalent `#D97757` and a 512x512 canvas size is added so exports render sharply; path geometry is unchanged.
+- Placement restrictions honored by renderer: transparent surface, original aspect ratio, 10% renderer clear space, no enclosing well, frame, recoloring, or effects.
+
+## Codex
+
+- Official source: LobeHub Icons, https://github.com/lobehub/lobe-icons (MIT License, see `ProviderLogos-NOTICES.txt`), `codex-color.svg` supplied by the maintainer 2026-09-27
+- Version: lobe-icons Codex color icon current on 2026-09-27
+- Semantic asset name: `ProviderLogoCodex`
+- Any source filename: `codex-color.svg`
+- Any source SHA-256: `4a2f43ce46b5b6e3722c95088f88d26ef91e6a8c2e598e70642a1c54367386e4`
+- Any bundled filename: `ProviderLogoCodex-Light.svg`
+- Any bundled SHA-256: `60a370694f7f4b6c2dd46e1079ae5983993ea174ec12022ab6c586b588513565`
+- Dark source filename: `codex-color.svg`
+- Dark source SHA-256: `4a2f43ce46b5b6e3722c95088f88d26ef91e6a8c2e598e70642a1c54367386e4`
+- Dark bundled filename: `ProviderLogoCodex-Dark.svg`
+- Dark bundled SHA-256: `60a370694f7f4b6c2dd46e1079ae5983993ea174ec12022ab6c586b588513565`
+- Usage basis: identifies Codex (ChatGPT sign-in) apart from OpenAI's API, which keeps `ProviderLogoOpenAI`. Codex is an OpenAI product. The white rounded-square app-icon background is removed so the glyph sits in bighelp's own tile like other marks; the `<title>`, `em` sizing and inline CSS are removed, a 512x512 canvas is set so exports render sharply, and the gradient id renamed. The glyph path is rewritten with explicit separators between arc flags (Apple's SVG renderer misread the compact form and clipped the shape); its geometry and the gradient colors are unchanged.
+- Placement restrictions honored by renderer: transparent surface, original aspect ratio, 10% renderer clear space, no enclosing well, frame, recoloring, or effects.
+
 ## Google Gemini
 
 - Official source verification: https://blog.google/company-news/inside-google/company-announcements/gradient-g-logo-design/
@@ -151,7 +183,7 @@ Retrieved and re-verified 2026-08-31. Provider names and marks remain trademarks
 ## License notices
 
 - Bundled notices filename: `ProviderLogos-NOTICES.txt`
-- Bundled notices SHA-256: `94a292f1f1c9eb2f96e778f5388050955496e203ba6cfdb1cd756a5e35057622`
+- Bundled notices SHA-256: `c4ab872b788cf09d7e82c77fd077e6d93dac55fa9746ecf25c91160b98b090ce`
 - OpenRouter license source: `OpenRouterTeam/sign-in-with-openrouter/LICENSE` at commit `872aaa56b2df753b6ff3812f71a6964870e2ff30`
 - OpenRouter license SHA-256: `a9578921a6dc44cfe53b45131fe08ad522e1da416d7eb98ad92472c370da2ccf`
 - Notice content: the pinned OpenRouter MIT license file is reproduced verbatim in the bundled notices resource; the GitHub Invertocat is supplied under GitHub's trademark guidelines rather than the removed Primer Octicons MIT source.

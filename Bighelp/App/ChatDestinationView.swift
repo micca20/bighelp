@@ -10,6 +10,9 @@ struct ChatDestinationView: View {
     @State private var isSessionFilesPresented = false
     @State private var requestsSessionFilesAfterDetails = false
     @State private var isNativeAttentionPresented = false
+    /// Briefly after the chat opens or the app returns (a Dynamic Island or
+    /// notification tap), a question or approval waiting on you opens focused.
+    @State private var attentionAutoOpenUntil: Date?
     @State private var isNativeSessionControlsPresented = false
     @State private var requestsNativeControlsAfterMenu = false
     @State private var responseHaptics = ResponseHapticsController()
@@ -203,6 +206,7 @@ struct ChatDestinationView: View {
         .onChange(of: currentAppearanceScope, initial: true) { _, _ in reconcileAppearanceStore() }
         .onAppear {
             reconcileAppearanceStore()
+            armAttentionAutoOpen()
             isHapticsSurfaceVisible = true
             if featureStore.ownsNativeNavigationHydration {
                 featureStore.retainModels(ownedBy: appState.path)
@@ -484,6 +488,9 @@ struct ChatDestinationView: View {
         .sheet(isPresented: $isSessionFilesPresented) {
             ChatSessionFilesView(model: model)
         }
+        .onChange(of: voicePresentation != nil) { _, isPresented in
+            if isPresented { VoiceLaunchState.shared.finish() }
+        }
         .fullScreenCover(item: $voicePresentation) { presentation in
             VoicePresentationContainer(
                 presentation: presentation,
@@ -494,7 +501,8 @@ struct ChatDestinationView: View {
                 permissionCenter: permissionCenter,
                 onEnded: { voicePresentation = nil },
                 onWorkspaceTap: presentVoiceWorkspace,
-                onUseTurnBased: useTurnBasedVoice
+                onUseTurnBased: useTurnBasedVoice,
+                chatActivity: { [model] in model.liveActivityKind }
             )
             .onChange(of: model.isSending, initial: true) { _, active in
                 presentation.model.reconcileAgentRun(isActive: active)
@@ -636,6 +644,10 @@ struct ChatDestinationView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             projectChanges.requestRefresh()
+            armAttentionAutoOpen()
+        }
+        .onChange(of: model.nativeConversationClient?.prompts.map(\.id) ?? []) { _, _ in
+            presentAttentionIfArmed()
         }
         .onChange(of: photoSelections) { _, selections in
             guard !selections.isEmpty else { return }
@@ -1082,6 +1094,22 @@ struct ChatDestinationView: View {
     @Environment(\.reflectiveVisionEnabled) var reflectiveVisionEnabled
     @Environment(\.reflectiveVisionCamera) var reflectiveVisionCamera
     @Environment(\.scenePhase) private var scenePhase
+
+    private func armAttentionAutoOpen() {
+        attentionAutoOpenUntil = .now.addingTimeInterval(8)
+        presentAttentionIfArmed()
+    }
+
+    /// Closes the keyboard and opens what's waiting, so it isn't hidden behind
+    /// the header with the keyboard up.
+    private func presentAttentionIfArmed() {
+        guard let until = attentionAutoOpenUntil, until > .now,
+              let native = model.nativeConversationClient, !native.prompts.isEmpty,
+              !isNativeAttentionPresented, voicePresentation == nil else { return }
+        attentionAutoOpenUntil = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        isNativeAttentionPresented = true
+    }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.bighelpUIV3Enabled) private var uiV3Enabled

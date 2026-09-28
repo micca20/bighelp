@@ -46,6 +46,8 @@ struct AdaptiveComposerActionButton: View {
     @State private var optionsAppeared = false
     @State private var touchIsActive = false
     @State private var touchActiveWhenOptionsAppeared = false
+    /// True only while a finger is down; resets itself on release or cancel.
+    @GestureState private var isHolding = false
     private let holdObservationEnabled = ProcessInfo.processInfo.arguments.contains("-observe-send-hold")
 
     var body: some View {
@@ -125,6 +127,11 @@ struct AdaptiveComposerActionButton: View {
             }
         }
         .accessibilityIdentifier(accessibilityIdentifier)
+        // A tap or a hold let go early must not leave the unlock ring drawn.
+        .onChange(of: isHolding) { _, holding in
+            guard !holding, !holdThresholdReached else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { unlockProgress = 0 }
+        }
         // Confirms the mid-session hold unlocked before the options sheet rises.
         .sensoryFeedback(.impact(weight: .medium), trigger: holdThresholdReached) { _, reached in reached }
     }
@@ -184,6 +191,7 @@ struct AdaptiveComposerActionButton: View {
             minimumDuration: MidSessionSendPresentation.unlockHoldDuration,
             maximumDistance: MidSessionSendHoldStateMachine.maximumDistance
         )
+        .updating($isHolding) { _, holding, _ in holding = true }
         .onChanged { _ in
             guard isEnabled else { return }
             touchIsActive = true

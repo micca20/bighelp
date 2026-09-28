@@ -42,8 +42,32 @@ struct BighelpConfiguredHostView: View {
     @State private var pluginModel: HostNotificationSetupModel?
     @State private var updateModel: HostPluginUpdateModel?
     @State private var showsRemove = false
+    @State private var isAccessEditorPresented = false
+    /// Bumped after editing access so the summary rereads Keychain.
+    @State private var accessRevision = 0
     @State private var error: String?
     private var host: BighelpConfiguredHost? { registry.hosts.first { $0.id == hostID } }
+
+    /// What bighelp sends to get past a proxy or Cloudflare Access (names only, never values).
+    @ViewBuilder
+    private func accessSummary(_ endpoint: DirectHermesEndpoint) -> some View {
+        let store = DirectHermesAccessCredentialStore.shared
+        let access = store.savedCredentials(for: endpoint)
+        let headers = store.savedCustomHeaders(for: endpoint)
+        if access != nil || !headers.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                if let access {
+                    Text(access.kind == .basic ? "Proxy username and password saved"
+                                               : "Cloudflare Access service token saved")
+                }
+                if !headers.isEmpty {
+                    Text("Custom headers: " + headers.map(\.name).joined(separator: ", "))
+                }
+            }
+            .bighelpFont(.metadata).foregroundStyle(.secondary)
+            .accessibilityIdentifier("hosts.cloudflare-access")
+        }
+    }
 
     var body: some View {
         Form {
@@ -52,13 +76,10 @@ struct BighelpConfiguredHostView: View {
                     LabeledContent("Computer", value: host.name)
                     DisclosureGroup("Advanced connection details") {
                         Text(host.endpoint.identity).bighelpFont(.code).textSelection(.enabled)
-                        if let access = DirectHermesAccessCredentialStore.shared.savedCredentials(for: host.endpoint) {
-                            Label(access.kind == .basic ? "Proxy username and password saved"
-                                                        : "Cloudflare Access service token saved",
-                                  systemImage: "lock.shield")
-                                .bighelpFont(.metadata).foregroundStyle(.secondary)
-                                .accessibilityIdentifier("hosts.cloudflare-access")
-                        }
+                        accessSummary(host.endpoint)
+                            .id(accessRevision)
+                        Button("Edit access", systemImage: "lock.shield") { isAccessEditorPresented = true }
+                            .accessibilityIdentifier("hosts.edit-access")
                         Text(host.isIndependent
                              ? "Credentials are saved on this device for this Hermes principal."
                              : "These legacy credentials remain private to this account until explicitly migrated.")
@@ -105,6 +126,16 @@ struct BighelpConfiguredHostView: View {
         .bighelpFormSurface()
         .navigationTitle(host?.name ?? "Computer")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isAccessEditorPresented) {
+            if let host {
+                HostAccessEditorView(endpoint: host.endpoint) {
+                    accessRevision += 1
+                    guard host.id == registry.selectedHostID, let workspace = registry.selectedWorkspace else { return }
+                    // New connections pick up the saved access; reconnect the current one now.
+                    Task { await workspace.suspend(); await workspace.reconnect() }
+                }
+            }
+        }
         .alert("Remove this host from this device?", isPresented: $showsRemove) {
             Button("Remove Host", role: .destructive) {
                 guard let host else { return }

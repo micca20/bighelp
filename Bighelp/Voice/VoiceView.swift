@@ -15,6 +15,8 @@ struct VoiceView: View {
     let permissionCenter: PermissionCenter?
     let onEnded: () -> Void
     let onWorkspaceTap: () -> Void
+    /// The chat's live work (a running tool, thinking), for the avatar's moves.
+    var chatActivity: () -> AgentActivityKind = { .idle }
 
     init(
         model: VoiceModel,
@@ -24,9 +26,11 @@ struct VoiceView: View {
         showsTranscript: Bool = false,
         permissionCenter: PermissionCenter? = nil,
         onEnded: @escaping () -> Void = {},
-        onWorkspaceTap: @escaping () -> Void = {}
+        onWorkspaceTap: @escaping () -> Void = {},
+        chatActivity: @escaping () -> AgentActivityKind = { .idle }
     ) {
         _model = State(initialValue: model)
+        self.chatActivity = chatActivity
         self.agentID = agentID
         self.agentImageURL = agentImageURL
         self.transcriptRows = transcriptRows
@@ -168,7 +172,7 @@ struct VoiceView: View {
         guard model.isActive else { return 0 }
         if model.isPlaybackActive { return model.isAgentAudioMuted ? 0 : model.outputLevel }
         guard !model.isMicrophoneMuted, model.meterState == .monitoring else { return 0 }
-        return Double(model.inputLevel)
+        return VoiceWaveformBars.displayLevel(microphone: model.inputLevel)
     }
 
     private var agentPersona: AgentPersona {
@@ -176,6 +180,12 @@ struct VoiceView: View {
     }
 
     /// Voice status mapped onto the shared avatar vocabulary.
+    private var avatarActivity: AgentActivityKind {
+        guard model.isActive else { return .idle }
+        return VoiceAvatarActivity.resolve(isSpeaking: model.status == .speaking,
+                                           isWorking: model.status == .working, chatActivity: chatActivity())
+    }
+
     private var liveState: AgentLiveState {
         switch model.status {
         case .listening: .listening
@@ -250,7 +260,8 @@ struct VoiceView: View {
                 appearance: voiceCompanionAppearance(from: companionStore),
                 reaction: voiceCompanionReaction,
                 isAnimating: isVoiceVisible && scenePhase == .active && model.isActive,
-                audioLevel: model.isPlaybackActive ? model.outputLevel : 0
+                audioLevel: model.isPlaybackActive ? model.outputLevel : 0,
+                activityMood: avatarActivity == .replying ? nil : avatarActivity.moodID
             )
             .frame(width: companionSide, height: companionSide)
             .allowsHitTesting(false)
@@ -260,12 +271,14 @@ struct VoiceView: View {
             .frame(width: size, height: size)
             .frame(maxWidth: .infinity)
         } else {
-            AvatarView(
-                stableID: agentID ?? model.agentName,
+            AgentLiveAvatar(
+                agentID: agentID ?? model.agentName,
                 displayName: model.agentName,
                 imageURL: agentImageURL,
+                activity: avatarActivity,
                 size: size,
-                state: liveState
+                showsBadge: false,
+                restingState: liveState
             )
             .scaleEffect(avatarPulseScale)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: avatarPulseScale)

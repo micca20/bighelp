@@ -231,23 +231,29 @@ enum ConversationFixtures {
                               summary: nil, detail: text, occurredAt: order,
                               durationMilliseconds: running ? nil : 4_000, sourceOrder: order)
         }
+        // Back-to-back thinking in both turns, and work on both sides of the
+        // interim messages, so one fold and grouped thinking are both visible.
         let items = [
-            human("thinking-q1", "Am I on track with my grocery budget this month?", 1),
-            reply("thinking-interim-1", "Let me pull up your budget file first.", 3),
-            reply("thinking-interim-2", "Found it. Now adding up this month's grocery receipts.", 5),
+            human("thinking-q1", "Am I on track with my grocery budget this month?", 10),
+            reply("thinking-interim-1", "Let me pull up your budget file first.", 30),
+            reply("thinking-interim-2", "Found it. Now adding up this month's grocery receipts.", 50),
             reply("thinking-answer", "You're on track. You've spent **$412** of your **$600** grocery budget, "
-                  + "with 9 days left. At your usual pace you'll finish around $540.", 7, duration: 12_000),
-            human("thinking-q2", "And dining out?", 8),
-            reply("thinking-interim-3", "Checking restaurant charges now.", 10),
+                  + "with 9 days left. At your usual pace you'll finish around $540.", 70, duration: 12_000),
+            human("thinking-q2", "And dining out?", 80),
+            reply("thinking-interim-3", "Checking restaurant charges now.", 100),
         ]
         let activity = [
             thought("thinking-r1", "turn-1", "They want a budget check. Read budget.csv for the grocery limit, "
-                    + "then total September grocery receipts and compare.", 2),
-            tool("thinking-t1", "turn-1", "Reading budget.csv", "read_file", 4),
-            tool("thinking-t2", "turn-1", "Totaling receipts", "execute_code", 6),
-            thought("thinking-r2", "turn-2", "Dining out is its own category. Filter card charges by restaurant "
-                    + "merchant codes for this month", 9, running: true),
-            tool("thinking-t3", "turn-2", "Searching charges", "search_files", 11, running: true),
+                    + "then total September grocery receipts and compare.", 20),
+            thought("thinking-r1b", "turn-1", "Budget file first, receipts after.", 21),
+            tool("thinking-t1", "turn-1", "Reading budget.csv", "read_file", 40),
+            thought("thinking-r1c", "turn-1", "Receipts so far total $412.", 55),
+            thought("thinking-r1d", "turn-1", "Compare with the $600 limit and project to month end.", 56),
+            tool("thinking-t2", "turn-1", "Totaling receipts", "execute_code", 60),
+            thought("thinking-r2", "turn-2", "Dining out is its own category.", 90),
+            thought("thinking-r2b", "turn-2", "Filter card charges by restaurant merchant codes for this month",
+                    91, running: true),
+            tool("thinking-t3", "turn-2", "Searching charges", "search_files", 110, running: true),
         ]
         return SessionRecord(id: sessionID, kind: .direct, agentIDs: ["finance"], title: "Budget check",
                              items: items, activityEvents: activity,

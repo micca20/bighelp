@@ -35,6 +35,8 @@ them feel like texting a friend.
 - Push notifications and Live Activities are sent through
   [BuzzKit](https://buzzkit.dev).
 - Sign-in details stay in the iPhone Keychain. There are no ads or analytics.
+- Hermes behind Cloudflare Access, a password proxy, or a proxy that checks its
+  own headers (like Pangolin) works too: see [docs/HOST_ACCESS.md](docs/HOST_ACCESS.md).
 
 ## Build it yourself
 

@@ -50,6 +50,26 @@ struct AgentEditorView: View {
     }
 
     @Environment(\.nerdModeEnabled) private var nerdModeEnabled
+    @Environment(\.agentDeletion) private var agentDeletion
+    @State private var isDeleteConfirmationPresented = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
+    @State private var templateNotice: String?
+
+    /// Asked for after the confirmation; the editor closes once Hermes confirms.
+    private func delete(_ agent: AgentProfile) {
+        guard let agentDeletion else { return }
+        isDeleting = true
+        Task { @MainActor in
+            defer { isDeleting = false }
+            do {
+                try await agentDeletion.run(agent.id)
+                dismiss()
+            } catch {
+                deleteError = AgentDeletionPresentation.errorMessage(error)
+            }
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -114,8 +134,54 @@ struct AgentEditorView: View {
                     Section { recoveryMessage(saveError) }
                         .listRowBackground(theme.surface)
                 }
+                if let agent = model.editedProfile {
+                    Section {
+                        Button {
+                            let template = AgentTemplateLibrary.shared.save(from: AgentProfile(
+                                id: agent.id, name: model.draft.name, role: model.draft.role,
+                                summary: model.draft.summary, instructions: model.draft.instructions,
+                                avatarFileName: model.draft.avatarFileName, avatar: model.draft.avatar,
+                                isDefault: agent.isDefault))
+                            templateNotice = "“\(template.title)” is saved on this iPhone. To use it, tap + in Agents and pick it."
+                        } label: {
+                            Label("Save as Template", systemImage: "square.and.arrow.down.on.square")
+                                .frame(minHeight: BighelpTokens.hitTarget)
+                        }
+                        .accessibilityIdentifier("agent.editor.save-template")
+                        if agentDeletion != nil, AgentDeletionPresentation.canDelete(agent) {
+                            Button(role: .destructive) {
+                                isDeleteConfirmationPresented = true
+                            } label: {
+                                HStack {
+                                    Label("Delete Agent", systemImage: "trash")
+                                    Spacer()
+                                    if isDeleting { ProgressView() }
+                                }
+                                .frame(minHeight: BighelpTokens.hitTarget)
+                            }
+                            .disabled(isDeleting)
+                            .accessibilityIdentifier("agent.editor.delete")
+                        }
+                    }
+                    .listRowBackground(theme.surface)
+                    .confirmationDialog(AgentDeletionPresentation.title(agent), isPresented: $isDeleteConfirmationPresented,
+                                        titleVisibility: .visible) {
+                        Button("Delete Agent", role: .destructive) { delete(agent) }
+                            .accessibilityIdentifier("agent.editor.delete.confirm")
+                    } message: {
+                        Text(AgentDeletionPresentation.message(agent))
+                    }
+                }
             }
-            .disabled(isSaving)
+            .disabled(isSaving || isDeleting)
+            .alert("Template saved", isPresented: Binding(get: { templateNotice != nil }, set: { if !$0 { templateNotice = nil } })) {
+            } message: {
+                Text(templateNotice ?? "")
+            }
+            .alert("Couldn't delete this agent", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            } message: {
+                Text(deleteError ?? "")
+            }
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .background(theme.canvas.ignoresSafeArea())

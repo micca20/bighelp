@@ -1799,7 +1799,11 @@ struct ChatModelTests {
 
     @Test func providerBrandRegistryRecognizesADeepCrossProviderCatalog() {
         #expect(AIProviderBrandRegistry.indexedProviderIDs.count >= 24)
-        #expect(AIProviderBrandRegistry.resolve(id: "openai-codex", name: "OpenAI Codex") == .openAI)
+        // Subscriptions have their own marks; the APIs keep the company marks.
+        #expect(AIProviderBrandRegistry.resolve(id: "openai-codex", name: "OpenAI Codex") == .codex)
+        #expect(AIProviderBrandRegistry.resolve(id: "openai-api", name: "OpenAI API") == .openAI)
+        #expect(AIProviderBrandRegistry.resolve(id: "claude", name: "Claude") == .claude)
+        #expect(AIProviderBrandRegistry.resolve(id: "anthropic", name: "Anthropic") == .anthropic)
         #expect(
             AIProviderBrandRegistry.resolve(
                 id: "github-copilot",

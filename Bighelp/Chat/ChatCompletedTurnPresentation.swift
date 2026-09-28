@@ -1,14 +1,25 @@
 import SwiftUI
 
-/// A display-only fold. The canonical transcript and message identities stay intact.
+/// A display-only fold of one turn's reasoning and tool calls. The canonical
+/// transcript and message identities stay intact.
 struct ChatCompletedTurn: Identifiable {
     let id: String
+    /// The folded activity entries, in order.
     let entries: [ChatTranscriptEntry]
     let elapsedSeconds: TimeInterval?
-    var isContinuation = false
+
+    /// All folded work as one activity turn, so reasoning on either side of an
+    /// interim message still reads as one run inside the fold.
+    @MainActor var mergedActivity: ChatTranscriptEntry? {
+        let turns = entries.compactMap { entry -> ChatActivityTurn? in
+            guard case .activity(let turn) = entry else { return nil }
+            return turn
+        }
+        guard let first = turns.first else { return nil }
+        return .activity(ChatActivityTurn(id: first.id, events: turns.flatMap(\.events)))
+    }
 
     var label: String {
-        if isContinuation { return "More completed work" }
         guard let elapsedSeconds, elapsedSeconds.isFinite,
               elapsedSeconds >= 0, elapsedSeconds < 31_536_000 else {
             return "Completed turn · duration unavailable"
@@ -75,23 +86,12 @@ enum ChatCompletedTurnProjection {
             }
             // Assistant text has no trustworthy "disposable progress" marker.
             // A reply before clarify or verification can be the useful answer,
-            // so preserve every message and fold only contiguous activity runs.
-            // Emitting each run in place makes expansion lossless in both order
-            // and identity, even when cards or other agents split the work.
+            // so every message stays visible, in order. All of the turn's
+            // reasoning and tool calls go into one fold, in order, placed where
+            // the work began.
             var folded: [ChatTranscriptEntry] = []
-            var hasEmittedActivity = false
-            let duration = elapsed(work, startedAt: startedAt, startOrder: startOrder, endOrder: endOrder, activityEvents: activityEvents)
-            func flushActivity() {
-                guard let first = folded.first else { return }
-                rows.append(.completed(ChatCompletedTurn(
-                    id: "completed-turn:\(first.id)",
-                    entries: folded,
-                    elapsedSeconds: duration,
-                    isContinuation: hasEmittedActivity
-                )))
-                hasEmittedActivity = true
-                folded.removeAll(keepingCapacity: true)
-            }
+            var turnRows: [ChatTurnDisplayRow] = []
+            var foldPosition: Int?
             for entry in work {
                 switch entry {
                 case .activity(let turn):
@@ -99,17 +99,24 @@ enum ChatCompletedTurnProjection {
                     // completed tool would hide the image exactly when the
                     // animation is replaced, including after a reopen.
                     if turn.events.contains(where: { GeneratedMediaProjection.kind(for: $0) != nil }) {
-                        flushActivity()
-                        rows.append(.entry(entry))
+                        turnRows.append(.entry(entry))
                     } else {
+                        if foldPosition == nil { foldPosition = turnRows.count }
                         folded.append(entry)
                     }
                 case .message:
-                    flushActivity()
-                    rows.append(.entry(entry))
+                    turnRows.append(.entry(entry))
                 }
             }
-            flushActivity()
+            if let foldPosition, let first = folded.first {
+                turnRows.insert(.completed(ChatCompletedTurn(
+                    id: "completed-turn:\(first.id)",
+                    entries: folded,
+                    elapsedSeconds: elapsed(work, startedAt: startedAt, startOrder: startOrder,
+                                            endOrder: endOrder, activityEvents: activityEvents)
+                )), at: foldPosition)
+            }
+            rows.append(contentsOf: turnRows)
         }
 
         for entry in presentableEntries {
@@ -199,10 +206,8 @@ struct ChatCompletedTurnView<Content: View>: View {
             .accessibilityHint(isExpanded ? "Hides the completed work." : "Shows thinking and tool calls. Assistant messages stay visible.")
             .accessibilityIdentifier("chat.\(turn.id)")
 
-            if isExpanded {
-                ForEach(turn.entries) { entry in
-                    content(entry)
-                }
+            if isExpanded, let activity = turn.mergedActivity {
+                content(activity)
             }
         }
     }

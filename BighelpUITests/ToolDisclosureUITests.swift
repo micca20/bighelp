@@ -10,8 +10,8 @@ final class ToolDisclosureUITests: BighelpUITestCase {
                                "-loopdy.chat.foldCompletedTurns", "YES", "-loopdy.demo.appearance", "light"]
         app.launch()
         let timeline = app.tables["chat.timeline"]
+        // One fold per turn: work on both sides of the answer shares it.
         let fold = app.buttons["Worked for 10s"]
-        let continuation = app.buttons["More completed work"]
         func message(_ text: String) -> XCUIElement {
             app.textViews.matching(NSPredicate(format: "value CONTAINS %@", text)).firstMatch
         }
@@ -23,13 +23,12 @@ final class ToolDisclosureUITests: BighelpUITestCase {
         XCTAssertTrue(final.exists)
         XCTAssertTrue(app.buttons["TestFlight"].exists, "The real pending clarification remains answerable")
         XCTAssertEqual(fold.value as? String, "Collapsed")
-        XCTAssertEqual(continuation.value as? String, "Collapsed")
+        XCTAssertFalse(app.buttons["More completed work"].exists)
         // Offscreen iPhone text views can report infinite AX frames. Measure
         // order only when the full fixture fits; prove phone reachability by scrolling.
         if app.frame.width > 700 {
             XCTAssertLessThan(context.frame.minY, answer.frame.minY)
-            XCTAssertLessThan(answer.frame.minY, continuation.frame.minY)
-            XCTAssertLessThan(continuation.frame.minY, final.frame.minY)
+            XCTAssertLessThan(answer.frame.minY, final.frame.minY)
         }
         func reveal(_ element: XCUIElement) {
             for _ in 0..<5 where !element.isHittable { timeline.swipeDown() }
@@ -46,7 +45,6 @@ final class ToolDisclosureUITests: BighelpUITestCase {
         reveal(fold)
         fold.tap()
         XCTAssertEqual(fold.value as? String, "Expanded")
-        XCTAssertEqual(continuation.value as? String, "Collapsed")
         XCTAssertTrue(context.exists)
         capture("completed-fold-expanded-in-place")
         fold.tap()
@@ -63,7 +61,6 @@ final class ToolDisclosureUITests: BighelpUITestCase {
         XCTAssertTrue(context.waitForExistence(timeout: 10))
         XCTAssertTrue(answer.exists)
         XCTAssertEqual(fold.value as? String, "Collapsed")
-        XCTAssertEqual(continuation.value as? String, "Collapsed")
         capture("completed-fold-reopened")
     }
 

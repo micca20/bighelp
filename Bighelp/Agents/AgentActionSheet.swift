@@ -29,6 +29,18 @@ struct AgentActionSheet: View {
                 actionSection("Activity", conversationActions)
                 actionSection("Setup", preferenceActions)
                 actionSection("More", technicalActions)
+                if let delete = actions.first(where: { $0.action == .delete }) {
+                    Section {
+                        Button(role: .destructive) { onAction(.delete) } label: {
+                            Label(delete.title, systemImage: delete.systemImage)
+                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
+                                .contentShape(.rect)
+                        }
+                        .disabled(!delete.isEnabled)
+                        .accessibilityIdentifier("agent.\(agent.id).delete")
+                    }
+                    .listRowBackground(theme.surface)
+                }
             }
             .listStyle(.insetGrouped)
             .accessibilityIdentifier("agent.actions.list")
@@ -94,7 +106,7 @@ struct AgentActionSheet: View {
     }
 
     private var technicalActions: [AgentActionItem] {
-        actions.filter { [.shortcuts, .duplicate].contains($0.action) }
+        actions.filter { [.shortcuts, .duplicate, .saveTemplate].contains($0.action) }
     }
 
     /// Message and Edit as two large tiles, filled accent for the primary one.

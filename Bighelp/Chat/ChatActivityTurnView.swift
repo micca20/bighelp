@@ -21,14 +21,15 @@ struct ChatActivityTurnPresentation {
     enum Segment: Identifiable {
         case collaboration(ChatActivityEvent)
         case generatedMedia(ChatActivityEvent)
-        case thinking(ChatActivityEvent)
+        /// Back-to-back reasoning shares one Thinking/Thought process row.
+        case thinking([ChatActivityEvent])
         case workTrail(ChatActivityTurn)
 
         var id: String {
             switch self {
             case .collaboration(let event): "collaboration:\(event.id)"
             case .generatedMedia(let event): "generated-media:\(event.id)"
-            case .thinking(let event): "thinking:\(event.id)"
+            case .thinking(let events): "thinking:\(events.first?.id ?? "")"
             case .workTrail(let turn): "work-trail:\(turn.id)"
             }
         }
@@ -71,7 +72,11 @@ struct ChatActivityTurnPresentation {
                 projected.append(.generatedMedia(event))
             } else if event.kind == .reasoning {
                 flushWork()
-                projected.append(.thinking(event))
+                if case .thinking(let group)? = projected.last {
+                    projected[projected.count - 1] = .thinking(group + [event])
+                } else {
+                    projected.append(.thinking([event]))
+                }
             } else {
                 pendingWork.append(event)
             }
@@ -112,9 +117,13 @@ struct ChatActivityTurnView: View {
                     )
                 case .generatedMedia(let event):
                     GeneratedMediaCard(event: event)
-                case .thinking(let event):
+                case .thinking(let events):
                     // Quiet, like interim messages: the answer is what stands out.
-                    ChatActivityRow(event: event, onDisclosureChange: onDisclosureChange)
+                    if events.count == 1, let event = events.first {
+                        ChatActivityRow(event: event, onDisclosureChange: onDisclosureChange)
+                    } else {
+                        ChatReasoningGroupRow(events: events, onDisclosureChange: onDisclosureChange)
+                    }
                 case .workTrail(let workTrail):
                     ChatWorkTrailCard(
                         turn: workTrail,

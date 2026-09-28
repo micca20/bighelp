@@ -10,7 +10,6 @@ import SwiftUI
 final class WorkspaceConnectionStore {
     let hosts: BighelpHostRegistry
     @ObservationIgnored var cloneClient: (any AgentProfileCloneClient)?
-    @ObservationIgnored var templateClient: (any AgentProfileTemplateClient)?
     @ObservationIgnored var openCanonicalSession: @MainActor (String, WorkspaceOwner) async throws -> String = { _, _ in
         throw WorkspaceClientError.unavailable(.unsupportedOperation)
     }
@@ -52,7 +51,6 @@ final class WorkspaceConnectionStore {
         cachedOwner = nil
         cachedWorkspace = nil
         cloneClient = nil
-        templateClient = nil
         invalidationRevision = .disconnected
     }
 

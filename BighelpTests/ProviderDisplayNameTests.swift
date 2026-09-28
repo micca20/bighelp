@@ -49,4 +49,27 @@ final class ProviderDisplayNameTests: XCTestCase {
             XCTAssertEqual(AIProviderBrandRegistry.resolve(id: provider.id, name: provider.name), .githubCopilot)
         }
     }
+
+    @MainActor
+    func testAPIKeyRowsNameTheProviderAndTheSettingEvenWithoutAHostLabel() {
+        func key(_ id: String, label: String? = "", provider: String? = "", isSet: Bool = false) -> DirectHermesProviderCredential {
+            DirectHermesProviderCredential(id: id, providerID: provider, providerName: label, description: "",
+                category: "provider", isSet: isSet, isSecret: true, isAdvanced: false, isCustom: false, isChannelManaged: false)
+        }
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("ACTUAL_COMPUTER_API_KEY", label: "Actual Computer")),
+                       "Actual Computer API key")
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("ACTUAL_COMPUTER_BASE_URL", label: "Actual Computer")),
+                       "Actual Computer base URL")
+        // Blank host label: named from the variable itself.
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("NOUS_BASE_URL")), "Nous base URL")
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("OPENROUTER_API_KEY", label: nil)), "OpenRouter API key")
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("KIMI_CN_API_KEY", label: "  ")), "Kimi China API key")
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("MODEL_API_KEY", label: "Meta Model API")),
+                       "Meta Model API key")
+        XCTAssertEqual(ProviderCredentialPresentation.title(key("CUSTOM_THING")), "Custom Thing")
+        XCTAssertEqual(ProviderCredentialPresentation.subtitle(key("XAI_API_KEY", isSet: true)),
+                       "XAI_API_KEY · Configured on Hermes")
+        XCTAssertEqual(ProviderCredentialPresentation.sorted([key("XAI_API_KEY"), key("DEEPSEEK_API_KEY")]).map(\.id),
+                       ["DEEPSEEK_API_KEY", "XAI_API_KEY"])
+    }
 }

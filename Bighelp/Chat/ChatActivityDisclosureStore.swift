@@ -34,6 +34,21 @@ final class ChatActivityDisclosureStore {
         eventChoices[key(for: event)] = expanded
     }
 
+    /// Back-to-back reasoning opens and closes as one row. A choice made on any
+    /// entry holds as more thinking arrives; otherwise it's open while thinking.
+    func isExpanded(reasoning events: [ChatActivityEvent]) -> Bool {
+        let choices = events.compactMap { eventChoices[key(for: $0)] }
+        if choices.contains(true) { return true }
+        if choices.contains(false) { return false }
+        return events.contains { $0.lifecycle == .running }
+    }
+
+    func setExpanded(_ expanded: Bool, reasoning events: [ChatActivityEvent]) {
+        for event in events {
+            eventChoices[key(for: event)] = expanded
+        }
+    }
+
     func isExpanded(_ turn: ChatActivityTurn) -> Bool {
         let choices = turn.events.compactMap { trailChoices[key(for: $0)] }
         // Event-keyed choices survive segment regrouping and canonical event-ID changes.

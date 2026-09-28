@@ -17,6 +17,8 @@ enum HostSetupAccessError: LocalizedError {
     case blockedBeforeSignIn
     case loginPage
     case invalidProxyCredentials
+    case customHeader(String)
+    case customHeadersNeedPrivateOrHTTPS
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +32,10 @@ enum HostSetupAccessError: LocalizedError {
             "Something in front of Hermes, like a proxy or firewall, turned bighelp away before sign-in. Hermes itself never blocks this step. If the proxy uses a username and password, turn on Username and password under Advanced connection."
         case .invalidProxyCredentials:
             "Check the username and password. A username can't contain a colon."
+        case .customHeader(let message):
+            message
+        case .customHeadersNeedPrivateOrHTTPS:
+            "Custom headers go only to https:// addresses, or to a private network address with HTTP allowed."
         case .loginPage:
             "This address sends bighelp to a login page it can't use. If it's Cloudflare Access, add a service token under Advanced connection. Otherwise, use an address that reaches Hermes directly."
         }
@@ -73,6 +79,8 @@ struct HostSetupView: View {
     @State private var needsProxyPassword = false
     @State private var proxyUsername = ""
     @State private var proxyPassword = ""
+    /// Headers a reverse proxy wants; never kept in the retained draft.
+    @State private var customHeaderRows: [HostCustomHeaderRow] = []
     @State private var token = ""
     @State private var username = ""
     @State private var password = ""
@@ -161,6 +169,9 @@ struct HostSetupView: View {
                         if hostToAuthenticate == nil {
                             proxyPasswordFields
                             cloudflareAccessFields
+                            Text("Custom headers").bighelpFont(.label, weight: .semibold)
+                                .padding(.top, BighelpTokens.space8)
+                            HostCustomHeaderFields(rows: $customHeaderRows)
                         }
                     } label: {
                         Label("Advanced connection", systemImage: "slider.horizontal.3")
@@ -259,7 +270,8 @@ struct HostSetupView: View {
         .onChange(of: name) { _, _ in saveRetainedDraft() }
         .onChange(of: allowPrivateHTTP) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
         .modifier(HostSetupAccessChanges(values: [usesCloudflareAccess ? "on" : "off", accessClientID, accessClientSecret,
-                                                  usesProxyPassword ? "on" : "off", proxyUsername, proxyPassword],
+                                                  usesProxyPassword ? "on" : "off", proxyUsername, proxyPassword]
+                                                  + customHeaderRows.flatMap { [$0.name, $0.value] },
                                           onChange: invalidateDiscovery))
         // One kind of gate per address.
         .onChange(of: usesProxyPassword) { _, on in if on { usesCloudflareAccess = false } }
@@ -560,8 +572,16 @@ struct HostSetupView: View {
         let store = DirectHermesAccessCredentialStore.shared
         guard hostToAuthenticate == nil else {
             store.stage(nil, for: endpoint)
+            store.stageCustomHeaders(nil, for: endpoint)
             return false
         }
+        let headers: [DirectHermesCustomHeader]
+        do { headers = try HostCustomHeaderRow.headers(customHeaderRows) }
+        catch { throw HostSetupAccessError.customHeader(error.localizedDescription) }
+        guard headers.isEmpty || DirectHermesAccessCredentialStore.mayCarrySecrets(endpoint) else {
+            throw HostSetupAccessError.customHeadersNeedPrivateOrHTTPS
+        }
+        store.stageCustomHeaders(headers.isEmpty ? nil : headers, for: endpoint)
         if usesProxyPassword || needsProxyPassword, !proxyUsername.isEmpty, !proxyPassword.isEmpty {
             guard let credentials = try? DirectHermesAccessCredentials(username: proxyUsername, password: proxyPassword)
             else { throw HostSetupAccessError.invalidProxyCredentials }
@@ -584,6 +604,7 @@ struct HostSetupView: View {
     private func unstageAccess() {
         guard connectedHost == nil, let endpoint = discovery?.endpoint else { return }
         DirectHermesAccessCredentialStore.shared.stage(nil, for: endpoint)
+        DirectHermesAccessCredentialStore.shared.stageCustomHeaders(nil, for: endpoint)
     }
 
     private func saveRetainedDraft() {

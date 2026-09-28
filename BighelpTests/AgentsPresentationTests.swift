@@ -170,14 +170,27 @@ struct AgentsPresentationTests {
         #expect(items.first { $0.action == .setPrimary }?.isEnabled == false)
     }
 
+    @Test func deleteAndSaveTemplateAppearOnlyWhenOffered() throws {
+        let owner = try owner()
+        let capabilities = WorkspaceCapabilities(owner: owner)
+        let plain = actions(owner: owner, capabilities: capabilities).map(\.action)
+        #expect(!plain.contains(.delete))
+        #expect(!plain.contains(.saveTemplate))
+        let offered = actions(owner: owner, capabilities: capabilities, canDelete: true, canSaveTemplate: true)
+        #expect(offered.map(\.action).suffix(2) == [.saveTemplate, .delete])
+        #expect(offered.last?.action.isDestructive == true)
+    }
+
     private func actions(
         owner: WorkspaceOwner, capabilities: WorkspaceCapabilities,
-        isPrimary: Bool = false, isPinned: Bool = false, canPin: Bool = true
+        isPrimary: Bool = false, isPinned: Bool = false, canPin: Bool = true,
+        canDelete: Bool = false, canSaveTemplate: Bool = false
     ) -> [AgentActionItem] {
         AgentActionsPresentation.items(
             profileID: "studio", owner: owner, capabilities: capabilities,
             isPrimary: isPrimary, isPinned: isPinned, canPin: canPin,
-            canClone: true, shortcutsAvailable: false, hasNavigation: true
+            canClone: true, shortcutsAvailable: false, hasNavigation: true,
+            canDelete: canDelete, canSaveTemplate: canSaveTemplate
         )
     }
 

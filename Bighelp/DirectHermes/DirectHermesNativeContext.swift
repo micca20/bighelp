@@ -315,6 +315,9 @@ final class DirectHermesNativePluginClient {
         case .boardApprovals:
             return Route(path: "board/approvals", feature: "native-agent-board-v1", isMutation: false,
                          maximumResponseBytes: 2 * 1_024 * 1_024)
+        case .usageList:
+            return Route(path: "usage/list", feature: "native-provider-usage-v1", isMutation: false,
+                         maximumResponseBytes: 196_608)
         case .boardIdentity:
             return Route(path: "board/identity", feature: "native-agent-board-v1", isMutation: false,
                          maximumResponseBytes: 2 * 1_024 * 1_024)

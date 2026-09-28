@@ -42,7 +42,10 @@ extension ChatModel {
 
 
     func send() async {
-        guard permitsOrdinaryComposerSend, isBotMode || directTransportIsReady else { return }
+        // While a turn runs, this chat's own prompt counts as pending until the
+        // turn ends, so "ready for a new turn" is false. A plain Send then steers
+        // (or queues) through sendMidSession, which has its own checks.
+        guard permitsOrdinaryComposerSend, isBotMode || directTransportIsReady || isMidSessionTurnLive else { return }
         guard !isBotMode || botModeExecutionEnabled else {
             failureMessage = "Group chats are unavailable for this Hermes connection."
             return

@@ -154,6 +154,56 @@ extension RootShellView {
         }
     }
 
+    /// Deleting from the Agents screen or the agent editor. Same lifecycle path
+    /// as Profiles, with no navigation beyond leaving a chat that was retired.
+    /// Lets other screens (the Chats rail) offer the Agents list's hold menu.
+    var agentActionsConfig: AgentActionsConfig {
+        AgentActionsConfig(
+            store: agents, runtimeDefaultsClient: agentRuntimeDefaults, owner: currentWorkspaceOwner,
+            capabilities: currentWorkspaceCapabilities, cloneClient: workspaceConnections?.cloneClient,
+            shortcutsAvailable: usesWorkspaceFixtures || (nativeRuntime != nil && currentWorkspaceOwner != nil),
+            onAction: handleAgentWorkspaceAction, agentDeletion: agentDeletionAction
+        )
+    }
+
+    var agentDeletionAction: AgentDeletionAction? {
+        guard nativeRuntime != nil, workspaceConnections != nil, currentWorkspaceOwner != nil else { return nil }
+        return AgentDeletionAction { profileID in try await deleteAgentProfile(profileID) }
+    }
+
+    func deleteAgentProfile(_ profileID: String) async throws {
+        guard let connections = workspaceConnections, let owner = currentWorkspaceOwner,
+              connections.owner == owner, let runtime = nativeRuntime else {
+            throw WorkspaceClientError.unavailable(.notConnected)
+        }
+        let coordinator = try NativeWorkspaceLifecycleCoordinator(
+            owner: owner, connections: connections, catalog: sessionCatalog, agents: agents, bridge: runtime.bridge,
+            adoptedSession: { _ in throw CancellationError() },
+            retiredProfile: { _, retiredSessionIDs in
+                guard currentWorkspaceOwner == owner else { throw WorkspaceClientError.ownerChanged }
+                if let active = appState.activeConversationID, retiredSessionIDs.contains(active) {
+                    sessionRestoreTask?.cancel()
+                    sessionRestoreTask = nil
+                    sessionRestoreRequest = nil
+                    appState.resetForHostBoundary()
+                }
+            },
+            reconciledProfile: { _ in
+                guard currentWorkspaceOwner == owner else { throw WorkspaceClientError.ownerChanged }
+                guard await runtime.refreshLocalCache() else { throw NativeWorkspaceLifecycleError.sharedStateMismatch }
+            },
+            reconciledClosedRuntime: { visibleID, _ in
+                guard currentWorkspaceOwner == owner else { throw WorkspaceClientError.ownerChanged }
+                if appState.activeConversationID == visibleID {
+                    sessionRestoreTask?.cancel()
+                    sessionRestoreTask = nil
+                    sessionRestoreRequest = nil
+                    appState.openSessions()
+                }
+            })
+        try await coordinator.deleteAgent(profileID: profileID)
+    }
+
     func openLifecycleDestination(_ destination: WorkspaceDestination) {
         guard let connections = workspaceConnections, let owner = currentWorkspaceOwner,
               connections.owner == owner, let runtime = nativeRuntime else {
@@ -222,6 +272,9 @@ extension RootShellView {
         switch request.action {
         case .openAgentSessions(let id):
             openSessions(filteredTo: id)
+        case .openAgentGroups(let id):
+            agentGroupFilterRequest = id
+            appState.select(.agents)
         case .openAgentScheduledTasks(let id):
             openScheduledTasks(filteredTo: id)
         case .openHostStatus:

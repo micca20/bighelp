@@ -247,6 +247,20 @@ extension RootShellView {
                                    fixtures: usesWorkspaceFixtures && workspaceConnections?.isDirectSelected != true)
     }
 
+    /// The plugin route reports whether it's there; the overlay explains an older plugin.
+    func configureProviderUsage(_ key: AgentBoardClientKey) {
+        if key.fixtures {
+            providerUsage.configure(client: DemoProviderUsageClient())
+            return
+        }
+        guard let owner = key.owner else { providerUsage.configure(client: nil); return }
+        if let workspace = workspaceConnections?.workspace {
+            providerUsage.configure(client: DirectHermesProviderUsageClient(workspace: workspace, owner: owner))
+        } else {
+            providerUsage.configure(client: nil)
+        }
+    }
+
     func configureAgentBoard(_ key: AgentBoardClientKey) {
         // Media has its own plugin feature; the route says when it's missing.
         agentMedia.configure(client: key.owner.flatMap { owner in
@@ -324,7 +338,15 @@ extension RootShellView {
 
     func agentHomeSheets<Content: View>(_ content: Content) -> some View {
         content
-            .task(id: agentBoardClientKey) { configureAgentBoard(agentBoardClientKey) }
+            .task(id: agentBoardClientKey) {
+                configureAgentBoard(agentBoardClientKey)
+                configureProviderUsage(agentBoardClientKey)
+            }
+            .modifier(ProviderUsageHost(
+                store: providerUsage,
+                hostName: hostRegistry?.hosts.first { $0.id == hostRegistry?.selectedHostID }?.name,
+                onOpenSettings: { isUnifiedSettingsPresented = true }
+            ))
             .task(id: hostReactionsKey) { await syncHostReactions(hostReactionsKey) }
             // Widgets show the home agent's Feed and Goals in the app's colors.
             .onChange(of: agentBoard.items, initial: true) { _, _ in BighelpWidgetExtras.shared.update(board: agentBoard) }
@@ -435,6 +457,8 @@ extension RootShellView {
             folder: settings.nerdModeEnabled
                 ? (name: activeHermesWorkspaceName, open: { afterClosingHomeSheets { presentHermesWorkspaces() } })
                 : nil,
+            onProviderUsage: providerUsage.isAvailable
+                ? { afterClosingHomeSheets { providerUsage.show(agentID: homeAgent?.id ?? "default") } } : nil,
             onSettings: { afterClosingHomeSheets { appState.select(.profile) } }
         )
     }

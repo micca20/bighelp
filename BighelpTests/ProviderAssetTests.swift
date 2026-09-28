@@ -9,6 +9,8 @@ struct ProviderAssetTests {
     private let officialAssetNames = [
         "ProviderLogoOpenAI",
         "ProviderLogoAnthropic",
+        "ProviderLogoClaude",
+        "ProviderLogoCodex",
         "ProviderLogoGoogle",
         "ProviderLogoOpenRouter",
         "ProviderLogoMistral",
@@ -466,6 +468,8 @@ struct ProviderAssetTests {
         (providerHeading: "Hugging Face", assetName: "ProviderLogoHuggingFace"),
         (providerHeading: "Venice", assetName: "ProviderLogoVenice"),
         (providerHeading: "GitHub Copilot", assetName: "ProviderLogoGitHubCopilot"),
+        (providerHeading: "Claude", assetName: "ProviderLogoClaude"),
+        (providerHeading: "Codex", assetName: "ProviderLogoCodex"),
     ]
 
     private let openRouterMITLicense = """

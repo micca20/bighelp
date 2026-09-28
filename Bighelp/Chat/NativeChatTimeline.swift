@@ -52,7 +52,7 @@ enum ChatCanvasRow: Identifiable, Equatable {
         switch (lhs, rhs) {
         case (.transcript(.entry(let a)), .transcript(.entry(let b))): a == b
         case (.transcript(.completed(let a)), .transcript(.completed(let b))):
-            a.id == b.id && a.entries == b.entries && a.elapsedSeconds == b.elapsedSeconds && a.isContinuation == b.isContinuation
+            a.id == b.id && a.entries == b.entries && a.elapsedSeconds == b.elapsedSeconds
         case (.workTrailHeader(let a), .workTrailHeader(let b)): a == b
         case (.activityDetail(let a), .activityDetail(let b)): a == b
         case (.workTrailEnd(let a), .workTrailEnd(let b)): a == b
@@ -92,9 +92,15 @@ enum ChatCanvasTranscriptProjection {
                         result += trail.events.map(ChatCanvasRow.activityDetail)
                         result.append(.workTrailEnd(trail.id))
                     }
-                case .collaboration(let event), .generatedMedia(let event), .thinking(let event):
+                case .collaboration(let event), .generatedMedia(let event):
                     result.append(.transcript(.entry(.activity(ChatActivityTurn(
                         id: "card:\(event.id)", events: [event])))))
+                case .thinking(let events):
+                    // One row for the run; its ID follows the first entry so it
+                    // stays put while later thinking streams in.
+                    guard let first = events.first else { break }
+                    result.append(.transcript(.entry(.activity(ChatActivityTurn(
+                        id: "card:\(first.id)", events: events)))))
                 }
             }
         }
@@ -104,11 +110,10 @@ enum ChatCanvasTranscriptProjection {
             case .completed(let turn):
                 // Keep the existing accessible disclosure control, with its
                 // expanded content projected as sibling native rows.
-                let header = ChatCompletedTurn(id: turn.id, entries: [], elapsedSeconds: turn.elapsedSeconds,
-                                           isContinuation: turn.isContinuation)
+                let header = ChatCompletedTurn(id: turn.id, entries: [], elapsedSeconds: turn.elapsedSeconds)
                 result.append(.transcript(.completed(header)))
-                if disclosures.isCompletedTurnExpanded(turn.id) {
-                    turn.entries.forEach(append)
+                if disclosures.isCompletedTurnExpanded(turn.id), let activity = turn.mergedActivity {
+                    append(activity)
                 }
             }
         }

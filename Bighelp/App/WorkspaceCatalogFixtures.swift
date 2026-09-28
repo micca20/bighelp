@@ -206,22 +206,37 @@ final class FixtureHermesWorkspaceClient: HermesWorkspaceCatalogClient {
         limit: Int,
         agentID _: String
     ) async throws -> HermesWorkspaceFolderPage {
-        let available = ["loopdy-native", "loopdy-web", "research"]
-            .filter { $0.lowercased().hasPrefix(prefix.lowercased()) }
-            .map {
-                HermesWorkspaceFolderSuggestion(
-                    name: $0,
-                    path: parentPath == "/" ? "/\($0)" : "\(parentPath)/\($0)"
-                )
-            }
-        let page = Array(available.dropFirst(offset).prefix(limit))
-        let nextOffset = offset + page.count < available.count ? offset + page.count : nil
-        return HermesWorkspaceFolderPage(
-            parentPath: parentPath,
-            folders: page,
-            nextOffset: nextOffset
-        )
+        // Same shape as Hermes's folder listing, so the demo browses like a real host.
+        let full = parentPath == "~" ? Self.fixtureHome
+            : parentPath.hasPrefix("~/") ? Self.fixtureHome + parentPath.dropFirst() : parentPath
+        guard let names = Self.fixtureFolders[full] else { throw WorkspaceClientError.rejected(code: "ENOENT") }
+        let entries = names.map { name -> BighelpJSONValue in
+            .object(["name": .string(name), "path": .string(full == "/" ? "/\(name)" : "\(full)/\(name)"),
+                     "isDirectory": .boolean(true)])
+        }
+        return try HermesFolderListing.page(.object(["entries": .array(entries)]), requestedPath: full,
+                                            prefix: prefix, offset: offset, limit: limit)
     }
+
+    private static let fixtureHome = "/Users/demo"
+    private static let fixtureFolders: [String: [String]] = [
+        "/": ["Users", "srv"],
+        "/Users": ["demo"],
+        "/Users/demo": [".config", "Desktop", "Documents", "Projects"],
+        "/Users/demo/Desktop": [],
+        "/Users/demo/Documents": ["Notes", "Research"],
+        "/Users/demo/Documents/Notes": [],
+        "/Users/demo/Documents/Research": [],
+        "/Users/demo/Projects": ["bighelp-native", "bighelp-web", "garden-planner"],
+        "/Users/demo/Projects/bighelp-native": ["App", "Tests"],
+        "/Users/demo/Projects/bighelp-web": [],
+        "/Users/demo/Projects/garden-planner": [],
+        "/srv": ["workspaces"],
+        "/srv/workspaces": ["loopdy-native", "loopdy-web", "research"],
+        "/srv/workspaces/loopdy-native": [],
+        "/srv/workspaces/loopdy-web": [],
+        "/srv/workspaces/research": [],
+    ]
 
     private func catalog(
         agentID: String,

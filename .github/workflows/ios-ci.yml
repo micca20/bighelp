@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: promptclickrun/bighelp-plugin
-          ref: fa8c1eeb03c9c6b2d69b03cdeb39c341cbc12d88
+          ref: 095739e266b9eb93c002b3cd572712aa6b2d8192
           path: .ci/plugin
       - uses: actions/setup-python@v5
         with:

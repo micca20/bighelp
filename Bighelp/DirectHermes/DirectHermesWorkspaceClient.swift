@@ -121,6 +121,18 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
         return result
     }
 
+    /// Stock Hermes's read-only folder listing (it expands "~" and hides
+    /// credential folders). Used to browse for a workspace folder.
+    func listFolder(path: String, owner expectedOwner: WorkspaceOwner) async throws -> BighelpJSONValue {
+        try check(expectedOwner)
+        guard !path.isEmpty, path.utf8.count <= 4_096 else { throw WorkspaceClientError.invalidRequest }
+        let result = try await http.request(.init(
+            path: "/api/fs/list", method: .get, query: [.init(name: "path", value: path)],
+            maximumResponseBytes: 4_194_304))
+        try check(expectedOwner)
+        return result
+    }
+
     /// Explicit file deliveries use the existing stock managed-file policy.
     /// Never retry a refused image or broaden the host's configured root here.
     func readDeliveredFile(path: String, owner expectedOwner: WorkspaceOwner) async throws -> BighelpJSONValue {

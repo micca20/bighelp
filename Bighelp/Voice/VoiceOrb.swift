@@ -91,22 +91,44 @@ struct VoiceWaveformBars: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // While there's sound the bars ripple one by one, not just grow together.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || level < 0.02)) { context in
+            bars(phase: reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate)
+        }
+        .frame(width: width, height: height)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
+        .accessibilityHidden(true)
+    }
+
+    private func bars(phase: Double) -> some View {
         let slot = width / CGFloat(Self.barCount)
-        let amplitude = 0.18 + 0.82 * min(max(level, 0), 1)
-        HStack(alignment: .center, spacing: 0) {
+        let amplitude = min(max(level, 0), 1)
+        return HStack(alignment: .center, spacing: 0) {
             ForEach(0..<Self.barCount, id: \.self) { index in
                 Capsule()
                     .fill(color)
                     .frame(
                         width: max(2, slot * 0.45),
-                        height: max(3, height * Self.silhouette(index) * amplitude)
+                        height: max(3, height * Self.barHeight(index, amplitude: amplitude, phase: phase))
                     )
                     .frame(width: slot, height: height)
             }
         }
-        .frame(width: width, height: height)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
-        .accessibilityHidden(true)
+    }
+
+    /// At rest the kit's silhouette at 18%; sound lifts each bar with its own wobble.
+    static func barHeight(_ index: Int, amplitude: Double, phase: Double) -> CGFloat {
+        let wobble = phase == 0 ? 1 : 0.6 + 0.4 * sin(phase * 9 + Double(index) * 0.8)
+        return silhouette(index) * CGFloat(0.18 + 0.82 * amplitude * wobble)
+    }
+
+    /// The microphone meter is raw loudness: speech sits near 0.03–0.15, so
+    /// linear bars barely moved. Show it on a loudness scale (-55 dB to -15 dB).
+    static func displayLevel(microphone level: Float) -> Double {
+        let rms = Double(level) / 3.2
+        guard rms > 0 else { return 0 }
+        let decibels = 20 * log10(rms)
+        return min(max((decibels + 55) / 40, 0), 1)
     }
 
     /// Same deterministic silhouette as the kit's `bars()` helper.
@@ -149,5 +171,16 @@ struct VoiceStageBackground: View {
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+    }
+}
+
+/// What the agent's face acts out in voice mode: talking while it speaks, the
+/// chat's current work (thinking, writing code, browsing…) while it works.
+enum VoiceAvatarActivity {
+    static func resolve(isSpeaking: Bool, isWorking: Bool, chatActivity: AgentActivityKind) -> AgentActivityKind {
+        if isSpeaking { return .replying }
+        guard isWorking else { return .idle }
+        // The chat says "replying" while text streams; out loud that's still work.
+        return chatActivity == .idle || chatActivity == .replying ? .thinking : chatActivity
     }
 }

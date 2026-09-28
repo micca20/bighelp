@@ -268,7 +268,8 @@ final class DirectHermesHTTP {
         configuration.timeoutIntervalForResource = 30
         configuration.waitsForConnectivity = false
         configuration.httpMaximumConnectionsPerHost = 4
-        // Cloudflare Access service token, if this host sits behind Access.
+        // A Cloudflare Access token or proxy password, and any custom headers,
+        // for this exact address only (redirects are refused, so they never travel).
         accessHeaders = DirectHermesAccessCredentialStore.shared.headers(for: endpoint)
         configuration.httpAdditionalHeaders = accessHeaders
         session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
@@ -353,7 +354,7 @@ final class DirectHermesHTTP {
                 bytes.task.cancel()
                 throw DirectHermesError.redirectRefused
             }
-            if Self.isCloudflareAccessDenial(http, sentAccessToken: !accessHeaders.isEmpty) {
+            if Self.isCloudflareAccessDenial(http, sentAccessToken: accessHeaders["CF-Access-Client-Id"] != nil) {
                 bytes.task.cancel()
                 throw DirectHermesError.cloudflareAccessDenied
             }

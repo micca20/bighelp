@@ -10,6 +10,8 @@ enum AgentWorkspaceAction: Equatable, Sendable {
     case openAgentChat(profileID: String)
     case openAgentSessions(profileID: String)
     case openAgentScheduledTasks(profileID: String)
+    /// The Agents list, filtered to group chats this agent is in.
+    case openAgentGroups(profileID: String)
     case openGroup(roomID: String)
     case createGroup(seedProfileID: String?)
     case openGroupSettings(roomID: String)
@@ -104,6 +106,11 @@ enum AgentRowMenuAction: String, CaseIterable, Equatable, Sendable {
     case shortcuts
     case setPrimary = "primary"
     case togglePin = "pin"
+    case saveTemplate = "template"
+    /// Last, and shown as destructive.
+    case delete
+
+    var isDestructive: Bool { self == .delete }
 
     var title: String {
         switch self {
@@ -116,6 +123,8 @@ enum AgentRowMenuAction: String, CaseIterable, Equatable, Sendable {
         case .shortcuts: "Use with Siri"
         case .setPrimary: "Use for new chats"
         case .togglePin: "Pin"
+        case .saveTemplate: "Save as template"
+        case .delete: "Delete"
         }
     }
 
@@ -130,6 +139,8 @@ enum AgentRowMenuAction: String, CaseIterable, Equatable, Sendable {
         case .shortcuts: "waveform"
         case .setPrimary: "star"
         case .togglePin: "pin"
+        case .saveTemplate: "square.and.arrow.down.on.square"
+        case .delete: "trash"
         }
     }
 
@@ -141,7 +152,8 @@ enum AgentRowMenuAction: String, CaseIterable, Equatable, Sendable {
         case .scheduledTasks: .schedulesRead
         case .groups: .groupsRead
         case .duplicate: .profilesClone
-        case .shortcuts, .setPrimary, .togglePin: nil
+        case .delete: .profilesEdit
+        case .shortcuts, .setPrimary, .togglePin, .saveTemplate: nil
         }
     }
 }
@@ -162,10 +174,13 @@ enum AgentActionsPresentation {
     static func items(
         profileID: String, owner: WorkspaceOwner?, capabilities: WorkspaceCapabilities,
         isPrimary: Bool, isPinned: Bool, canPin: Bool, canClone: Bool,
-        shortcutsAvailable: Bool, hasNavigation: Bool
+        shortcutsAvailable: Bool, hasNavigation: Bool,
+        canDelete: Bool = false, canSaveTemplate: Bool = false
     ) -> [AgentActionItem] {
         AgentRowMenuAction.allCases.compactMap { action in
             if action == .shortcuts && !shortcutsAvailable { return nil }
+            if action == .delete && !canDelete { return nil }
+            if action == .saveTemplate && !canSaveTemplate { return nil }
             let availability: WorkspaceAvailability
             if let owner {
                 availability = action.capability.map {

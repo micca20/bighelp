@@ -465,6 +465,8 @@ struct AgentDirectoryStoreTests {
             "Use with Siri",
             "Use for new chats",
             "Pin",
+            "Save as template",
+            "Delete",
         ])
     }
 

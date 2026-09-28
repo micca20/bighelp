@@ -252,6 +252,7 @@ struct QuickWorkspaceDrawer: View {
     var onOpenSettings: () -> Void { onOpenMore }
 
     @Environment(\.bighelpHostRegistry) private var hostRegistry
+    @Environment(\.providerUsage) private var providerUsage
 
     var body: some View {
         Group {
@@ -291,6 +292,13 @@ struct QuickWorkspaceDrawer: View {
                 onScheduledTasks: onOpenScheduledTasks,
                 onHermesTools: settings.nerdModeEnabled ? onOpenWorkspaceHub : nil,
                 folder: settings.nerdModeEnabled ? (name: activeWorkspaceName, open: onOpenWorkspaces) : nil,
+                onProviderUsage: providerUsage?.isAvailable == true ? { [providerUsage, isEmbedded, agents] in
+                    Task { @MainActor in
+                        // Let the drawer finish closing before the overlay presents.
+                        if !isEmbedded { try? await Task.sleep(for: .milliseconds(350)) }
+                        providerUsage?.show(agentID: agents.selectedAgentID ?? "default")
+                    }
+                } : nil,
                 onSettings: onOpenSettings
             ),
             close: isEmbedded ? {} : onDismiss,

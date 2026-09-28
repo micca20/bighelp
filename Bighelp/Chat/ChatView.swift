@@ -93,6 +93,7 @@ private struct ChatAgentEditorRoute: Identifiable {
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.providerUsage) private var providerUsage
     @Environment(\.companionStore) private var companionStore
     @Environment(\.companionAgentScope) private var companionAgentScope
     @Environment(\.agentHomeChrome) private var homeChrome
@@ -846,6 +847,12 @@ struct ChatView: View {
                 }
                 .disabled(!canEditCurrentAgent)
                 .accessibilityIdentifier("chat.edit-current-agent")
+            }
+            if let providerUsage, providerUsage.isAvailable {
+                Button("See provider usage", systemImage: "gauge.with.dots.needle.50percent") {
+                    providerUsage.show(agentID: model.memberIDs.first ?? "default")
+                }
+                .accessibilityIdentifier("chat.provider-usage")
             }
             // Display and recovery knobs are technical: Nerd Mode only.
             if nerdModeEnabled {

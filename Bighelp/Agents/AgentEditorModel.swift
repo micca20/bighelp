@@ -66,9 +66,22 @@ final class AgentEditorModel: Identifiable {
         profileCloneSupport: AgentProfileCreationCloneSupport = .unavailable(
             "Native profile creation options are not available on this connection."
         ),
+        template: SavedAgentTemplate? = nil,
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) -> AgentEditorModel {
         var draft = AgentDraft(name: "", role: "", summary: "", instructions: "", avatarFileName: nil, isDefault: false)
+        if let template {
+            // A saved template fills in everything but a fresh, unused name.
+            let taken = Set(store.profiles.map { $0.name.lowercased() })
+            var name = template.title
+            var number = 2
+            while taken.contains(name.lowercased()) { name = "\(template.title) \(number)"; number += 1 }
+            draft.name = name
+            draft.role = template.role
+            draft.summary = template.summary
+            draft.instructions = template.instructions
+            draft.avatar = template.avatar
+        }
         // New agents start as a copy of the default agent's setup (skills,
         // memories, settings) unless unchecked in Advanced. Name, role,
         // about and instructions still come from this editor.
@@ -113,6 +126,8 @@ final class AgentEditorModel: Identifiable {
     }
 
     var isEditing: Bool { editingID != nil }
+    /// The saved agent being edited, as the directory has it now.
+    var editedProfile: AgentProfile? { editingID.flatMap { id in store.profiles.first { $0.id == id } } }
     var editingAgentID: String? { editingID }
     var isCurrentContext: Bool { isCurrent() }
 

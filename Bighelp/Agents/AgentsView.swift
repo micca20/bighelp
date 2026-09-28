@@ -12,9 +12,10 @@ struct AgentsView: View {
     var capabilities: WorkspaceCapabilities = .disconnected
     var botModeRooms: BotModeRoomStore? = nil
     var cloneClient: (any AgentProfileCloneClient)? = nil
-    var templateClient: (any AgentProfileTemplateClient)? = nil
     var shortcutsAvailable = false
     var onAction: (@MainActor (AgentWorkspaceActionRequest) -> Void)? = nil
+    /// Set from elsewhere (the Chats rail's "Group chats") to show one agent's groups.
+    var groupFilterRequest: Binding<String?> = .constant(nil)
 
     @State private var query = ""
     @State private var groupPreferences = AgentGroupPreferences()
@@ -24,15 +25,12 @@ struct AgentsView: View {
     @State private var deleteGroup: HermesBotModeRoomSummary?
     @State private var groupFilterProfileID: String?
     @State private var areGroupsExpanded = true
-    @State private var editor: AgentEditorModel?
+    @State private var agentActions = AgentActions()
     @State private var actionAgent: AgentProfile?
-    @State private var shortcutsAgent: AgentProfile?
-    @State private var duplicateModel: AgentDuplicateModel?
-    @State private var templateModel: AgentTemplateEditorModel?
-    @State private var pendingTemplateAgent: AgentProfile?
+    @State private var isTemplatePickerPresented = false
+    @Environment(\.agentDeletion) private var agentDeletion
     @State private var activeOwner: WorkspaceOwner?
     @State private var actionOwner: WorkspaceOwner?
-    @State private var actionError: String?
     @State private var deferredAction: DeferredAgentAction?
     @State private var isSearchPresented = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -95,8 +93,6 @@ struct AgentsView: View {
             && store.errorMessage == nil && !store.isLoading && !store.isInitialLoadPending
     }
 
-    @Environment(\.nerdModeEnabled) private var nerdModeEnabled
-
     var body: some View {
         GeometryReader { geometry in
             let states = liveStates
@@ -127,7 +123,7 @@ struct AgentsView: View {
                         placement: .navigationBarDrawer, prompt: "Search agents and groups")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Create agent", systemImage: "plus", action: createAgent)
+                    Button("Create agent", systemImage: "plus", action: startCreating)
                         .disabled(!supports(.profilesCreate))
                         .accessibilityIdentifier("agents.create")
                 }
@@ -135,21 +131,19 @@ struct AgentsView: View {
             .background(theme.canvas.ignoresSafeArea())
         }
         .onAppear { activeOwner = workspaceOwner }
+        .onChange(of: groupFilterRequest.wrappedValue, initial: true) { _, profileID in
+            guard let profileID else { return }
+            groupFilterRequest.wrappedValue = nil
+            showGroups(of: profileID)
+        }
         .onChange(of: workspaceOwner) { previous, current in
             activeOwner = current
             deferredAction = nil
             actionAgent = nil
-            shortcutsAgent = nil
-            duplicateModel?.cancel()
-            duplicateModel = nil
-            templateModel?.cancel()
-            templateModel = nil
-            pendingTemplateAgent = nil
             renameGroup = nil
             deleteGroup = nil
             if previous?.cacheScopeID != current?.cacheScopeID {
                 groupPreferences = AgentGroupPreferences()
-                editor = nil
                 query = ""
                 showsArchivedGroups = false
                 groupFilterProfileID = nil
@@ -169,17 +163,6 @@ struct AgentsView: View {
             await store.loadReportingErrors()
             await botModeRooms?.refreshNativeRoomCatalog()
         }
-        .sheet(item: $editor) { model in
-            let canReadDefaults = supports(.modelsRead, profileID: model.editingAgentID)
-            let canEditDefaults = supports(.agentDefaultsEdit, profileID: model.editingAgentID)
-            AgentEditorView(
-                model: model,
-                runtimeDefaultsClient: canReadDefaults ? runtimeDefaultsClient : nil,
-                runtimeDefaultsReadOnlyReason: model.isEditing && (!canReadDefaults || !canEditDefaults)
-                    ? capabilityReason(canReadDefaults ? .agentDefaultsEdit : .modelsRead, profileID: model.editingAgentID)
-                    : nil
-            ) { _ in editor = nil }
-        }
         .sheet(item: $actionAgent, onDismiss: finishAgentActionSheet) { agent in
             AgentActionSheet(
                 agent: agent,
@@ -188,34 +171,12 @@ struct AgentsView: View {
             ) { action in
                 perform(action, profileID: agent.id, expectedOwner: actionOwner)
             }
-            .safeAreaInset(edge: .bottom) {
-                if templateClient != nil, nerdModeEnabled {
-                    Button("Agent templates", systemImage: "doc.on.doc") {
-                        pendingTemplateAgent = agent
-                        actionAgent = nil
-                    }
-                    .bighelpProminentButtonStyle()
-                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
-                    .padding(.horizontal, BighelpTokens.space20)
-                    .padding(.vertical, BighelpTokens.space8)
-                    .background(.bar)
-                    .accessibilityIdentifier("agent.\(agent.id).templates")
-                }
-            }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(item: $shortcutsAgent) { agent in
-            AgentShortcutsView(agent: agent)
-        }
-        .sheet(item: $duplicateModel) { model in
-            AgentDuplicateView(model: model) {
-                duplicateModel = nil
-                Task { await store.loadReportingErrors() }
-            }
-        }
-        .sheet(item: $templateModel) { model in
-            AgentTemplateEditorView(model: model) { templateModel = nil }
+        .sheet(isPresented: $isTemplatePickerPresented) {
+            AgentTemplatePickerView(library: AgentTemplateLibrary.shared, onBlank: { createAgent() },
+                                    onPick: { createAgent(from: $0) })
         }
         .alert("Rename group", isPresented: Binding(get: { renameGroup != nil }, set: { if !$0 { renameGroup = nil } })) {
             TextField("Group name", text: $renameText)
@@ -231,12 +192,7 @@ struct AgentsView: View {
                 deleteGroup = nil
             }
         } message: { Text("This permanently deletes the group on Hermes and stops its active work.") }
-        .alert("Agent action unavailable", isPresented: Binding(
-            get: { actionError != nil },
-            set: { if !$0 { actionError = nil } }
-        )) {} message: {
-            Text(actionError ?? "")
-        }
+        .agentActionsPresentation(agentActions, config: actionsConfig)
     }
 
 
@@ -272,7 +228,7 @@ struct AgentsView: View {
                     .accessibilityIdentifier("agents.featured.\(agent.id)")
                 }
                 if supports(.profilesCreate) {
-                    AgentNewTile(action: createAgent)
+                    AgentNewTile(action: startCreating)
                         .accessibilityIdentifier("agents.featured.create")
                 }
             }
@@ -464,7 +420,7 @@ struct AgentsView: View {
                     .listRowInsets(Self.rowInsets)
                     .accessibilityIdentifier("agents.refreshing")
             } else if isDirectoryEmpty {
-                AgentsEmptyStateView(canCreate: supports(.profilesCreate), onCreate: createAgent)
+                AgentsEmptyStateView(canCreate: supports(.profilesCreate), onCreate: startCreating)
                     .listRowSeparator(.hidden)
                     .accessibilityIdentifier("agents.empty")
             } else if visibleProfiles.isEmpty {
@@ -513,6 +469,12 @@ struct AgentsView: View {
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let delete = actions.first(where: { $0.action == .delete }) {
+                Button("Delete", systemImage: delete.systemImage, role: .destructive) {
+                    perform(.delete, profileID: agent.id, expectedOwner: workspaceOwner)
+                }
+                .disabled(!delete.isEnabled)
+            }
             if let edit, !edit.isUnsupported {
                 Button("Edit", systemImage: edit.systemImage) {
                     perform(.edit, profileID: agent.id, expectedOwner: workspaceOwner)
@@ -530,17 +492,8 @@ struct AgentsView: View {
 
     @ViewBuilder
     private func agentContextMenu(_ agent: AgentProfile) -> some View {
-        ForEach(actionItems(agent).filter { !$0.isUnsupported }) { item in
-            Button(item.title, systemImage: item.systemImage) {
-                perform(item.action, profileID: agent.id, expectedOwner: workspaceOwner)
-            }
-            .disabled(!item.isEnabled)
-        }
-        if templateClient != nil, nerdModeEnabled {
-            Divider()
-            Button("Agent templates", systemImage: "doc.on.doc") {
-                openTemplates(agent, expectedOwner: workspaceOwner)
-            }
+        AgentActionMenuItems(actions: agentActions, agent: agent, config: actionsConfig) { action in
+            perform(action, profileID: agent.id, expectedOwner: workspaceOwner)
         }
     }
 
@@ -568,12 +521,13 @@ struct AgentsView: View {
     }
 
     private func actionItems(_ agent: AgentProfile) -> [AgentActionItem] {
-        AgentActionsPresentation.items(
-            profileID: agent.id, owner: workspaceOwner, capabilities: capabilities,
-            isPrimary: store.isPrimary(agent.id), isPinned: store.isPinned(agent.id),
-            canPin: store.canPin(agent.id), canClone: cloneClient != nil,
-            shortcutsAvailable: shortcutsAvailable, hasNavigation: onAction != nil
-        )
+        agentActions.items(agent, actionsConfig)
+    }
+
+    private var actionsConfig: AgentActionsConfig {
+        AgentActionsConfig(store: store, runtimeDefaultsClient: runtimeDefaultsClient, owner: workspaceOwner,
+                           capabilities: capabilities, cloneClient: cloneClient,
+                           shortcutsAvailable: shortcutsAvailable, onAction: onAction, agentDeletion: agentDeletion)
     }
 
     private func supports(_ capability: WorkspaceCapability, profileID: String? = nil) -> Bool {
@@ -604,7 +558,7 @@ struct AgentsView: View {
         guard let owner = expectedOwner, owner == workspaceOwner, owner == activeOwner,
               let agent = store.profiles.first(where: { $0.id == profileID }),
               actionItems(agent).first(where: { $0.action == action })?.isEnabled == true else {
-            actionError = "This action is no longer available. Reopen the agent's actions to see its current status."
+            agentActions.actionError = "This action is no longer available. Reopen the agent's actions to see its current status."
             return
         }
         if actionAgent != nil {
@@ -613,29 +567,17 @@ struct AgentsView: View {
             return
         }
         actionAgent = nil
-        switch action {
-        case .openChat: dispatch(.openAgentChat(profileID: profileID))
-        case .viewSessions: dispatch(.openAgentSessions(profileID: profileID))
-        case .scheduledTasks: dispatch(.openAgentScheduledTasks(profileID: profileID))
-        case .setPrimary: store.setPrimaryAgent(profileID)
-        case .togglePin:
-            if store.isPinned(profileID) { store.unpinAgent(profileID) }
-            else { store.pinAgent(profileID) }
-        case .groups:
-            query = ""
-            groupFilterProfileID = profileID
-            areGroupsExpanded = true
-        case .edit:
-            editor = .editing(agent, store: store, processor: AvatarImageProcessor(),
-                              isCurrent: { activeOwner == owner })
-        case .duplicate:
-            guard let cloneClient else { return }
-            duplicateModel = AgentDuplicateModel(
-                source: agent, owner: owner, client: cloneClient,
-                isCurrent: { activeOwner == owner }
-            )
-        case .shortcuts: shortcutsAgent = agent
+        if action == .groups {
+            showGroups(of: profileID)
+        } else {
+            agentActions.perform(action, agent: agent, config: actionsConfig)
         }
+    }
+
+    private func showGroups(of profileID: String) {
+        query = ""
+        groupFilterProfileID = profileID
+        areGroupsExpanded = true
     }
 
     private func finishDeferredAction() {
@@ -645,48 +587,36 @@ struct AgentsView: View {
     }
 
     private func finishAgentActionSheet() {
-        if let agent = pendingTemplateAgent {
-            pendingTemplateAgent = nil
-            openTemplates(agent, expectedOwner: actionOwner)
-            return
-        }
         finishDeferredAction()
-    }
-
-    private func openTemplates(_ agent: AgentProfile, expectedOwner: WorkspaceOwner?) {
-        guard let owner = expectedOwner, owner == workspaceOwner, owner == activeOwner,
-              let client = templateClient,
-              store.profiles.contains(where: { $0.id == agent.id }) else {
-            actionError = "Agent templates are not available on this connection."
-            return
-        }
-        isSearchPresented = false
-        templateModel = AgentTemplateEditorModel(
-            source: agent, owner: owner, client: client,
-            isCurrent: { activeOwner == owner }
-        )
     }
 
     private func dispatch(_ action: AgentWorkspaceAction) {
         guard let owner = workspaceOwner, owner == activeOwner, let onAction else {
-            actionError = "The host connection changed. Try opening this action again."
+            agentActions.actionError = "The host connection changed. Try opening this action again."
             return
         }
 
         onAction(AgentWorkspaceActionRequest(owner: owner, action: action))
     }
 
-    private func createAgent() {
+    /// With saved templates, first ask whether to start blank or from one.
+    private func startCreating() {
+        if AgentTemplateLibrary.shared.templates.isEmpty { createAgent() }
+        else { isTemplatePickerPresented = true }
+    }
+
+    private func createAgent(from template: SavedAgentTemplate? = nil) {
         guard let owner = workspaceOwner, supports(.profilesCreate) else {
-            actionError = "Agent creation is not available on this connection."
+            agentActions.actionError = "Agent creation is not available on this connection."
             return
         }
-        editor = .creating(
+        agentActions.editor = .creating(
             store: store,
             processor: AvatarImageProcessor(),
             profileCloneSupport: supports(.profilesClone)
                 ? .nativeBundleOnly
                 : .unavailable("Native profile cloning is not available on this connection."),
+            template: template,
             isCurrent: { activeOwner == owner }
         )
     }

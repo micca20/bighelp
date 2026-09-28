@@ -84,6 +84,81 @@ struct DirectHermesAccessCredentials: Codable, Equatable, Sendable {
     }
 }
 
+/// A header a reverse proxy in front of Hermes wants (Pangolin, nginx rules
+/// and the like), such as `X-Access-Id` and `X-Access-Secret`.
+/// Sent with every request and socket to that one address, never elsewhere.
+struct DirectHermesCustomHeader: Codable, Equatable, Hashable, Sendable {
+    let name: String
+    let value: String
+
+    enum Problem: LocalizedError, Equatable {
+        case invalidName(String)
+        case reserved(String)
+        case invalidValue(String)
+        case duplicate(String)
+        case tooMany
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidName(let name):
+                "“\(name)” isn't a valid header name. Use letters, numbers and dashes, like X-Access-Id."
+            case .reserved(let name):
+                "bighelp sets \(name) itself. For a proxy's username and password or a Cloudflare Access service token, use those options instead."
+            case .invalidValue(let name):
+                "The value for \(name) can't be empty, contain line breaks, or be longer than 4,096 characters."
+            case .duplicate(let name):
+                "\(name) is listed twice."
+            case .tooMany:
+                "Add up to 16 custom headers."
+            }
+        }
+    }
+
+    init(name: String, value: String) throws {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isToken(name), name.utf8.count <= 128 else { throw Problem.invalidName(name) }
+        guard !Self.isReserved(name) else { throw Problem.reserved(name) }
+        guard !value.isEmpty, value.utf8.count <= 4_096,
+              value.unicodeScalars.allSatisfy({ $0.value == 0x09 || (0x20...0x7e).contains($0.value) || $0.value >= 0x80 })
+        else { throw Problem.invalidValue(name) }
+        self.name = name
+        self.value = value
+    }
+
+    /// Validates a whole list: names unique (headers ignore case), at most 16.
+    static func list(_ pairs: [(name: String, value: String)]) throws -> [DirectHermesCustomHeader] {
+        let filled = pairs.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+            || !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard filled.count <= 16 else { throw Problem.tooMany }
+        var seen = Set<String>()
+        return try filled.map { pair in
+            let header = try DirectHermesCustomHeader(name: pair.name, value: pair.value)
+            guard seen.insert(header.name.lowercased()).inserted else { throw Problem.duplicate(header.name) }
+            return header
+        }
+    }
+
+    /// RFC 9110 token characters.
+    private static func isToken(_ name: String) -> Bool {
+        !name.isEmpty && name.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.alphanumerics.contains(scalar) && scalar.isASCII || "!#$%&'*+-.^_`|~".unicodeScalars.contains(scalar)
+        }
+    }
+
+    /// What bighelp, Hermes sign-in, HTTP itself or the other access options own.
+    static func isReserved(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        let exact: Set<String> = [
+            "host", "authorization", "proxy-authorization", "cookie", "content-type", "content-length",
+            "content-encoding", "transfer-encoding", "connection", "upgrade", "keep-alive", "te", "expect",
+            "accept", "accept-encoding", "cache-control", "range", "if-match", "if-none-match", "origin",
+        ]
+        return exact.contains(lower) || lower.hasPrefix("sec-") || lower.hasPrefix("x-loopdy-")
+            || lower.hasPrefix("x-hermes-") || lower.hasPrefix("cf-access-")
+    }
+}
+
 /// Device-local Keychain storage, one item per host address. While a host is
 /// being set up its credentials are staged in memory (used for requests) and
 /// only saved once a connection succeeds. The Keychain service name predates
@@ -96,6 +171,10 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     /// Keychain reads by address; `.some(nil)` records "none saved".
     private var cache: [String: DirectHermesAccessCredentials?] = [:]
     private var staged: [String: DirectHermesAccessCredentials] = [:]
+    /// Custom headers, kept apart from the gate credentials above (their own Keychain items).
+    private var headerCache: [String: [DirectHermesCustomHeader]] = [:]
+    private var stagedHeaders: [String: [DirectHermesCustomHeader]] = [:]
+    private var headerService: String { service + ".custom-headers" }
 
     init(service: String = "app.loopdy.mobile.cloudflare-access") {
         self.service = service
@@ -124,8 +203,49 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
         return value
     }
 
+    /// Everything sent to this address: custom headers, then the gate credential.
     func headers(for endpoint: DirectHermesEndpoint) -> [String: String] {
-        credentials(for: endpoint)?.headers ?? [:]
+        var headers: [String: String] = [:]
+        for header in customHeaders(for: endpoint) { headers[header.name] = header.value }
+        for (field, value) in credentials(for: endpoint)?.headers ?? [:] { headers[field] = value }
+        return headers
+    }
+
+    /// Like basic auth: HTTPS, or plain HTTP only on a private network the person allowed.
+    func customHeaders(for endpoint: DirectHermesEndpoint) -> [DirectHermesCustomHeader] {
+        guard Self.mayCarrySecrets(endpoint) else { return [] }
+        let key = endpoint.identity
+        if let value = lock.withLock({ stagedHeaders[key] ?? headerCache[key] }) { return value }
+        let value = loadHeaders(key)
+        lock.withLock { headerCache[key] = value }
+        return value
+    }
+
+    func savedCustomHeaders(for endpoint: DirectHermesEndpoint) -> [DirectHermesCustomHeader] {
+        Self.mayCarrySecrets(endpoint) ? loadHeaders(endpoint.identity) : []
+    }
+
+    func stageCustomHeaders(_ headers: [DirectHermesCustomHeader]?, for endpoint: DirectHermesEndpoint) {
+        lock.withLock { stagedHeaders[endpoint.identity] = headers }
+    }
+
+    /// Saves right away (editing a connected host); the next connection uses them.
+    func replace(access: DirectHermesAccessCredentials?, customHeaders: [DirectHermesCustomHeader],
+                 for endpoint: DirectHermesEndpoint) throws {
+        let key = endpoint.identity
+        if let access { try save(access, key) } else { SecItemDelete(query(key) as CFDictionary) }
+        try saveHeaders(customHeaders, key)
+        lock.withLock {
+            staged[key] = nil
+            cache[key] = .some(access)
+            stagedHeaders[key] = nil
+            headerCache[key] = customHeaders
+        }
+    }
+
+    static func mayCarrySecrets(_ endpoint: DirectHermesEndpoint) -> Bool {
+        endpoint.baseURL.scheme == "https"
+            || (endpoint.allowPrivateHTTP && DirectHermesEndpoint.isPrivateNetworkHost(endpoint.host))
     }
 
     func hasSavedCredentials(for endpoint: DirectHermesEndpoint) -> Bool {
@@ -145,6 +265,13 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     /// Saves a staged token once its connection worked.
     func commitStaged(for endpoint: DirectHermesEndpoint) throws {
         let key = endpoint.identity
+        if let headers = lock.withLock({ stagedHeaders[key] }) {
+            try saveHeaders(headers, key)
+            lock.withLock {
+                stagedHeaders[key] = nil
+                headerCache[key] = headers
+            }
+        }
         guard let value = lock.withLock({ staged[key] }) else { return }
         try save(value, key)
         lock.withLock {
@@ -156,17 +283,20 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
     func remove(for endpoint: DirectHermesEndpoint) {
         let key = endpoint.identity
         SecItemDelete(query(key) as CFDictionary)
+        SecItemDelete(query(key, service: headerService) as CFDictionary)
         lock.withLock {
             staged[key] = nil
             cache[key] = .some(nil)
+            stagedHeaders[key] = nil
+            headerCache[key] = []
         }
     }
 
     // MARK: Keychain
 
-    private func query(_ account: String) -> [String: Any] {
+    private func query(_ account: String, service: String? = nil) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
+         kSecAttrService as String: service ?? self.service,
          kSecAttrAccount as String: account,
          kSecAttrSynchronizable as String: false]
     }
@@ -182,15 +312,42 @@ final class DirectHermesAccessCredentialStore: @unchecked Sendable {
         return try? JSONDecoder().decode(DirectHermesAccessCredentials.self, from: data)
     }
 
+    private func loadHeaders(_ account: String) -> [DirectHermesCustomHeader] {
+        var request = query(account, service: headerService)
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        request[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data, data.count <= 131_072,
+              let pairs = try? JSONDecoder().decode([[String]].self, from: data) else { return [] }
+        return (try? DirectHermesCustomHeader.list(pairs.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil })) ?? []
+    }
+
+    private func saveHeaders(_ headers: [DirectHermesCustomHeader], _ account: String) throws {
+        guard !headers.isEmpty else {
+            SecItemDelete(query(account, service: headerService) as CFDictionary)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(headers.map { [$0.name, $0.value] }) else {
+            throw DirectHermesError.secureStorageUnavailable
+        }
+        try write(data, query: query(account, service: headerService))
+    }
+
     private func save(_ credentials: DirectHermesAccessCredentials, _ account: String) throws {
         guard let data = try? JSONEncoder().encode(credentials) else { throw DirectHermesError.secureStorageUnavailable }
+        try write(data, query: query(account))
+    }
+
+    private func write(_ data: Data, query: [String: Any]) throws {
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
-        var status = SecItemUpdate(query(account) as CFDictionary, attributes as CFDictionary)
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            var item = query(account)
+            var item = query
             item.merge(attributes) { _, new in new }
             status = SecItemAdd(item as CFDictionary, nil)
         }

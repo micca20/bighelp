@@ -8,6 +8,9 @@ HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
             browser sign-in through Hermes's login page
   sso       password plus a self-hosted OpenID Connect provider, using a mock
             identity provider on loopback for single sign-on in the browser
+  tools     no sign-in, with the bighelp plugin (--plugin) and a scripted model
+            whose tool keeps running: the secure input pop-up, and steering
+            while a tool runs (not part of the default modes)
 
 HERMES_DISABLE_LAZY_INSTALLS=1 keeps Hermes from "finishing a source update"
 into its checkout on first launch. Use a separate Hermes checkout anyway: never
@@ -23,7 +26,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -43,7 +48,76 @@ TESTS = {
     "password": ["testPasswordOnlyHostPrefersUsernameAndPasswordAndChats", "testWrongPasswordIsExplained",
                  "testAccessToken", "testBrowserSignInThroughHermesLoginPage"],
     "sso": ["testSingleSignOnThroughIdentityProvider"],
+    "tools": ["testSecureInputPopUpSavesTheValue", "testSteerSendsWhileAToolRuns",
+              "testWaitingQuestionOpensFocusedWhenReturningToTheApp"],
 }
+STEER_OPEN = "[OUT-OF-BAND USER MESSAGE"
+
+
+class ToolTurnModel(BaseHTTPRequestHandler):
+    """A scripted model whose tool keeps running. "secure input test" asks for a secret with
+    bighelp's tool, which waits for the pop-up; "long tool test" runs a 20-second command so a
+    steer lands mid-tool. The final reply says what the tool returned and any steer it got."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        request = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        messages = request.get("messages", [])
+        offered = {t.get("function", {}).get("name", "") for t in request.get("tools", [])}
+        texts = [(i, str(m.get("content") or "")) for i, m in enumerate(messages) if m.get("role") == "user"]
+        triggers = ("secure input test", "long tool test", "question test")
+        start = max((i for i, text in texts if any(t in text for t in triggers)), default=-1)
+        secure = start >= 0 and "secure input test" in messages[start].get("content", "")
+        question = start >= 0 and "question test" in messages[start].get("content", "")
+        results = [str(m.get("content") or "") for m in messages[start + 1:] if m.get("role") == "tool"]
+        steers = [re.sub(r"^\[OUT-OF-BAND[^\]]*\]\s*|\s*\[/OUT-OF-BAND USER MESSAGE\]$", "", text.strip())
+                  for i, text in texts if i > start and STEER_OPEN in text]
+        call = None
+        if start >= 0 and not results:
+            name, arguments = (("bighelp_request_secure_input",
+                                {"name": "SECURE_INPUT_FIXTURE", "label": "Fixture value",
+                                 "prompt": "A test of the secure pop-up. Type anything."})
+                               if secure else
+                               ("clarify", {"question": "Which fixture option?", "choices": ["Alpha", "Beta"]})
+                               if question else ("terminal", {"command": "sleep 20"}))
+            if name not in offered and "tool_call" in offered:
+                name, arguments = "tool_call", {"name": name, "arguments": arguments}
+            call = {"id": "call_tool_turn_fixture", "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(arguments)}}
+        if call:
+            message = {"role": "assistant", "content": None, "tool_calls": [call]}
+        else:
+            if secure:
+                outcome = json.loads(results[-1]) if results and results[-1].startswith("{") else {}
+                text = "Secure input fixture: " + ("saved." if outcome.get("success") else
+                                                   f"not saved ({outcome.get('error') or 'skipped' if outcome.get('skipped') else results[-1][:120]}).")
+            elif question:
+                text = "Question fixture answered: " + results[-1][:80]
+            else:
+                text = "Long tool fixture complete."
+            if steers:
+                text += " Steer received: " + " | ".join(steers)
+            message = {"role": "assistant", "content": text}
+        finish = "tool_calls" if call else "stop"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream" if request.get("stream") else "application/json")
+        self.end_headers()
+        if not request.get("stream"):
+            self.wfile.write(json.dumps({"id": "fixture", "object": "chat.completion", "model": "fixture-model",
+                "created": 1, "choices": [{"index": 0, "message": message, "finish_reason": finish}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}}).encode())
+            return
+        delta = ({"role": "assistant", "tool_calls": [{**call, "index": 0}]} if call
+                 else {"role": "assistant", "content": message["content"]})
+        for part in (delta, {}):
+            chunk = {"id": "fixture", "object": "chat.completion.chunk", "created": 1, "model": "fixture-model",
+                     "choices": [{"index": 0, "delta": part, "finish_reason": None if part else finish}]}
+            self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
+            self.wfile.flush()
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
 
 
 def b64url(data: bytes) -> str:
@@ -171,19 +245,26 @@ def run_mode(mode: str, args, repo: Path) -> int:
         home, project = temp / "home", temp / "project"
         home.mkdir()
         project.mkdir()
-        model = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticModel)
+        model = ThreadingHTTPServer(("127.0.0.1", 0), ToolTurnModel if mode == "tools" else SyntheticModel)
         threading.Thread(target=model.serve_forever, daemon=True).start()
         port = free_port()
         origin = f"http://127.0.0.1:{port}"
         # Hermes only gates a dashboard whose public address isn't loopback. *.localhost
         # still resolves to this Mac, so gated hosts use it; single sign-on needs the
         # app on that same name, since the sign-in cookie belongs to it.
-        public = origin if mode == "open" else f"http://hermes.localhost:{port}"
+        public = origin if mode in ("open", "tools") else f"http://hermes.localhost:{port}"
         config = {"dashboard": {"public_url": public},
                   "model": {"default": "fixture-model", "provider": "custom",
                             "base_url": f"http://127.0.0.1:{model.server_port}/v1", "api_key": "local-synthetic-no-auth"},
                   "agent": {"max_turns": 3}, "terminal": {"backend": "local", "cwd": str(project)},
                   "memory": {"memory_enabled": False, "user_profile_enabled": False}}
+        if mode == "tools":
+            if not args.plugin:
+                raise SystemExit("tools mode needs --plugin <bighelp plugin folder>")
+            shutil.copytree(args.plugin, home / "plugins" / "loopdy",
+                            ignore=shutil.ignore_patterns("tests", "__pycache__", ".git"))
+            config["agent"]["max_turns"] = 4
+            config["plugins"] = {"enabled": ["loopdy"]}
         (home / "config.yaml").write_text(json.dumps(config))
         session_token, password = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         env = {k: os.environ[k] for k in ("PATH", "LANG", "TMPDIR") if k in os.environ}
@@ -232,9 +313,14 @@ def run_mode(mode: str, args, repo: Path) -> int:
             with (args.results / f"xcodebuild-{mode}.log").open("w") as output:
                 result = subprocess.run(command, env=client_env, cwd=repo, stdout=output, stderr=subprocess.STDOUT,
                                         timeout=1500)
+            if mode == "tools":
+                saved = (home / ".env").read_text() if (home / ".env").exists() else ""
+                print(json.dumps({"secure_input_saved_on_host": "SECURE_INPUT_FIXTURE=" in saved}), flush=True)
             print(json.dumps({"mode": mode, "exit_code": result.returncode}), flush=True)
             return result.returncode
         finally:
+            if (home / "logs").exists():
+                shutil.copytree(home / "logs", args.results / f"hermes-{mode}-logs", dirs_exist_ok=True)
             process.terminate()
             try:
                 process.wait(timeout=10)
@@ -255,6 +341,7 @@ def main():
     parser.add_argument("--derived-data", type=Path, required=True)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--modes", default="open,password,sso")
+    parser.add_argument("--plugin", type=Path, help="bighelp (loopdy) plugin folder, for the tools mode")
     args = parser.parse_args()
     args.results.mkdir(parents=True, exist_ok=True)
     repo = Path(__file__).resolve().parents[1]

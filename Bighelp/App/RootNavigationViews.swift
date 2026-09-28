@@ -12,9 +12,9 @@ struct AgentsShellView: View {
     let capabilities: WorkspaceCapabilities
     let botModeRooms: BotModeRoomStore
     let cloneClient: (any AgentProfileCloneClient)?
-    let templateClient: (any AgentProfileTemplateClient)?
     let shortcutsAvailable: Bool
     let onAction: @MainActor (AgentWorkspaceActionRequest) -> Void
+    var groupFilterRequest: Binding<String?> = .constant(nil)
 
     var body: some View {
         AgentsView(
@@ -28,9 +28,9 @@ struct AgentsShellView: View {
             capabilities: capabilities,
             botModeRooms: botModeRooms,
             cloneClient: cloneClient,
-            templateClient: templateClient,
             shortcutsAvailable: shortcutsAvailable,
-            onAction: onAction
+            onAction: onAction,
+            groupFilterRequest: groupFilterRequest
         )
     }
 }

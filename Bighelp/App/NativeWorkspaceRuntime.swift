@@ -688,15 +688,6 @@ final class NativeWorkspaceRuntime {
             connections.cloneClient = DirectHermesAgentProfileCloneClient(
                 workspace: workspace, owner: owner, currentOwner: { [weak connections] in connections?.owner }
             )
-            if workspace.nativeContext?.features.contains("native-agent-templates-v1") == true,
-               let selected = connections.hosts.selectedWorkspace,
-               selected.connectionGeneration == owner.connectionGeneration,
-               let direct = selected.nativeClient {
-                connections.templateClient = DirectHermesAgentTemplateClient(http: direct, owner: owner,
-                    currentOwner: { [weak connections] in connections?.owner })
-            } else {
-                connections.templateClient = nil
-            }
             connections.openCanonicalSession = { [weak self] profile, expectedOwner in
                 guard let self else { throw WorkspaceClientError.ownerChanged }
                 try self.require(expectedOwner)

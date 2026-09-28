@@ -27,6 +27,8 @@ struct RootShellView: View {
     let projectGitClient: any ProjectGitClient
     let userIdentity: UserIdentityStore
     let newChatCoordinator: NewChatCoordinator
+    /// Opens chats asked for from outside the app once the host answers.
+    var shortcutService: BighelpShortcutService? = nil
     let requiresLinkAccount: Bool
     let clearLocalCache: @MainActor () async -> Bool
     var nativeRuntime: NativeWorkspaceRuntime? = nil
@@ -42,6 +44,12 @@ struct RootShellView: View {
     @State var pairingSheetRequest: BighelpLinkPairingSheetRequest?
     @State private var guidedPairingReference: BighelpLinkPairingReference?
     @State private var pendingIncomingChatSessionID: String?
+    /// Opens Agents filtered to one agent's group chats (from the Chats rail's menu).
+    @State var agentGroupFilterRequest: String?
+    /// A widget's New Chat tapped before the app finished starting: agent ID, or "" for the default.
+    @State private var pendingIncomingNewChatAgentID: String?
+    /// Offered as "Try Again" in the error alert.
+    @State private var actionErrorRetry: (@MainActor () -> Void)?
     @State var isLinkAccountPresented = false
     @State var isHermesWorkspacePresented = false
     @State var sessionRestoreRequest: SessionRestoreRequest?
@@ -76,6 +84,8 @@ struct RootShellView: View {
     @State private var afterSettingsDismiss: (() -> Void)?
     // Agent home (Muse-style): board data, the profile, the switcher and the ☰ drawer.
     @State var agentBoard = AgentBoardStore()
+    /// Provider Usage for the connected host; opened from chat ⋯, ☰ and the context window.
+    @State var providerUsage = ProviderUsageStore()
     @State var agentMedia = AgentMediaStore()
     @State var profileAgentID: String?
     @State var isAgentSwitcherPresented = false
@@ -143,6 +153,7 @@ struct RootShellView: View {
             link: readiness.linkState
         )
         agentHomeSheets(rootContent)
+        .environment(\.agentDeletion, agentDeletionAction)
         .bighelpThemePresentation(theme)
         .onChange(of: hostRegistry?.hosts.isEmpty, initial: true) { _, _ in
             reconcileRestoredHostOnboardingState()
@@ -166,6 +177,7 @@ struct RootShellView: View {
         }
         .sheet(item: $workspaceProfileEditor) { editor in
             AgentEditorView(model: editor, runtimeDefaultsClient: agentRuntimeDefaults, onCompleted: { _ in })
+                .environment(\.agentDeletion, agentDeletionAction)
         }
         .sheet(isPresented: $isGroupCreationPresented) {
             BotModeCreateRoomView(rooms: botModeRooms, agents: agents, seedProfileID: groupCreationSeed) { roomID in
@@ -482,11 +494,11 @@ struct RootShellView: View {
                 capabilities: currentWorkspaceCapabilities,
                 botModeRooms: botModeRooms,
                 cloneClient: workspaceConnections?.cloneClient,
-                templateClient: workspaceConnections?.templateClient,
                 shortcutsAvailable: usesWorkspaceFixtures
                     || (nativeRuntime != nil && currentWorkspaceOwner != nil)
 ,
-                onAction: handleAgentWorkspaceAction
+                onAction: handleAgentWorkspaceAction,
+                groupFilterRequest: $agentGroupFilterRequest
             )
     }
 
@@ -552,21 +564,34 @@ struct RootShellView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
-        .navigationDestination(for: AppRoute.self, destination: routeDestination)
+        .navigationDestination(for: AppRoute.self) { route in
+            // Pushed screens don't reliably inherit values set below the stack.
+            routeDestination(route).environment(\.providerUsage, providerUsage)
+        }
         .alert("Unable to open", isPresented: Binding(
             get: { actionErrorMessage != nil },
-            set: { if !$0 { actionErrorMessage = nil } }
+            set: { if !$0 { actionErrorMessage = nil; actionErrorRetry = nil } }
         )) {
+            if let retry = actionErrorRetry {
+                Button("Try Again") {
+                    actionErrorMessage = nil
+                    actionErrorShowsHostStatus = false
+                    actionErrorRetry = nil
+                    retry()
+                }
+            }
             if actionErrorShowsHostStatus {
                 Button("View Host Status") {
                     actionErrorMessage = nil
                     actionErrorShowsHostStatus = false
+                    actionErrorRetry = nil
                     isHostStatusPresented = true
                 }
             }
             Button("OK", role: .cancel) {
                 actionErrorMessage = nil
                 actionErrorShowsHostStatus = false
+                actionErrorRetry = nil
             }
         } message: {
             Text(actionErrorMessage ?? "Try again.")
@@ -907,7 +932,8 @@ struct RootShellView: View {
                 sessionOrganizationHostID: sessionOrganizationHostID,
                 onStartChat: { appState.chatOpenedFromList = true; startNewChat(explicitAgentID: $0) },
                 onNewGroupChat: newGroupChatAction.map { action in { appState.chatOpenedFromList = true; action() } },
-                onSelect: { appState.chatOpenedFromList = true; openSessionSelection($0) }
+                onSelect: { appState.chatOpenedFromList = true; openSessionSelection($0) },
+                agentActionsConfig: agentActionsConfig
             )
         } else {
             ProgressView("Loading sessions")
@@ -1019,6 +1045,27 @@ struct RootShellView: View {
     }
 
     func startNewChat(explicitAgentID: String?) {
+        runNewChatStart(retry: { startNewChat(explicitAgentID: explicitAgentID) }) {
+            _ = try await newChatCoordinator.start(explicitAgentID: explicitAgentID)
+        }
+    }
+
+    /// A widget's New Chat arrives as the app wakes, before the host connection
+    /// (dropped in the background) is back; creating the chat then failed with
+    /// "host unavailable". Wait for the host the way Shortcuts do.
+    private func startIncomingNewChat(agentID: String?) {
+        runNewChatStart(retry: { startIncomingNewChat(agentID: agentID) }) {
+            if let shortcutService, nativeRuntime != nil, !usesWorkspaceFixtures {
+                try await shortcutService.openNewChat(agentID: agentID)
+            } else {
+                let known = agentID.flatMap { id in agents.profiles.contains(where: { $0.id == id }) ? id : nil }
+                _ = try await newChatCoordinator.start(explicitAgentID: known)
+            }
+        }
+    }
+
+    private func runNewChatStart(retry: @escaping @MainActor () -> Void,
+                                 _ start: @escaping @MainActor () async throws -> Void) {
         guard !isStartingNewChat else { return }
         let operationID = UUID()
         newChatStartID = operationID
@@ -1030,12 +1077,15 @@ struct RootShellView: View {
                 finishNewChatOpening(operationID)
             }
             do {
-                _ = try await newChatCoordinator.start(explicitAgentID: explicitAgentID)
+                try await start()
             } catch is CancellationError {
                 // A replaced account or host must not present the old request's error.
             } catch {
                 actionErrorShowsHostStatus = agents.errorMessage != nil || AgentDirectoryStore.isHermesCapabilityMissing(error)
-                actionErrorMessage = error is WorkspaceClientError ? error.localizedDescription
+                // The chat keeps any draft typed while it was starting; Try Again reuses it.
+                actionErrorRetry = retry
+                actionErrorMessage = error is WorkspaceClientError || error is BighelpShortcutServiceError
+                    ? error.localizedDescription
                     : AgentDirectoryStore.isHermesCapabilityMissing(error)
                     ? AgentDirectoryStore.hermesCompatibilityRecovery
                     : (agents.errorMessage ?? "New chat could not be opened. Try again.")
@@ -1132,11 +1182,11 @@ struct RootShellView: View {
             default: openHomeChat()
             }
         case .newChat(let agentID):
-            guard acceptsIncomingLinks else { return }
-            // A widget names the default agent it rendered; if that profile was
-            // removed since, fall back to whichever agent is default now.
-            let known = agentID.flatMap { id in agents.profiles.contains(where: { $0.id == id }) ? id : nil }
-            startNewChat(explicitAgentID: known)
+            guard acceptsIncomingLinks else {
+                pendingIncomingNewChatAgentID = agentID ?? ""
+                return
+            }
+            startIncomingNewChat(agentID: agentID)
         case .scheduledTasks:
             appState.select(.scheduledTasks)
         case .scheduledTask(let id):
@@ -1260,6 +1310,10 @@ struct RootShellView: View {
     }
 
     private func openPendingIncomingChatIfNeeded() {
+        if let agentID = pendingIncomingNewChatAgentID {
+            pendingIncomingNewChatAgentID = nil
+            startIncomingNewChat(agentID: agentID.isEmpty ? nil : agentID)
+        }
         guard let sessionID = pendingIncomingChatSessionID else { return }
         pendingIncomingChatSessionID = nil
         openIncomingChat(sessionID: sessionID)

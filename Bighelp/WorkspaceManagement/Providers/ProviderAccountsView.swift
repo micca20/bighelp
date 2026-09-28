@@ -625,14 +625,16 @@ struct ProviderAccountsView: View {
 
     private func credentialSection(_ credentials: [DirectHermesProviderCredential]) -> some View {
         Section("API keys") {
-            let rows = credentials.filter { !$0.isChannelManaged && ($0.category == "provider" || $0.providerID != nil || $0.isCustom) }
+            let rows = ProviderCredentialPresentation.sorted(
+                credentials.filter { !$0.isChannelManaged && ($0.category == "provider" || $0.providerID != nil || $0.isCustom) }
+            )
             ForEach(rows) { credential in
                 NavigationLink {
                     ProviderCredentialEditorView(store: store, credentialID: credential.id)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(credential.providerName ?? credential.id)
-                        Text(credential.isSet ? "Configured on Hermes" : "Not configured")
+                        Text(ProviderCredentialPresentation.title(credential))
+                        Text(ProviderCredentialPresentation.subtitle(credential))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
@@ -771,6 +773,65 @@ struct ProviderAccountsView: View {
 }
 
 @MainActor
+/// Names a key row by provider and the setting it holds ("OpenRouter API key",
+/// "DeepSeek base URL"). Hermes leaves some provider labels blank, so the name
+/// falls back to the provider ID, then to the variable name itself.
+enum ProviderCredentialPresentation {
+    static func title(_ credential: DirectHermesProviderCredential) -> String {
+        let field = field(for: credential.id)
+        let provider = providerName(credential)
+        guard let field else { return provider }
+        // "Meta Model API" + "API key" reads "Meta Model API key".
+        if provider.hasSuffix(" API"), field.hasPrefix("API ") { return provider + field.dropFirst(3) }
+        return "\(provider) \(field)"
+    }
+
+    static func subtitle(_ credential: DirectHermesProviderCredential) -> String {
+        "\(credential.id) · \(credential.isSet ? "Configured on Hermes" : "Not configured")"
+    }
+
+    static func providerName(_ credential: DirectHermesProviderCredential) -> String {
+        if let label = credential.providerName?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+            return label
+        }
+        if let id = credential.providerID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            let known = AIProviderBrandRegistry.displayName(id: id, authoritativeName: nil)
+            if known != id { return known }
+        }
+        let suffix = fields.first { credential.id.hasSuffix($0.suffix) }?.suffix ?? ""
+        let words = credential.id.dropLast(suffix.count).split(separator: "_").map { word in
+            knownWords[String(word)] ?? String(word.prefix(1)) + word.dropFirst().lowercased()
+        }
+        return words.isEmpty ? credential.id : words.joined(separator: " ")
+    }
+
+    /// Same provider's settings sit together, alphabetically.
+    static func sorted(_ credentials: [DirectHermesProviderCredential]) -> [DirectHermesProviderCredential] {
+        credentials.sorted {
+            let order = title($0).localizedStandardCompare(title($1))
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+    }
+
+    static func field(for key: String) -> String? {
+        fields.first { key.hasSuffix($0.suffix) }?.name
+    }
+
+    /// Longest suffix first.
+    private static let fields: [(suffix: String, name: String)] = [
+        ("_CREDENTIALS_PATH", "credentials file"), ("_API_BASE_URL", "base URL"), ("_OAUTH_TOKEN", "sign-in token"),
+        ("_API_SECRET", "secret"), ("_BASE_URL", "base URL"), ("_API_KEY", "API key"), ("_TOKEN", "token"),
+        ("_SECRET", "secret"), ("_REGION", "region"), ("_PROFILE", "profile"), ("_PATH", "file path"),
+        ("_URL", "URL"), ("_KEY", "key"),
+    ]
+
+    private static let knownWords: [String: String] = [
+        "AI": "AI", "API": "API", "AWS": "AWS", "CN": "China", "GH": "GitHub", "GITHUB": "GitHub", "GLM": "GLM",
+        "HF": "Hugging Face", "LLM": "LLM", "LM": "LM", "MCP": "MCP", "NVIDIA": "NVIDIA", "OPENAI": "OpenAI",
+        "OPENROUTER": "OpenRouter", "XAI": "xAI", "DEEPSEEK": "DeepSeek", "MINIMAX": "MiniMax", "ZAI": "Z.AI",
+    ]
+}
+
 private struct ProviderCredentialEditorView: View {
     let store: ProviderAccountsStore
     let credentialID: String
@@ -787,7 +848,7 @@ private struct ProviderCredentialEditorView: View {
             if let credential {
                 Section("Credential") {
                     LabeledContent("Field", value: credential.id)
-                    LabeledContent("Provider", value: credential.providerName ?? credential.providerID ?? "Other")
+                    LabeledContent("Provider", value: ProviderCredentialPresentation.providerName(credential))
                     LabeledContent("Status", value: credential.isSet ? "Configured" : "Not configured")
                     if !credential.description.isEmpty { Text(credential.description).font(.footnote) }
                 }
@@ -814,7 +875,7 @@ private struct ProviderCredentialEditorView: View {
                 ContentUnavailableView("Credential unavailable", systemImage: "key.slash")
             }
         }
-        .navigationTitle(credential?.providerName ?? "Credential")
+        .navigationTitle(credential.map(ProviderCredentialPresentation.title) ?? "Credential")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: value) { _, _ in store.clearCredentialValidation() }
         .onDisappear { value = "" }

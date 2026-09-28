@@ -118,7 +118,8 @@ private struct DirectHermesControlsView: View {
             }
             .bighelpFormSurface()
             .navigationTitle("Session settings")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            // "Later", not "Done": the card's own Done is what answers.
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } } }
             .task {
                 modelIdentifier = chat.client.modelName
                 do { commands = try await chat.client.commandCatalog() }
@@ -140,7 +141,8 @@ struct DirectHermesAttentionView: View {
 
             }
             .navigationTitle("Needs attention")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            // "Later", not "Done": the card's own Done is what answers.
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } } }
             .onChange(of: client.prompts.map(\.id)) { _, promptIDs in
                 if promptIDs.isEmpty { dismiss() }
             }

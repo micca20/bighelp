@@ -53,6 +53,8 @@ struct BighelpMenuDestinations {
     var onHermesTools: (() -> Void)?
     /// Nerd Mode: the Hermes project folder chats run in.
     var folder: (name: String, open: () -> Void)?
+    /// Plans and limits of the AI providers on the host.
+    var onProviderUsage: (() -> Void)? = nil
     var onSettings: () -> Void
 }
 
@@ -126,6 +128,10 @@ struct BighelpMenu<Recent: View>: View {
                 action: destinations.onAgents)
             row("Scheduled tasks", detail: "Work that runs on its own", symbol: "calendar.badge.clock",
                 id: "menu.scheduled-tasks", action: destinations.onScheduledTasks)
+            if let onProviderUsage = destinations.onProviderUsage {
+                row("Provider usage", detail: "Plans and limits on your computer", symbol: "gauge.with.dots.needle.50percent",
+                    id: "menu.usage", action: onProviderUsage)
+            }
             if let onHermesTools = destinations.onHermesTools {
                 row("Hermes Tools", detail: "Activity, files, skills, models and more", symbol: "square.grid.2x2",
                     id: "menu.hermes-tools", action: onHermesTools)

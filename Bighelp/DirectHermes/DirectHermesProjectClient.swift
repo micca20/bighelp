@@ -139,7 +139,13 @@ final class DirectHermesProjectClient: HermesWorkspaceCatalogClient {
                            agentID: String) async throws -> HermesWorkspaceFolderPage {
         try scope.check()
         _ = try DirectHermesCoreRequestScope.profile(agentID)
-        throw WorkspaceClientError.unavailable(.unsupportedOperation)
+        guard let direct = scope.workspace as? DirectHermesWorkspaceClient else {
+            throw WorkspaceClientError.unavailable(.unsupportedOperation)
+        }
+        let response = try await direct.listFolder(path: parentPath, owner: scope.owner)
+        try scope.check()
+        return try HermesFolderListing.page(response, requestedPath: parentPath, prefix: prefix,
+                                            offset: offset, limit: limit)
     }
 
     private func coordinate(_ visibleID: String, profile: String) throws -> WorkspaceSessionCoordinate {

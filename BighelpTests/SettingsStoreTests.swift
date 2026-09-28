@@ -363,7 +363,7 @@ struct SettingsStoreTests {
         #expect(SettingsStore(defaults: defaults).organizeChatsByProjects)
     }
 
-    @Test func midSessionChatBehaviorDefaultsToInterruptAndOffersEveryHermesMode() {
+    @Test func midSessionChatBehaviorDefaultsToSteerAndOffersEveryHermesMode() {
         let suiteName = #function
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -371,7 +371,8 @@ struct SettingsStoreTests {
 
         let settings = SettingsStore(defaults: defaults)
 
-        #expect(settings.midSessionChatBehavior == .interruptAndSend)
+        // A tap on Send during a turn steers it; stopping the agent is a deliberate choice.
+        #expect(settings.midSessionChatBehavior == .steer)
         #expect(MidSessionChatBehavior.allCases == [
             .steer,
             .queued,

@@ -904,14 +904,32 @@ struct SessionContextRing: View {
 /// The token breakdown presented from the context ring.
 struct SessionContextTokenPopover: View {
     let snapshot: SessionContextSnapshot
+    /// Opens Provider Usage (the plans and limits behind this context).
+    var onShowProviderUsage: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                Text("Context window")
-                    .bighelpFont(.sectionTitle)
-                    .foregroundStyle(theme.primaryText)
-                    .accessibilityAddTraits(.isHeader)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Context window")
+                        .bighelpFont(.sectionTitle)
+                        .foregroundStyle(theme.primaryText)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: BighelpTokens.space12)
+                    if let onShowProviderUsage {
+                        Button(action: onShowProviderUsage) {
+                            Image(systemName: "gauge.with.dots.needle.50percent")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(theme.action)
+                                .frame(width: 32, height: 32)
+                                .background(Circle().fill(theme.action.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Provider usage")
+                        .accessibilityHint("Shows the plans and limits of the AI providers on your computer.")
+                        .accessibilityIdentifier("chat.session-context.provider-usage")
+                    }
+                }
                 Text(SessionContextPresentation.summary(for: snapshot))
                     .bighelpFont(.metadata)
                     .foregroundStyle(theme.secondaryText)
@@ -954,6 +972,7 @@ struct SessionContextTokenPopover: View {
         .padding(BighelpTokens.space20)
         .frame(minWidth: 260, alignment: .leading)
         .background(theme.canvas)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.session-context.popover")
     }
 

@@ -41,6 +41,8 @@ final class HermesWorkspaceStore {
     private(set) var folderSuggestions: HermesWorkspaceFolderPage?
     private(set) var isLoadingFolderSuggestions = false
     private(set) var folderSuggestionErrorMessage: String?
+    /// The Hermes computer's home folder, learned from listing a "~" path.
+    private(set) var homePath: String?
     private(set) var errorMessage: String?
     private var loadGeneration = 0
     private var folderSuggestionGeneration = 0
@@ -164,9 +166,17 @@ final class HermesWorkspaceStore {
             isCreating = false
         }
         do {
+            if HermesFolderPath.expanded(folderPath, home: homePath) == nil, folderPath.hasPrefix("~") {
+                _ = try? await learnHome(agentID: agentID)
+            }
+            guard let fullPath = HermesFolderPath.expanded(folderPath, home: homePath) else {
+                guard generation == loadGeneration else { return false }
+                errorMessage = "bighelp couldn't find the home folder on your computer. Type the full path, starting with /."
+                return false
+            }
             let created = try await client.create(
                 name: name,
-                folderPath: folderPath,
+                folderPath: fullPath,
                 agentID: agentID
             )
             guard generation == loadGeneration else { return false }
@@ -210,7 +220,7 @@ final class HermesWorkspaceStore {
     func loadFolderSuggestions(typedPath: String, agentID: String) async {
         folderSuggestionGeneration += 1
         let generation = folderSuggestionGeneration
-        guard let query = Self.folderQuery(for: typedPath) else {
+        guard let query = HermesFolderPath.query(for: typedPath) else {
             folderSuggestions = nil
             folderSuggestionErrorMessage = nil
             isLoadingFolderSuggestions = false
@@ -227,17 +237,23 @@ final class HermesWorkspaceStore {
                 parentPath: query.parentPath,
                 prefix: query.prefix,
                 offset: 0,
-                limit: 20,
+                limit: 100,
                 agentID: agentID
             )
             guard generation == folderSuggestionGeneration else { return }
+            if let home = HermesFolderPath.home(listed: query.parentPath, fullPath: page.parentPath) { homePath = home }
             folderSuggestions = page
             folderSuggestionErrorMessage = nil
         } catch {
             guard generation == folderSuggestionGeneration else { return }
             folderSuggestions = nil
-            folderSuggestionErrorMessage = "Remote folders could not be listed."
+            folderSuggestionErrorMessage = HermesFolderListing.message(for: error)
         }
+    }
+
+    private func learnHome(agentID: String) async throws {
+        let page = try await client.folderSuggestions(parentPath: "~", prefix: "", offset: 0, limit: 1, agentID: agentID)
+        if let home = HermesFolderPath.home(listed: "~", fullPath: page.parentPath) { homePath = home }
     }
 
     func workspaceID(forSessionID sessionID: String) -> String? {
@@ -258,25 +274,6 @@ final class HermesWorkspaceStore {
         }
     }
 
-    private static func folderQuery(
-        for typedPath: String
-    ) -> (parentPath: String, prefix: String)? {
-        let path = typedPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard path.hasPrefix("/"), !path.unicodeScalars.contains(where: {
-            CharacterSet.controlCharacters.contains($0)
-        }) else { return nil }
-        if path == "/" {
-            return ("/", "")
-        }
-        if path.hasSuffix("/") {
-            return (String(path.dropLast()), "")
-        }
-        let value = path as NSString
-        let parent = value.deletingLastPathComponent
-        guard parent.hasPrefix("/") else { return nil }
-        return (parent.isEmpty ? "/" : parent, value.lastPathComponent)
-    }
-
     func resetForAccountBoundary() {
         loadGeneration += 1
         folderSuggestionGeneration += 1
@@ -292,6 +289,7 @@ final class HermesWorkspaceStore {
         folderSuggestions = nil
         isLoadingFolderSuggestions = false
         folderSuggestionErrorMessage = nil
+        homePath = nil
         selectedWorkspaceIDsBySession.removeAll()
     }
 }

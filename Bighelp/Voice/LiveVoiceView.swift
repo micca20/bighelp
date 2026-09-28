@@ -14,15 +14,19 @@ struct LiveVoiceView: View {
     /// with the host's text-to-speech) and reopens voice. Offered only after
     /// live voice fails.
     let onUseTurnBased: (() -> Void)?
+    /// The chat's live work (a running tool, thinking), for the avatar's moves.
+    var chatActivity: () -> AgentActivityKind = { .idle }
 
     init(
         model: LiveVoiceModel,
         agentID: String? = nil,
         agentImageURL: URL? = nil,
         onEnded: @escaping () -> Void = {},
-        onUseTurnBased: (() -> Void)? = nil
+        onUseTurnBased: (() -> Void)? = nil,
+        chatActivity: @escaping () -> AgentActivityKind = { .idle }
     ) {
         _model = State(initialValue: model)
+        self.chatActivity = chatActivity
         self.agentID = agentID
         self.agentImageURL = agentImageURL
         self.onEnded = onEnded
@@ -39,12 +43,14 @@ struct LiveVoiceView: View {
                             .foregroundStyle(theme.secondaryText)
                             .accessibilityIdentifier("live-voice.status")
                         Spacer(minLength: BighelpTokens.space16)
-                        AvatarView(
-                            stableID: agentID ?? model.agentName,
+                        AgentLiveAvatar(
+                            agentID: agentID ?? model.agentName,
                             displayName: model.agentName,
                             imageURL: agentImageURL,
+                            activity: avatarActivity,
                             size: dynamicTypeSize.isAccessibilitySize ? 140 : 200,
-                            state: liveState
+                            showsBadge: false,
+                            restingState: liveState
                         )
                         .accessibilityHidden(true)
                         Text(captionText)
@@ -135,6 +141,13 @@ struct LiveVoiceView: View {
 
     /// Derived only from live-call facts: delegated Hermes work, streaming
     /// assistant speech, or an open microphone.
+    private var avatarActivity: AgentActivityKind {
+        guard model.phase == .live else { return .idle }
+        let working = model.workStatus == .working
+        return VoiceAvatarActivity.resolve(isSpeaking: !working && !model.assistantCaption.isEmpty,
+                                           isWorking: working, chatActivity: chatActivity())
+    }
+
     private var liveState: AgentLiveState {
         guard model.phase == .live else { return .idle }
         if model.workStatus == .working { return .thinking }

@@ -52,6 +52,7 @@ struct SettingsView: View {
     @State var isPersonalitiesPresented = false
     @State var isAccountControlsPresented = false
     @Environment(\.bighelpHostRegistry) var hostRegistry
+    @Environment(\.providerUsage) var providerUsage
     @State var isClearCacheConfirmationPresented = false
     @State var isClearingLocalCache = false
     @State var localCacheStatusMessage: String?
@@ -148,6 +149,7 @@ struct SettingsView: View {
             BighelpDeferredSection { appearance }
             BighelpDeferredSection { chatExperience }
             BighelpDeferredSection { voiceExperience }
+            BighelpDeferredSection { providerUsageSection }
             BighelpDeferredSection {
                 settingsMenuGroup("Notifications & Access", sections: [.notifications, .permissions])
             }

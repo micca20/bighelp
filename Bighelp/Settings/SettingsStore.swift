@@ -316,7 +316,7 @@ final class SettingsStore {
         ) ?? .systemDefault
         midSessionChatBehavior = MidSessionChatBehavior(
             rawValue: defaults.string(forKey: Keys.midSessionChatBehavior) ?? ""
-        ) ?? .interruptAndSend
+        ) ?? .steer
         foldCompletedTurns = defaults.bool(forKey: Keys.foldCompletedTurns, default: true)
         reactionsReachAgent = defaults.bool(forKey: Keys.reactionsReachAgent, default: true)
         lightBackground = defaults.string(forKey: Keys.lightBackground).flatMap(BighelpLightBackground.init(rawValue:)) ?? .cream

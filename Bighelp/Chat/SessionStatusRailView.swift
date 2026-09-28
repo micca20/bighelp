@@ -19,6 +19,7 @@ struct SessionStatusRailView: View {
     var context: SessionContextSnapshot? = nil
     var isContextPresented: Binding<Bool> = .constant(false)
     var onContextSelect: (() -> Void)? = nil
+    var onShowProviderUsage: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -100,7 +101,7 @@ struct SessionStatusRailView: View {
                     attachmentAnchor: .rect(.bounds),
                     arrowEdge: .bottom
                 ) {
-                    SessionContextTokenPopover(snapshot: context)
+                    SessionContextTokenPopover(snapshot: context, onShowProviderUsage: onShowProviderUsage)
                         .presentationCompactAdaptation(.popover)
                 }
                 .companionComposerAnchor(.contextRing)

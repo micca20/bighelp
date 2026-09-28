@@ -26,6 +26,14 @@ final class ChatThinkingStyleUITests: BighelpUITestCase {
             save("thinking-style-fold-\(fold)", app)
             app.tables["chat.timeline"].swipeDown()
             save("thinking-style-fold-\(fold)-top", app)
+            if fold == "YES" {
+                // One fold for the whole turn, even with interim messages between the work.
+                XCTAssertFalse(app.buttons["More completed work"].exists)
+                let worked = app.buttons["Worked for 12s"]
+                XCTAssertTrue(worked.waitForExistence(timeout: 5))
+                worked.tap()
+                save("thinking-style-fold-expanded", app)
+            }
             app.terminate()
         }
     }

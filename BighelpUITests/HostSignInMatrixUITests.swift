@@ -113,6 +113,91 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
         try expectConnected(app)
     }
 
+    // MARK: Tool turns (tools mode: the bighelp plugin and a scripted model)
+
+    /// The agent asks for a secret with bighelp's tool: the masked pop-up
+    /// appears over the chat, and what's typed goes to the host, not the chat.
+    @MainActor func testSecureInputPopUpSavesTheValue() throws {
+        let app = try beginSetup(mode: "tools")
+        let composer = try openFirstChat(app)
+        send("secure input test", composer: composer, in: app)
+        let field = app.secureTextFields["direct-hermes.secure-input"]
+        XCTAssertTrue(field.waitForExistence(timeout: 30), "The secure pop-up appears")
+        save("tools-1-secure-pop-up", app)
+        field.tap()
+        field.typeText("fixture-value-not-a-secret")
+        app.buttons["direct-hermes.secure-submit"].tap()
+        XCTAssertTrue(text("Secure input fixture: saved.", in: app).waitForExistence(timeout: 30))
+        XCTAssertFalse(text("fixture-value-not-a-secret", in: app).exists, "The value never shows in the chat")
+        save("tools-2-secure-saved", app)
+    }
+
+    /// A plain tap on Send while a tool runs steers the turn: the message
+    /// leaves the composer at once, and the agent gets it when the tool ends.
+    @MainActor func testSteerSendsWhileAToolRuns() throws {
+        let app = try beginSetup(mode: "tools")
+        let composer = try openFirstChat(app)
+        send("long tool test", composer: composer, in: app)
+        XCTAssertTrue(app.buttons["chat.stop"].waitForExistence(timeout: 20), "The turn is running")
+        // Let the 20-second command start.
+        Thread.sleep(forTimeInterval: 3)
+        composer.tap()
+        composer.typeText("steer fixture note")
+        let sendButton = app.descendants(matching: .any)["chat.send"].firstMatch
+        XCTAssertTrue(sendButton.waitForExistence(timeout: 5))
+        sendButton.tap()
+        let left = expectation(for: NSPredicate(format: "NOT (value CONTAINS %@)", "steer fixture note"),
+                               evaluatedWith: composer)
+        wait(for: [left], timeout: 5)
+        save("tools-3-steered", app)
+        XCTAssertTrue(text("Steer received: steer fixture note", in: app).waitForExistence(timeout: 60),
+                      "The agent got the steer after the tool finished")
+        save("tools-4-steer-received", app)
+    }
+
+    /// Tapping the Dynamic Island (or a notification) while the agent waits on
+    /// a question brings the app back: the question opens focused, keyboard closed.
+    @MainActor func testWaitingQuestionOpensFocusedWhenReturningToTheApp() throws {
+        let app = try beginSetup(mode: "tools")
+        let composer = try openFirstChat(app)
+        send("question test", composer: composer, in: app)
+        XCTAssertTrue(app.buttons["direct-hermes.attention"].waitForExistence(timeout: 30), "The agent asks")
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10))
+        sleep(9) // past the chat-open window: only the return opens it
+        app.activate()
+        XCTAssertTrue(app.navigationBars["Needs attention"].waitForExistence(timeout: 10), "The question opens focused")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "No keyboard over it")
+        save("tools-5-question-focused", app)
+    }
+
+    @MainActor private func openFirstChat(_ app: XCUIApplication) throws -> XCUIElement {
+        try connect(app)
+        app.buttons["host-setup.continue"].tap()
+        // A new host has no chats yet; one used by an earlier test opens its latest.
+        let newChat = app.buttons.matching(NSPredicate(format: "identifier IN %@",
+            ["sessions.empty.new-chat", "chat.home.new-chat", "chat.new-chat", "root.new-chat"])).firstMatch
+        if newChat.waitForExistence(timeout: 10) {
+            newChat.tap()
+            confirmNewChatPicker(in: app)
+        }
+        let composer = app.textViews["chat.composer.text"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 20), "A chat opens after connecting")
+        return composer
+    }
+
+    @MainActor private func send(_ message: String, composer: XCUIElement, in app: XCUIApplication) {
+        composer.tap()
+        composer.typeText(message)
+        app.buttons["chat.send"].tap()
+    }
+
+    @MainActor private func text(_ value: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", value, value))
+            .firstMatch
+    }
+
     // MARK: Helpers
 
     @MainActor private func beginSetup(mode: String) throws -> XCUIApplication {

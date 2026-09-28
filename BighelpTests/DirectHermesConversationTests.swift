@@ -944,6 +944,45 @@ struct DirectHermesConversationTests {
         #expect(!projection.activities.contains { $0.lifecycle == .running })
     }
 
+    /// A plain tap on Send while this chat's own turn runs a tool steers it.
+    /// The running prompt kept the chat "not ready for a new turn", and Send
+    /// quietly did nothing; only the hold menu's options worked.
+    @Test func plainSendDuringOwnRunningTurnSteers() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = DirectTestRPC()
+        // As stock Hermes answers: a prompt starts streaming; a steer is queued.
+        rpc.handler = { method, _ in
+            .object(["status": .string(method == "prompt.submit" ? "streaming" : "queued")])
+        }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Native", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        model.draft = "Run the long command"
+        let turn = Task { await model.send() }
+        for _ in 0..<200 where !rpc.requests.contains(where: { $0.method == "prompt.submit" }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        client.receive(.init(type: "session.info", sessionID: "runtime", payload: ["running": .boolean(true)], sequence: 1))
+        client.receive(.init(type: "tool.start", sessionID: "runtime", payload: [
+            "tool_id": .string("call_1"), "name": .string("terminal"),
+            "args": .object(["command": .string("sleep 20")])], sequence: 2))
+        #expect(model.isSending)
+        #expect(!client.isReadyForSubmission)
+        #expect(model.canSend == false) // empty draft
+
+        model.draft = "Also check the logs"
+        #expect(model.canSend)
+        await model.send()
+
+        #expect(rpc.requests.filter { $0.method == "session.steer" }.count == 1)
+        #expect(rpc.requests.last(where: { $0.method == "session.steer" })?.params["text"]?.string == "Also check the logs")
+        #expect(model.draft.isEmpty)
+        turn.cancel()
+    }
+
     @Test func acknowledgedSteersDoNotBecomeRetainedSubmissionAlerts() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
