@@ -1031,6 +1031,7 @@
 		F31F4A76FA960358DEA1BE1B /* CompactChatComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 658B59C231EAF42CD31649DE /* CompactChatComposerTests.swift */; };
 		F339D409231CD9D11B66109E /* BighelpLinkProjectGitClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F2DEE243A51982965DE06D /* BighelpLinkProjectGitClientTests.swift */; };
 		F348F065E83BAF11B87F61C7 /* generation-preview.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E7173F836ECF6E4D13740E1B /* generation-preview.mp4 */; };
+		F3CFC8D5F95C5A770C7EFCAA /* VoicePermissionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF821712A0CCB9407E797DDC /* VoicePermissionUITests.swift */; };
 		F3DDC06464DA83E58A7B8D52 /* AgentActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5068277073666FC21BE690A9 /* AgentActions.swift */; };
 		F4161E4B346B270C76670473 /* NativeSessionControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6059C9938AE497F3666A96 /* NativeSessionControlsView.swift */; };
 		F457459FC8D55A6830E08429 /* ProviderUsageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58625F7B2E999825B55E3351 /* ProviderUsageUITests.swift */; };
@@ -2249,6 +2250,7 @@
 		FDF701F596E1723EBAFA8E0A /* AppBadgeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBadgeUITests.swift; sourceTree = "<group>"; };
 		FE9007091EA5BB283EA53C1D /* SessionAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAppearanceTests.swift; sourceTree = "<group>"; };
 		FEB7BBEA44AA0E42DB506FA3 /* DirectHermesWorkspaceFileScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesWorkspaceFileScope.swift; sourceTree = "<group>"; };
+		FF821712A0CCB9407E797DDC /* VoicePermissionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePermissionUITests.swift; sourceTree = "<group>"; };
 		FFBCBA436211A53E34C45F82 /* HermesBotModeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesBotModeContractTests.swift; sourceTree = "<group>"; };
 		FFBEE9CFB9B0B589E8587043 /* BighelpCardNetworkPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpCardNetworkPolicyTests.swift; sourceTree = "<group>"; };
 		FFD9FA6D72A05EFF2B9D246B /* BighelpLinkFixtureClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpLinkFixtureClient.swift; sourceTree = "<group>"; };
@@ -3325,6 +3327,7 @@
 				5B27D2EE83B909A7E4745180 /* SimplifiedShellUITests.swift */,
 				2D1E11795B7E88BB7F60730C /* ToolDisclosureUITests.swift */,
 				1858984A65DAAD37063DFA1A /* VoiceAndChatLayoutSettingsUITests.swift */,
+				FF821712A0CCB9407E797DDC /* VoicePermissionUITests.swift */,
 				094881C74E69961A203945D9 /* WidgetNewChatUITests.swift */,
 				A9E5DC7A9181F538C57B0CE0 /* WikiSidebarUITests.swift */,
 				8017569C6675F6EF32837C5E /* WorkspaceNavigationUITestSupport.swift */,
@@ -5408,6 +5411,7 @@
 				A7ED46A9C4AD98AF3823FFDE /* SimplifiedShellUITests.swift in Sources */,
 				6E06FD7A158360A66779DB29 /* ToolDisclosureUITests.swift in Sources */,
 				FFACB7DA6F29EFBCCE5A9E28 /* VoiceAndChatLayoutSettingsUITests.swift in Sources */,
+				F3CFC8D5F95C5A770C7EFCAA /* VoicePermissionUITests.swift in Sources */,
 				1AE521EF532F9966CDD65850 /* WidgetNewChatUITests.swift in Sources */,
 				C40915DED69A519B41EA2D95 /* WikiSidebarUITests.swift in Sources */,
 				100982301E3E8EC010AE9AFC /* WorkspaceNavigationUITestSupport.swift in Sources */,

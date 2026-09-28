@@ -59,8 +59,9 @@ turns it off. Outside the app the Live Activity shows the agent's picture and th
 a fixed category). Every phone chat uses this big-avatar header; only the Chat tab's first page has ☰ and the tab
 bar, any other chat (from the list, Feed, a task) has Back. Chat Info lives in ⋯ › People & Chat, and the line under
 the name says "Updating…" while a chat reloads from Hermes. iPad works the same way, with no always-open sidebar:
-☰ slides the menu in from the leading edge, and chats use the width of the screen. On Vision Pro the agent can also
-stand in the room in its own volume (Settings › In your space).
+☰ slides the menu in from the leading edge, and chats use the width of the screen. On Vision Pro bighelp always
+starts in its own window; the agent can also stand in the room in its own volume (Settings › In your space), and
+☰ › Simple mode leaves just the agent, with Open bighelp under it to come back. The avatar never opens by itself.
 
 Widgets (`BighelpActivityShared`, rendered by the Live Activity extension) use the Colors picks through
 `BighelpWidgetSnapshot` palettes and show real agent pictures (`BighelpActivityAvatarStore`). **Your Agent** is the

@@ -300,9 +300,12 @@ private extension PermissionCenter {
             .microphone: PermissionClient(
                 status: { microphoneStatus() },
                 request: {
+                    // The system answers on its own queue. A Sendable callback keeps it
+                    // off the main actor; an inherited MainActor callback traps there
+                    // (the crash when allowing the microphone).
                     _ = await withCheckedContinuation { continuation in
-                        AVAudioApplication.requestRecordPermission {
-                            continuation.resume(returning: $0)
+                        AVAudioApplication.requestRecordPermission { @Sendable granted in
+                            continuation.resume(returning: granted)
                         }
                     }
                     return microphoneStatus()
@@ -311,9 +314,10 @@ private extension PermissionCenter {
             .speech: PermissionClient(
                 status: { speechStatus() },
                 request: {
+                    // Same for speech recognition: its answer arrives on a background queue.
                     _ = await withCheckedContinuation { continuation in
-                        SFSpeechRecognizer.requestAuthorization {
-                            continuation.resume(returning: $0)
+                        SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                            continuation.resume(returning: status)
                         }
                     }
                     return speechStatus()

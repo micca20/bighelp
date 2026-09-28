@@ -1,6 +1,7 @@
 import XCTest
 
-/// Vision Pro: the agent stands in the room in its own volume. A quick pinch
+/// Vision Pro: bighelp starts in its own window. Simple mode (☰ or Settings)
+/// leaves just the agent standing in the room in its own volume. A quick pinch
 /// types or talks (Settings decides); pinch-and-hold explains moving it.
 /// Tests run in name order; voice goes last because its one-time speech
 /// permission prompt (which the simulator can't pre-grant) covers later tests.
@@ -14,10 +15,29 @@ final class SpatialAvatarUITests: XCTestCase {
     }
 
     @MainActor
-    func test2PinchToTypeSendsAndShowsTheReply() throws {
+    func test0StartsInBighelpAndSimpleModeIsYourChoice() throws {
         let app = launch(pinch: "type")
+        let menu = app.buttons["home.drawer.open"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 20), "bighelp opens in its own window")
         let avatar = app.descendants(matching: .any)["spatial-avatar.avatar"].firstMatch
-        XCTAssertTrue(avatar.waitForExistence(timeout: 20), "The agent steps into the room on first launch")
+        XCTAssertFalse(avatar.waitForExistence(timeout: 5), "The agent doesn't step in by itself")
+        save("0-starts-in-bighelp", app)
+
+        enterSimpleMode(app)
+        XCTAssertTrue(avatar.waitForExistence(timeout: 15), "Simple mode brings the agent into the room")
+        let openApp = app.buttons["spatial-avatar.open-app"].firstMatch
+        XCTAssertTrue(openApp.waitForExistence(timeout: 10), "The agent offers the way back")
+        XCTAssertFalse(menu.exists, "bighelp's window closes in simple mode")
+        save("0-simple-mode", app)
+        // XCUITest can't tap inside a volume once it's the app's only window ("invalid scene
+        // world transform"), so Open bighelp is checked on a device, not here.
+    }
+
+    @MainActor
+    func test2PinchToTypeSendsAndShowsTheReply() throws {
+        let app = showAgentBesideBighelp(pinch: "type")
+        let avatar = app.descendants(matching: .any)["spatial-avatar.avatar"].firstMatch
+        XCTAssertTrue(avatar.waitForExistence(timeout: 20), "The agent steps in beside bighelp")
         let status = app.descendants(matching: .any)["spatial-avatar.status"].firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         waitFor(status, labelContains: "Pinch to type")
@@ -48,7 +68,7 @@ final class SpatialAvatarUITests: XCTestCase {
 
     @MainActor
     func test3PinchToTalkOpensVoiceBesideTheAgent() throws {
-        let app = launch(pinch: "talk")
+        let app = showAgentBesideBighelp(pinch: "talk")
         let avatar = app.descendants(matching: .any)["spatial-avatar.avatar"].firstMatch
         XCTAssertTrue(avatar.waitForExistence(timeout: 20))
         let status = app.descendants(matching: .any)["spatial-avatar.status"].firstMatch
@@ -65,7 +85,6 @@ final class SpatialAvatarUITests: XCTestCase {
     @MainActor
     func test1SettingsChoosesWhatAPinchDoes() throws {
         let app = launch(pinch: "talk")
-        XCTAssertTrue(app.descendants(matching: .any)["spatial-avatar.avatar"].firstMatch.waitForExistence(timeout: 20))
         // ☰ opens the same side menu as on iPad.
         let menu = app.buttons["home.drawer.open"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
@@ -85,11 +104,42 @@ final class SpatialAvatarUITests: XCTestCase {
         sleep(1)
         save("8-settings", settingsApp)
         settingsApp.buttons["Type"].firstMatch.tap()
+        // Bring the agent in beside bighelp to see the choice take effect.
+        let show = settingsApp.switches["settings.spatial-avatar.show"].firstMatch
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
+        (show.switches.firstMatch.exists ? show.switches.firstMatch : show).tap()
         let status = settingsApp.descendants(matching: .any)["spatial-avatar.status"].firstMatch
         waitFor(status, labelContains: "Pinch to type")
     }
 
     // MARK: Helpers
+
+    /// Settings › In your space › Show your agent in the room: the agent stands
+    /// beside bighelp, so XCUITest can still tap inside its volume.
+    @MainActor
+    private func showAgentBesideBighelp(pinch: String) -> XCUIApplication {
+        let app = launch(pinch: pinch, extra: ["-initial-tab", "profile"])
+        XCTAssertTrue(app.descendants(matching: .any)["settings.screen"].firstMatch.waitForExistence(timeout: 15))
+        let list = app.collectionViews.firstMatch
+        let show = app.switches["settings.spatial-avatar.show"].firstMatch
+        for _ in 0..<8 where !show.exists { list.swipeUp() }
+        XCTAssertTrue(show.waitForExistence(timeout: 5), "Settings can bring the agent in")
+        (show.switches.firstMatch.exists ? show.switches.firstMatch : show).tap()
+        return app
+    }
+
+    /// ☰ › Simple mode: bighelp's window closes and the agent steps in.
+    @MainActor
+    private func enterSimpleMode(_ app: XCUIApplication) {
+        let menu = app.buttons["home.drawer.open"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 20), "bighelp opens in its own window")
+        menu.tap()
+        let row = app.buttons["menu.simple-mode"].firstMatch
+        let list = app.collectionViews.firstMatch
+        for _ in 0..<6 where !(row.exists && row.isHittable) { list.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "☰ offers Simple mode")
+        row.tap()
+    }
 
     @MainActor
     private func launch(pinch: String, extra: [String] = []) -> XCUIApplication {

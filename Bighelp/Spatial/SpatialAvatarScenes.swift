@@ -38,6 +38,14 @@ struct SpatialAvatarVolume: View {
         VStack(spacing: BighelpTokens.space16) {
             avatar
             statusChip
+            if !model.isMainWindowOpen {
+                // Simple mode: the way back to the whole app.
+                Button("Open bighelp", systemImage: "macwindow") {
+                    openWindow(id: SpatialAvatarSceneID.main)
+                }
+                .font(.callout)
+                .accessibilityIdentifier("spatial-avatar.open-app")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .top) { topCard }
@@ -292,26 +300,36 @@ struct SpatialAvatarVoicePanel: View {
     }
 }
 
-/// Hooks on the main window: Settings finds the avatar, the avatar knows
-/// whether it must reopen this window, and it steps into the room once, the
-/// first time a computer is connected.
+/// Hooks on the main window: Settings and the menu find the avatar, and the
+/// avatar knows whether it must offer to reopen this window. The avatar never
+/// opens by itself; the person chooses it (☰ › Simple mode, or Settings).
 struct SpatialAvatarMainWindowHooks: ViewModifier {
     let model: SpatialAvatarModel
-    let canIntroduce: Bool
 
-    @Environment(\.openWindow) private var openWindow
-    @AppStorage("bighelp.spatial-avatar.introduced") private var introduced = false
+    @Environment(\.dismissWindow) private var dismissWindow
 
     func body(content: Content) -> some View {
         content
             .environment(\.spatialAvatar, model)
             .onAppear { model.isMainWindowOpen = true }
             .onDisappear { model.isMainWindowOpen = false }
-            .onChange(of: canIntroduce, initial: true) { _, ready in
-                guard ready, !introduced, !model.isVolumeOpen else { return }
-                introduced = true
-                openWindow(id: SpatialAvatarSceneID.avatar)
+            // Close only once the avatar is up: closing in the same moment it opens is ignored.
+            .onChange(of: model.entersSimpleMode && model.isVolumeOpen) { _, ready in
+                guard ready else { return }
+                model.entersSimpleMode = false
+                dismissWindow()
             }
+    }
+}
+
+/// Simple mode: just your agent in the room. bighelp's window closes, and the
+/// avatar's Open bighelp button brings it back. bighelp always starts in its
+/// own window (the avatar scenes are never launched or restored on their own).
+@MainActor
+enum SpatialSimpleMode {
+    static func enter(_ model: SpatialAvatarModel?, openWindow: OpenWindowAction) {
+        model?.entersSimpleMode = true
+        openWindow(id: SpatialAvatarSceneID.avatar)
     }
 }
 
@@ -332,6 +350,9 @@ struct SpatialAvatarScenes: Scene {
                 .onDisappear { model.isVolumeOpen = false }
         }
         .windowStyle(.volumetric)
+        // bighelp starts in its own window; the avatar comes only when chosen.
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
         // About the size of a small pet on a desk.
         .defaultSize(width: 0.36, height: 0.44, depth: 0.28, in: .meters)
         .windowResizability(.contentSize)
@@ -350,6 +371,8 @@ struct SpatialAvatarScenes: Scene {
                                                   companionAgentScope: companionAgentScope))
         }
         .defaultSize(width: 400, height: 560)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
         .defaultWindowPlacement { _, context in
             // Beside the avatar, so you keep looking at who you're talking to.
             if let avatar = context.windows.first(where: { $0.id == SpatialAvatarSceneID.avatar }) {

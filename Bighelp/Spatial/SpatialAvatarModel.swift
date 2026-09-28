@@ -53,6 +53,8 @@ final class SpatialAvatarModel {
     /// Which windows are open, so the avatar reopens the main window only when needed.
     var isVolumeOpen = false
     var isMainWindowOpen = true
+    /// Simple mode was chosen: the main window closes itself once the avatar is up.
+    var entersSimpleMode = false
 
     private(set) var chat: ChatModel?
     @ObservationIgnored private var workspace: BighelpShortcutWorkspace?

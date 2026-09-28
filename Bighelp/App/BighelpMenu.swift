@@ -65,6 +65,10 @@ struct BighelpMenu<Recent: View>: View {
 
     let hosts: BighelpMenuHosts
     let destinations: BighelpMenuDestinations
+    #if os(visionOS)
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.spatialAvatar) private var spatialAvatar
+    #endif
     /// Runs before every choice: closes a sheet or drawer; nothing for a sidebar.
     let close: () -> Void
     var hasRecent = true
@@ -124,6 +128,12 @@ struct BighelpMenu<Recent: View>: View {
 
     private var goToSection: some View {
         Section("Go to") {
+            #if os(visionOS)
+            row("Simple mode", detail: "Just your agent in the room", symbol: "figure.stand",
+                id: "menu.simple-mode", trailing: .none) {
+                SpatialSimpleMode.enter(spatialAvatar, openWindow: openWindow)
+            }
+            #endif
             row("Agents", detail: "Create, edit and pin your agents", symbol: "person.2", id: "menu.agents",
                 action: destinations.onAgents)
             row("Scheduled tasks", detail: "Work that runs on its own", symbol: "calendar.badge.clock",

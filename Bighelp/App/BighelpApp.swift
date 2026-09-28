@@ -372,9 +372,7 @@ struct BighelpApp: App {
             .environment(\.bighelpUIV3Enabled, settings.interfaceVersion == .v3)
             .environment(\.nerdModeEnabled, settings.nerdModeEnabled)
             #if os(visionOS)
-            .modifier(SpatialAvatarMainWindowHooks(
-                model: spatialAvatar,
-                canIntroduce: hostRegistry.selectedHostID != nil || usesFixtureWorkspace))
+            .modifier(SpatialAvatarMainWindowHooks(model: spatialAvatar))
             // No app-wide tint here: visionOS would fill every toolbar button with it.
             #else
             // Lavender (asset AccentColor, light/dark) for every control that
@@ -460,6 +458,10 @@ struct BighelpApp: App {
             }
             }
         }
+        #if os(visionOS)
+        // bighelp always starts in its own window; simple mode is a choice.
+        .defaultLaunchBehavior(.presented)
+        #endif
         #if os(visionOS)
         SpatialAvatarScenes(model: spatialAvatar, settings: settings, companion: companion,
                             companionAgentScope: companionAgentScope, permissionCenter: permissionCenter)

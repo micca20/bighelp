@@ -193,6 +193,12 @@ sections can crash only on devices ("Thread stack size exceeded").
 - The agent in the room (`Bighelp/Spatial/`) talks through `BighelpShortcutService.connectedWorkspace()`, the same
   host path as Shortcuts. Apps can't move windows themselves: people move the volume with the system bar under it,
   and visionOS remembers the spot and snaps it to tables.
+- bighelp must always start in its main window: the avatar and voice scenes use `.defaultLaunchBehavior(.suppressed)`
+  and `.restorationBehavior(.disabled)`, and the avatar opens only when the person chooses Simple mode or Settings.
+  Otherwise visionOS relaunches straight into a lone avatar (for example after a crash).
+- Permission prompts (microphone, speech) answer on a background queue. Mark their callbacks `@Sendable`, or a
+  MainActor-inherited closure traps in Swift 6 (the 2.3.0 (26)/(27) "allow microphone" crash). Apple headers
+  without `NS_SWIFT_SENDABLE` are the ones to watch.
 - Vision Pro UI tests: `XCUIScreen` screenshots come back blank, so tests ask the Mac for `simctl io` screenshots
   (see `SpatialAvatarUITests`). `app.swipeUp()` fails with several windows open; swipe the list instead. The speech
   permission can't be pre-granted, and an unanswered prompt comes back on every launch, so reset privacy and reboot

@@ -22,6 +22,13 @@ struct SpatialAvatarSettingsSection: View {
             ))
             .accessibilityIdentifier("settings.spatial-avatar.show")
 
+            Button {
+                SpatialSimpleMode.enter(avatar, openWindow: openWindow)
+            } label: {
+                Label("Switch to simple mode", systemImage: "figure.stand")
+            }
+            .accessibilityIdentifier("settings.spatial-avatar.simple-mode")
+
             Picker("Quick pinch", selection: $settings.spatialAvatarPinchAction) {
                 ForEach(SpatialAvatarPinchAction.allCases) { action in
                     Label(action.title, systemImage: action.systemImage).tag(action)
@@ -33,7 +40,7 @@ struct SpatialAvatarSettingsSection: View {
         } header: {
             Text("In your space")
         } footer: {
-            Text("\(settings.spatialAvatarPinchAction.detail) To move your agent, pinch and hold the bar under it and drag. Let go near a table and it stays anchored there.")
+            Text("\(settings.spatialAvatarPinchAction.detail) Simple mode closes bighelp's window and leaves just your agent; Open bighelp under it brings the window back. To move your agent, pinch and hold the bar under it and drag. Let go near a table and it stays anchored there.")
                 .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
