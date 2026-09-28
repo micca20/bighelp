@@ -381,6 +381,33 @@ struct BighelpLinkPushCoordinatorTests {
 
 @MainActor
 final class NotificationDelegateAPNSTapTests: XCTestCase {
+    /// Clearing a notification wakes the app in the background just to report
+    /// it. UIKit aborts unless the response's completion runs on the main
+    /// thread (a TestFlight crash in 2.3.0 (29)). And a clear isn't an open.
+    func testNotificationResponseCompletesOnTheMainThreadAndClearingOpensNothing() async throws {
+        let grant = "22222222-2222-4222-8222-222222222222"
+        let event = grant + ":" + String(repeating: "b", count: 64)
+        var opened: [BighelpProactiveNotificationOpen] = []
+        BighelpProactiveNotificationOpenCenter.shared.installManaged { opened.append($0) }
+        await BighelpProactiveNotificationOpenCenter.shared.activate()
+        let open = try XCTUnwrap(BighelpProactiveNotificationOpen(userInfo: [
+            "loopdy": ["version": 2, "eventId": event, "eventType": "session.completed", "grantId": grant],
+        ] as [AnyHashable: Any]))
+
+        for dismissed in [true, false] {
+            let completedOnMain = await withCheckedContinuation { continuation in
+                Task.detached {
+                    BighelpLinkApplicationDelegate.respond(to: open, dismissed: dismissed) {
+                        continuation.resume(returning: Thread.isMainThread)
+                    }
+                }
+            }
+            XCTAssertTrue(completedOnMain, dismissed ? "clear" : "tap")
+        }
+        for _ in 0..<50 where opened.isEmpty { await Task.yield() }
+        XCTAssertEqual(opened.map(\.eventID), [event], "The tap opened its chat; the clear didn't")
+    }
+
     func testNotificationDelegateRoutesManagedV2AndRejectsRetiredRelay() async {
         let grant = "11111111-1111-4111-8111-111111111111"
         let event = grant + ":" + String(repeating: "a", count: 64)

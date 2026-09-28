@@ -428,12 +428,15 @@ struct BighelpApp: App {
                     }
                 }
                 #endif
-                // Mark the presentation boundary synchronously before any
-                // reconnect task can deliver its first queued frame.
                 if requiresLinkAccount, phase == .background {
-                    nativeWorkspaces.suspend()
                     (native?.features ?? featureStore).flushChatPersistence()
+                    // Keep the workspace through a quick trip away; mark the
+                    // presentation boundary only if the app stays away.
+                    BighelpBackgroundGrace.shared.begin("workspace") { [nativeWorkspaces] in
+                        nativeWorkspaces.suspend()
+                    }
                 }
+                if phase == .active { BighelpBackgroundGrace.shared.cancel() }
                 Task { @MainActor in
                     // A newer scene transition may have arrived before this task starts.
                     guard scenePhase == phase else { return }

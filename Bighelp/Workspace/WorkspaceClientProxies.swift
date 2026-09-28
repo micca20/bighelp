@@ -160,6 +160,9 @@ final class WorkspaceProjectsProxy: HermesWorkspaceCatalogClient {
     func archive(id: String, agentID: String) async throws -> HermesWorkspaceCatalog {
         try await box.value().archive(id: id, agentID: agentID)
     }
+    func describe(id: String, description: String, agentID: String) async throws -> HermesWorkspaceCatalog {
+        try await box.value().describe(id: id, description: description, agentID: agentID)
+    }
     func folderSuggestions(parentPath: String, prefix: String, offset: Int, limit: Int,
                            agentID: String) async throws -> HermesWorkspaceFolderPage {
         try await box.value().folderSuggestions(parentPath: parentPath, prefix: prefix, offset: offset,

@@ -14,6 +14,20 @@ extension RootShellView {
             routeWithWorkspaceMenu { workspaceActivity }
         case (.workspaceSettings, _):
             routeWithWorkspaceMenu { workspaceSettings() }
+        case (.projects, _):
+            if let context = projectsContext {
+                ProjectsHomeView(context: context)
+            } else {
+                ContentUnavailableView("Projects aren't available", systemImage: "folder",
+                    description: Text("Connect to your computer, then open Projects from the menu."))
+            }
+        case (.project(let id), _):
+            if let context = projectsContext {
+                ProjectDetailView(projectID: id, context: context)
+            } else {
+                ContentUnavailableView("Projects aren't available", systemImage: "folder",
+                    description: Text("Connect to your computer, then open Projects from the menu."))
+            }
         case (.workspaceHub, _):
             routeWithWorkspaceMenu {
                 WorkspaceHubView(

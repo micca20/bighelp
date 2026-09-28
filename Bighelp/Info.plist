@@ -105,9 +105,9 @@
     <key>BighelpNativeBrowserAuthenticationEnabled</key>
     <true/>
     <key>BighelpNotificationPluginVersion</key>
-    <string>2.18.2</string>
+    <string>2.19.0</string>
     <key>BighelpNotificationPluginRevision</key>
-    <string>34f2a16938ba69185a7f5ed9fa4a963f9a9fe1b4</string>
+    <string>fb5b5ba41b1f997fd2058a5c6aa1a1ac4d30b099</string>
     <key>NSCameraUsageDescription</key>
     <string>bighelp uses the camera to scan short-lived pairing codes, power Reflective Vision, and capture photos or scan documents you intentionally attach to chats.</string>
     <key>NSLocationWhenInUseUsageDescription</key>

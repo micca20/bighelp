@@ -171,6 +171,17 @@ struct DirectHermesProjectClientTests {
         ])
     }
 
+    @Test func describeSetsOnlyTheDescriptionThroughHermesUpdate() async throws {
+        let transport = try ProjectPerformer()
+        transport.responses[.projectsUpdate] = [["project": .object(project())]]
+        transport.responses[.projectsList] = [catalog()]
+        _ = try await client(transport).describe(id: "p_notes", description: "  Plants and watering ", agentID: "research")
+        #expect(transport.calls.first?.operation == .projectsUpdate)
+        #expect(transport.calls.first?.payload == [
+            "profile": .string("research"), "id": .string("p_notes"), "description": .string("Plants and watering")
+        ])
+    }
+
     @Test func archiveRemovesOnlyRegistrationFromActiveCatalog() async throws {
         let transport = try ProjectPerformer()
         transport.responses[.projectsArchive] = [catalog(active: nil, archived: true)]

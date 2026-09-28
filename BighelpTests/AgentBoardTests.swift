@@ -62,23 +62,86 @@ struct AgentBoardTests {
         }
     }
 
-    @Test func likesShowAtOnceAndRollBackWhenHermesRefuses() async {
+    @Test func thumbsShowAtOnceAndRollBackWhenHermesRefuses() async {
         let client = FakeBoardClient(items: [AgentBoardItem(id: "a", kind: .feed, title: "One")])
         let store = AgentBoardStore()
         store.configure(client: client)
         await store.load(agentID: "default")
         #expect(store.state == .loaded && store.feed.count == 1)
 
-        await store.setLiked(store.feed[0], true)
-        #expect(store.feed[0].liked)
+        await store.rate(store.feed[0], .up)
+        #expect(store.feed[0].rating == .up && store.feed[0].liked)
+
+        await store.rate(store.feed[0], .down, reason: "Too frequent")
+        #expect(store.feed[0].rating == .down && store.feed[0].reason == "Too frequent")
+        #expect(client.updates.last?.change == AgentBoardChange(rating: .down, reason: "Too frequent"))
 
         client.failsUpdates = true
-        await store.setLiked(store.feed[0], false)
-        #expect(store.feed[0].liked, "A refused change must roll back")
+        await store.rate(store.feed[0], .none)
+        #expect(store.feed[0].rating == .down, "A refused change must roll back")
+    }
 
-        client.failsUpdates = false
-        await store.dismiss(store.feed[0])
-        #expect(store.feed.isEmpty)
+    @Test func deleteHidesWithUndoAndReadStateCounts() async {
+        let client = FakeBoardClient(items: [
+            AgentBoardItem(id: "a", kind: .feed, title: "One", read: false),
+            AgentBoardItem(id: "b", kind: .feed, title: "Two", read: false),
+            AgentBoardItem(id: "i", kind: .idea, title: "Idea", read: false),
+        ])
+        let store = AgentBoardStore()
+        store.configure(client: client)
+        await store.load(agentID: "default")
+        #expect(store.unreadCount(.feed) == 2 && store.unreadCount(.idea) == 1)
+
+        await store.markSeen(store.feed)
+        #expect(store.unreadCount(.feed) == 0)
+        #expect(client.markedRead == ["a", "b"])
+        await store.setRead(store.feed[0], false)
+        #expect(store.unreadCount(.feed) == 1)
+
+        await store.hide(store.feed[0])
+        #expect(store.feed.map(\.id) == ["b"] && store.recentlyHidden?.id == "a")
+        await store.undoHide()
+        #expect(store.feed.map(\.id) == ["a", "b"] && store.recentlyHidden == nil)
+        #expect(client.updates.suffix(2).map(\.change.dismissed) == [true, false])
+    }
+
+    @Test func anIdeaTurnsIntoAGoal() async {
+        let client = FakeBoardClient(items: [AgentBoardItem(id: "i", kind: .idea, title: "Sleep by 11", icon: "🌙")])
+        let store = AgentBoardStore()
+        store.configure(client: client)
+        await store.load(agentID: "default")
+        #expect(await store.promote(store.ideas[0]))
+        #expect(store.ideas.isEmpty)
+        #expect(store.goals.map(\.title) == ["Sleep by 11"])
+    }
+
+    @Test func olderPluginsKeepTheHeartAndHideNewFeedback() async throws {
+        let performer = try BoardPerformer()
+        let old = DirectHermesAgentBoardClient(workspace: performer, owner: performer.owner!, supportsFeedback: false)
+        _ = try await old.update(agentID: "default", itemID: "a", change: .init(rating: .up, reason: "x", read: true))
+        #expect(performer.calls.last?.payload["liked"] == .boolean(true))
+        #expect(performer.calls.last?.payload["rating"] == nil && performer.calls.last?.payload["read"] == nil)
+        await #expect(throws: (any Error).self) {
+            _ = try await old.update(agentID: "default", itemID: "a", change: .init(rating: .down))
+        }
+        try await old.markRead(agentID: "default", itemIDs: ["a"])
+        #expect(performer.calls.count == 1, "No read route on an older plugin")
+
+        let current = DirectHermesAgentBoardClient(workspace: performer, owner: performer.owner!, supportsFeedback: true)
+        _ = try await current.update(agentID: "default", itemID: "a", change: .init(rating: .down, reason: "Not relevant"))
+        #expect(performer.calls.last?.payload["rating"] == .string("down"))
+        #expect(performer.calls.last?.payload["reason"] == .string("Not relevant"))
+        try await current.markRead(agentID: "default", itemIDs: ["a", "b"])
+        #expect(performer.calls.last?.operation == .boardRead)
+
+        // Items from an older plugin: the heart is thumbs up and nothing is "new".
+        let legacy = try AgentBoardItem(json: .object(["id": .string("x"), "kind": .string("feed"),
+                                                        "title": .string("t"), "liked": .boolean(true)]))
+        #expect(legacy.rating == .up && legacy.read)
+        let rated = try AgentBoardItem(json: .object(["id": .string("y"), "kind": .string("feed"), "title": .string("t"),
+                                                       "rating": .string("down"), "reason": .string("Wrong timing"),
+                                                       "read": .boolean(false)]))
+        #expect(rated.rating == .down && rated.reason == "Wrong timing" && !rated.read)
     }
 
     @Test func goalsToggleDoneAndANewConnectionClearsTheBoard() async {
@@ -95,7 +158,7 @@ struct AgentBoardTests {
 
         await store.setDone(store.goals.first { $0.id == "g" }!, true)
         #expect(store.goals.first { $0.id == "g" }?.isDone == true)
-        #expect(client.updates.last?.status == "done")
+        #expect(client.updates.last?.change.status == "done")
 
         store.configure(client: nil)
         #expect(store.items.isEmpty && store.state == .unavailable && !store.isAvailable)
@@ -155,21 +218,34 @@ private final class FakeBoardClient: AgentBoardClient {
     var items: [AgentBoardItem]
     var failsUpdates = false
     var failsIdentity = false
-    private(set) var updates: [(id: String, liked: Bool?, dismissed: Bool?, status: String?)] = []
+    let supportsFeedback = true
+    private(set) var updates: [(id: String, change: AgentBoardChange)] = []
+    private(set) var markedRead: [String] = []
 
     init(items: [AgentBoardItem]) { self.items = items }
 
     func items(agentID: String) async throws -> [AgentBoardItem] { items }
 
-    func update(agentID: String, itemID: String, liked: Bool?, dismissed: Bool?, status: String?) async throws
-        -> AgentBoardItem {
+    func update(agentID: String, itemID: String, change: AgentBoardChange) async throws -> AgentBoardItem {
         if failsUpdates { throw WorkspaceClientError.invalidRequest }
-        updates.append((itemID, liked, dismissed, status))
+        updates.append((itemID, change))
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { throw WorkspaceClientError.invalidRequest }
-        if let liked { items[index].liked = liked }
-        if let dismissed { items[index].dismissed = dismissed }
-        if let status { items[index].status = status }
+        if let rating = change.rating { items[index].rating = rating; items[index].reason = change.reason ?? "" }
+        if let read = change.read { items[index].read = read }
+        if let dismissed = change.dismissed { items[index].dismissed = dismissed }
+        if let status = change.status { items[index].status = status }
         return items[index]
+    }
+
+    func markRead(agentID: String, itemIDs: [String]) async throws { markedRead += itemIDs }
+
+    func promote(agentID: String, itemID: String) async throws -> AgentBoardItem {
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { throw WorkspaceClientError.invalidRequest }
+        items[index].dismissed = true
+        let goal = AgentBoardItem(id: "goal-" + itemID, kind: .goal, title: items[index].title, section: "goal",
+                                  status: "active")
+        items.append(goal)
+        return goal
     }
 
     func picture(agentID: String, itemID: String, index: Int) async throws -> Data { Data() }
@@ -184,5 +260,24 @@ private final class FakeBoardClient: AgentBoardClient {
     func identity(agentID: String) async throws -> AgentIdentityDocuments {
         if failsIdentity { throw WorkspaceClientError.unavailable(.unsupportedOperation) }
         return AgentIdentityDocuments(soul: .init(), memory: .init(), user: .init())
+    }
+}
+
+@MainActor
+private final class BoardPerformer: WorkspaceOperationPerforming {
+    struct Call { let operation: WorkspaceOperation; let payload: [String: BighelpJSONValue] }
+    var owner: WorkspaceOwner?
+    var capabilities: WorkspaceCapabilities { .init(owner: owner) }
+    var calls: [Call] = []
+
+    init() throws {
+        owner = .init(authority: try .fixture(id: "board-test"), authenticationGeneration: UUID(), connectionGeneration: UUID())
+    }
+
+    func perform(_ operation: WorkspaceOperation, payload: [String: BighelpJSONValue], owner: WorkspaceOwner) async throws
+        -> [String: BighelpJSONValue] {
+        calls.append(.init(operation: operation, payload: payload))
+        if operation == .boardRead { return ["updated": .integer(1)] }
+        return ["item": .object(["id": payload["itemId"] ?? .string("a"), "kind": .string("feed"), "title": .string("t")])]
     }
 }

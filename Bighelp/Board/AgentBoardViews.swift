@@ -21,6 +21,8 @@ private struct BoardScroll<Content: View>: View {
     let context: AgentBoardContext
     let title: String?
     let identifier: String
+    /// Items on this page; they count as read once it has been open a moment.
+    var seen: [AgentBoardItem] = []
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -51,8 +53,165 @@ private struct BoardScroll<Content: View>: View {
                 await context.store.load(agentID: context.agentID)
             }
         }
+        .task(id: seen.filter { !$0.read }.map(\.id)) {
+            guard seen.contains(where: { !$0.read }) else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            await context.store.markSeen(seen)
+        }
+        .overlay(alignment: .bottom) {
+            if let hidden = context.store.recentlyHidden {
+                BoardUndoBar(item: hidden, store: context.store)
+                    .padding(.bottom, 96)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: context.store.recentlyHidden?.id)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
         .accessibilityIdentifier(identifier)
+    }
+
+    @BighelpThemeReader private var theme
+}
+
+/// Why a thumbs down. The agent reads it to post better things; never required.
+enum BoardFeedbackReason {
+    static let all = ["Not relevant", "Too frequent", "Already knew", "Wrong timing"]
+}
+
+/// Long press on a Feed, Ideas or Goals item, and the same actions for
+/// VoiceOver: only the ones that fit the item's kind.
+private struct BoardItemActions: ViewModifier {
+    let item: AgentBoardItem
+    let context: AgentBoardContext
+    @State private var asksWhy = false
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu { actions(includesShare: true) }
+            .accessibilityActions { actions(includesShare: false) }
+            .modifier(LessLikeThis(isPresented: $asksWhy, item: item, context: context))
+    }
+
+    @ViewBuilder
+    private func actions(includesShare: Bool) -> some View {
+        let store = context.store
+        switch item.kind {
+        case .feed:
+            Button(item.rating == .up ? "Remove thumbs up" : "Thumbs up",
+                   systemImage: item.rating == .up ? "hand.thumbsup.fill" : "hand.thumbsup") {
+                Task { await store.rate(item, item.rating == .up ? .none : .up) }
+            }
+            if store.supportsFeedback {
+                Button(item.rating == .down ? "Remove thumbs down" : "Thumbs down",
+                       systemImage: item.rating == .down ? "hand.thumbsdown.fill" : "hand.thumbsdown") {
+                    if item.rating == .down {
+                        Task { await store.rate(item, .none) }
+                    } else {
+                        Task { await store.rate(item, .down) }
+                        asksWhy = true
+                    }
+                }
+            }
+            Button("Discuss", systemImage: "bubble.left") { context.onAsk("About “\(item.title)”: ") }
+        case .idea:
+            Button("Start a chat about this", systemImage: "bubble.left") {
+                context.onAsk("About your idea “\(item.title)”: ")
+            }
+            if store.supportsFeedback {
+                Button("Turn into a goal", systemImage: "target") { Task { await store.promote(item) } }
+            }
+        case .goal:
+            Button(item.isDone ? "Mark active" : "Mark done",
+                   systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark") {
+                Task { await store.setDone(item, !item.isDone) }
+            }
+            Button("Discuss", systemImage: "bubble.left") { context.onAsk("About my goal “\(item.title)”: ") }
+        }
+        if store.supportsFeedback {
+            Button(item.read ? "Mark as unread" : "Mark as read",
+                   systemImage: item.read ? "circlebadge.fill" : "checkmark.circle") {
+                Task { await store.setRead(item, !item.read) }
+            }
+        }
+        Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.shareText }
+        if includesShare {
+            ShareLink(item: item.shareText) { Label("Share", systemImage: "square.and.arrow.up") }
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) { Task { await store.hide(item) } }
+    }
+}
+
+/// After a thumbs down: "Less like this?" with quick reasons. Skipping is fine.
+private struct LessLikeThis: ViewModifier {
+    @Binding var isPresented: Bool
+    let item: AgentBoardItem
+    let context: AgentBoardContext
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Less like this?", isPresented: $isPresented, titleVisibility: .visible) {
+            ForEach(BoardFeedbackReason.all, id: \.self) { reason in
+                Button(reason) { Task { await context.store.rate(item, .down, reason: reason) } }
+            }
+            Button("Skip", role: .cancel) {}
+        } message: {
+            Text("Optional. It helps \(context.agentName) post things you want.")
+        }
+    }
+}
+
+extension View {
+    fileprivate func boardItemActions(_ item: AgentBoardItem, context: AgentBoardContext) -> some View {
+        modifier(BoardItemActions(item: item, context: context))
+    }
+}
+
+/// Something the person hasn't seen yet.
+private struct UnreadDot: View {
+    let item: AgentBoardItem
+    let store: AgentBoardStore
+
+    var body: some View {
+        if store.supportsFeedback, !item.read {
+            Circle()
+                .fill(theme.action)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel("New")
+                .accessibilityIdentifier("board.unread.\(item.id)")
+        }
+    }
+
+    @BighelpThemeReader private var theme
+}
+
+/// "Deleted" with Undo, for a few seconds after a delete.
+private struct BoardUndoBar: View {
+    let item: AgentBoardItem
+    let store: AgentBoardStore
+
+    var body: some View {
+        HStack(spacing: BighelpTokens.space12) {
+            Text("Deleted “\(item.title)”")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(theme.primaryText)
+                .lineLimit(1)
+            Spacer(minLength: BighelpTokens.space8)
+            Button("Undo") { Task { await store.undoHide() } }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.action)
+                .frame(minHeight: BighelpTokens.hitTarget)
+                .accessibilityIdentifier("board.undo")
+        }
+        .padding(.horizontal, BighelpTokens.space16)
+        .frame(maxWidth: 520)
+        .bighelpNavigationGlass(in: Capsule())
+        .padding(.horizontal, BighelpTokens.space20)
+        .task(id: item.id) {
+            try? await Task.sleep(for: .seconds(5))
+            store.clearUndo(item)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("board.undo-bar")
     }
 
     @BighelpThemeReader private var theme
@@ -250,7 +409,7 @@ struct AgentFeedView: View {
 
     var body: some View {
         let store = context.store
-        BoardScroll(context: context, title: nil, identifier: "board.feed") {
+        BoardScroll(context: context, title: nil, identifier: "board.feed", seen: store.feed) {
             BoardStateBanner(state: store.state, context: context)
             if store.feed.isEmpty, store.state == .loaded {
                 BoardEmptyState(
@@ -281,15 +440,20 @@ private struct FeedPostView: View {
     let item: AgentBoardItem
     let context: AgentBoardContext
     @State private var isShowingInfo = false
+    @State private var asksWhy = false
 
     var body: some View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {
             BoardIcon(icon: item.icon, fallback: "newspaper", size: 44)
             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                Text(item.title)
-                    .font(.headline)
-                    .foregroundStyle(theme.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
+                    Text(item.title)
+                        .font(.headline)
+                        .foregroundStyle(theme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    UnreadDot(item: item, store: context.store)
+                }
                 if !item.body.isEmpty {
                     Text(markdown(item.body))
                         .font(.body)
@@ -320,24 +484,48 @@ private struct FeedPostView: View {
             }
         }
         .padding(.vertical, BighelpTokens.space8)
+        .contentShape(.rect)
+        .boardItemActions(item, context: context)
+        .modifier(LessLikeThis(isPresented: $asksWhy, item: item, context: context))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.feed.post.\(item.id)")
     }
 
     private var actions: some View {
-        HStack(spacing: BighelpTokens.space20) {
+        HStack(spacing: BighelpTokens.space12) {
             Button {
-                Task { await context.store.setLiked(item, !item.liked) }
+                Task { await context.store.rate(item, item.rating == .up ? .none : .up) }
             } label: {
-                Image(systemName: item.liked ? "heart.fill" : "heart")
+                Image(systemName: item.rating == .up ? "hand.thumbsup.fill" : "hand.thumbsup")
                     .font(.title3)
-                    .foregroundStyle(item.liked ? Color.pink : theme.primaryText)
+                    .foregroundStyle(item.rating == .up ? theme.action : theme.primaryText)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget, alignment: .leading)
+                    .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(item.liked ? "Unlike" : "Like")
-            .accessibilityIdentifier("board.feed.like")
+            .accessibilityLabel(item.rating == .up ? "Remove thumbs up" : "Thumbs up")
+            .accessibilityAddTraits(item.rating == .up ? .isSelected : [])
+            .accessibilityIdentifier("board.feed.thumbs-up")
+            if context.store.supportsFeedback {
+                Button {
+                    if item.rating == .down {
+                        Task { await context.store.rate(item, .none) }
+                    } else {
+                        Task { await context.store.rate(item, .down) }
+                        asksWhy = true
+                    }
+                } label: {
+                    Image(systemName: item.rating == .down ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                        .font(.title3)
+                        .foregroundStyle(item.rating == .down ? theme.action : theme.primaryText)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.rating == .down ? "Remove thumbs down" : "Thumbs down")
+                .accessibilityAddTraits(item.rating == .down ? .isSelected : [])
+                .accessibilityIdentifier("board.feed.thumbs-down")
+            }
             Button {
                 context.onAsk("About “\(item.title)”: ")
             } label: {
@@ -366,9 +554,14 @@ private struct FeedPostView: View {
                     Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Hide this post", role: .destructive) {
+                    if item.rating == .down, !item.reason.isEmpty {
+                        Label("You said: \(item.reason)", systemImage: "hand.thumbsdown")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Delete this post", role: .destructive) {
                         isShowingInfo = false
-                        Task { await context.store.dismiss(item) }
+                        Task { await context.store.hide(item) }
                     }
                     .padding(.top, BighelpTokens.space4)
                 }
@@ -427,7 +620,7 @@ struct AgentIdeasView: View {
 
     var body: some View {
         let store = context.store
-        BoardScroll(context: context, title: "Ideas", identifier: "board.ideas") {
+        BoardScroll(context: context, title: "Ideas", identifier: "board.ideas", seen: store.ideas) {
             BoardStateBanner(state: store.state, context: context)
             if store.ideas.isEmpty, store.state == .loaded {
                 BoardEmptyState(
@@ -447,6 +640,7 @@ struct AgentIdeasView: View {
                 ForEach(section.items) { idea in
                     Button { selected = idea } label: { ideaRow(idea) }
                         .buttonStyle(.plain)
+                        .boardItemActions(idea, context: context)
                         .accessibilityIdentifier("board.idea.\(idea.id)")
                     Divider().overlay(theme.border)
                 }
@@ -486,6 +680,8 @@ struct AgentIdeasView: View {
                     .multilineTextAlignment(.leading)
             }
             Spacer(minLength: 0)
+            UnreadDot(item: idea, store: context.store)
+                .padding(.top, 6)
         }
         .padding(.vertical, BighelpTokens.space8)
         .contentShape(.rect)
@@ -524,9 +720,22 @@ private struct IdeaDetailSheet: View {
                     .tint(theme.action)
                     .foregroundStyle(theme.actionForeground)
                     .accessibilityIdentifier("board.idea.accept")
+                    if context.store.supportsFeedback {
+                        Button {
+                            dismiss()
+                            Task { await context.store.promote(idea) }
+                        } label: {
+                            Label("Make it a goal", systemImage: "target")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(theme.primaryText)
+                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("board.idea.promote")
+                    }
                     Button {
                         dismiss()
-                        Task { await context.store.dismiss(idea) }
+                        Task { await context.store.hide(idea) }
                     } label: {
                         Text("Not now")
                             .font(.body.weight(.semibold))
@@ -554,7 +763,7 @@ struct AgentGoalsView: View {
 
     var body: some View {
         let goals = context.store.goals
-        BoardScroll(context: context, title: "Goals", identifier: "board.goals") {
+        BoardScroll(context: context, title: "Goals", identifier: "board.goals", seen: goals) {
             BoardStateBanner(state: context.store.state, context: context)
             if goals.isEmpty, context.store.state == .loaded {
                 BoardEmptyState(
@@ -644,13 +853,15 @@ struct AgentGoalsView: View {
             }
             .padding(.top, 10)
             Spacer(minLength: 0)
+            UnreadDot(item: goal, store: context.store)
+                .padding(.top, 18)
             Menu {
                 Button("Discuss", systemImage: "bubble.left") { context.onAsk("About my goal “\(goal.title)”: ") }
                 Button(goal.isDone ? "Mark not done" : "Mark done", systemImage: "checkmark") {
                     Task { await context.store.setDone(goal, !goal.isDone) }
                 }
-                Button("Remove from list", systemImage: "eye.slash", role: .destructive) {
-                    Task { await context.store.dismiss(goal) }
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    Task { await context.store.hide(goal) }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -661,6 +872,8 @@ struct AgentGoalsView: View {
             }
             .accessibilityLabel("More for \(goal.title)")
         }
+        .contentShape(.rect)
+        .boardItemActions(goal, context: context)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.goal.\(goal.id)")
     }

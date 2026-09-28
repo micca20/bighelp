@@ -11,6 +11,10 @@ HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
   tools     no sign-in, with the bighelp plugin (--plugin) and a scripted model
             whose tool keeps running: the secure input pop-up, and steering
             while a tool runs (not part of the default modes)
+  widgets   no sign-in, the app without demo fixtures: home screen widget links
+            open the host's chats (WidgetLinkHostUITests; not a default mode)
+  features  no sign-in, with the bighelp plugin (--plugin) and a seeded board:
+            Feed/Ideas/Goals feedback and Projects (ProjectsAndBoardHostUITests)
 
 HERMES_DISABLE_LAZY_INSTALLS=1 keeps Hermes from "finishing a source update"
 into its checkout on first launch. Use a separate Hermes checkout anyway: never
@@ -50,6 +54,8 @@ TESTS = {
     "sso": ["testSingleSignOnThroughIdentityProvider"],
     "tools": ["testSecureInputPopUpSavesTheValue", "testSteerSendsWhileAToolRuns",
               "testWaitingQuestionOpensFocusedWhenReturningToTheApp"],
+    "widgets": ["WidgetLinkHostUITests/testRecentChatAndNewChatWidgetLinksOpenChats"],
+    "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost"],
 }
 STEER_OPEN = "[OUT-OF-BAND USER MESSAGE"
 
@@ -233,6 +239,32 @@ class MockIdentityProvider:
         self.server.server_close()
 
 
+def seed_board(home: Path, plugin: Path) -> None:
+    """Feed posts and an idea the features test acts on, written with the plugin's own store."""
+    import sqlite3
+    sys.path.insert(0, str(plugin))
+    from loopdy_plugin.agent_board import BoardStore
+    store = BoardStore(home / "plugin-data" / "loopdy")
+    store.publish("feed", title="Evening AI news", body="Three stories worth your time.", icon="📰",
+                  source="Evening AI news", item_id="probe-ai-news")
+    store.publish("feed", title="Stock tips", body="Five picks for the week.", icon="📈", item_id="probe-stock-tips")
+    store.publish("idea", title="Plan a weekend trip", body="I can find a quiet cabin two hours away.",
+                  icon="🏕️", item_id="probe-trip")
+    with sqlite3.connect(store.path) as db:  # published items start unread
+        assert db.execute("SELECT COUNT(*) FROM items WHERE read=0").fetchone()[0] == 3
+
+
+def board_feedback(home: Path) -> dict:
+    import sqlite3
+    with sqlite3.connect(home / "plugin-data" / "loopdy" / "board.sqlite3") as db:
+        rows = {row[0]: row[1:] for row in db.execute("SELECT id, rating, reason, dismissed, read, kind FROM items")}
+    return {"stock_tips": {"rating": rows["probe-stock-tips"][0], "reason": rows["probe-stock-tips"][1]},
+            "news_restored": rows["probe-ai-news"][2] == 0,
+            "idea_hidden": rows["probe-trip"][2] == 1,
+            "goal_created": any(kind == "goal" for *_, kind in rows.values()),
+            "all_read": all(row[3] == 1 for key, row in rows.items() if key.startswith("probe-") and key != "probe-trip")}
+
+
 def free_port() -> int:
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
@@ -252,19 +284,22 @@ def run_mode(mode: str, args, repo: Path) -> int:
         # Hermes only gates a dashboard whose public address isn't loopback. *.localhost
         # still resolves to this Mac, so gated hosts use it; single sign-on needs the
         # app on that same name, since the sign-in cookie belongs to it.
-        public = origin if mode in ("open", "tools") else f"http://hermes.localhost:{port}"
+        public = origin if mode in ("open", "tools", "widgets", "features") else f"http://hermes.localhost:{port}"
         config = {"dashboard": {"public_url": public},
                   "model": {"default": "fixture-model", "provider": "custom",
                             "base_url": f"http://127.0.0.1:{model.server_port}/v1", "api_key": "local-synthetic-no-auth"},
                   "agent": {"max_turns": 3}, "terminal": {"backend": "local", "cwd": str(project)},
                   "memory": {"memory_enabled": False, "user_profile_enabled": False}}
-        if mode == "tools":
+        if mode in ("tools", "features"):
             if not args.plugin:
-                raise SystemExit("tools mode needs --plugin <bighelp plugin folder>")
+                raise SystemExit(f"{mode} mode needs --plugin <bighelp plugin folder>")
             shutil.copytree(args.plugin, home / "plugins" / "loopdy",
                             ignore=shutil.ignore_patterns("tests", "__pycache__", ".git"))
             config["agent"]["max_turns"] = 4
             config["plugins"] = {"enabled": ["loopdy"]}
+        if mode == "features":
+            seed_board(home, args.plugin)
+            (project / "garden").mkdir()
         (home / "config.yaml").write_text(json.dumps(config))
         session_token, password = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         env = {k: os.environ[k] for k in ("PATH", "LANG", "TMPDIR") if k in os.environ}
@@ -297,6 +332,8 @@ def run_mode(mode: str, args, repo: Path) -> int:
                     raise TimeoutError(f"Hermes not ready ({mode})")
                 time.sleep(0.3)
             probe = {"mode": mode, "address": public.removeprefix("http://"), "session_token": session_token}
+            if mode == "features":
+                probe["project_dir"] = str(project / "garden")
             if mode in ("password", "sso"):
                 _, _, tokens = exercise_http(origin, "signin-fixture", password)
                 probe.update(username="signin-fixture", password=password, token=tokens["access_token"])
@@ -309,13 +346,16 @@ def run_mode(mode: str, args, repo: Path) -> int:
                        "-scheme", "Bighelp", "-destination", f"platform=iOS Simulator,id={args.simulator_id}",
                        "-derivedDataPath", str(args.derived_data), "-parallel-testing-enabled", "NO",
                        "-resultBundlePath", str(args.results / f"{mode}.xcresult")]
-            command += [f"-only-testing:BighelpUITests/HostSignInMatrixUITests/{name}" for name in TESTS[mode]]
+            command += [f"-only-testing:BighelpUITests/{name if '/' in name else 'HostSignInMatrixUITests/' + name}"
+                        for name in TESTS[mode]]
             with (args.results / f"xcodebuild-{mode}.log").open("w") as output:
                 result = subprocess.run(command, env=client_env, cwd=repo, stdout=output, stderr=subprocess.STDOUT,
                                         timeout=1500)
             if mode == "tools":
                 saved = (home / ".env").read_text() if (home / ".env").exists() else ""
                 print(json.dumps({"secure_input_saved_on_host": "SECURE_INPUT_FIXTURE=" in saved}), flush=True)
+            if mode == "features":
+                print(json.dumps({"board_on_host": board_feedback(home)}), flush=True)
             print(json.dumps({"mode": mode, "exit_code": result.returncode}), flush=True)
             return result.returncode
         finally:

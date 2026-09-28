@@ -335,7 +335,8 @@ final class ShellFeatureStore {
         case .approval(let requestID):
             approvalModels[requestID].map(PreparedRouteModel.approval)
         case .skillsAndTools, .bighelpLinkDevices, .bighelpLinkDevice,
-             .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub:
+             .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub,
+             .projects, .project:
             nil
         }
     }
@@ -402,7 +403,8 @@ final class ShellFeatureStore {
             _ = approvalModel(for: request)
             return true
         case .skillsAndTools, .bighelpLinkDevices, .bighelpLinkDevice,
-             .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub:
+             .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub,
+             .projects, .project:
             return true
         }
     }

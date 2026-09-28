@@ -43,11 +43,10 @@ struct RootShellView: View {
     @State var hostRuntime: HostRuntimeStore?
     @State var pairingSheetRequest: BighelpLinkPairingSheetRequest?
     @State private var guidedPairingReference: BighelpLinkPairingReference?
-    @State private var pendingIncomingChatSessionID: String?
+    /// A widget or notification link that arrived before the host answered.
+    @State private var pendingIncomingURL: URL?
     /// Opens Agents filtered to one agent's group chats (from the Chats rail's menu).
     @State var agentGroupFilterRequest: String?
-    /// A widget's New Chat tapped before the app finished starting: agent ID, or "" for the default.
-    @State private var pendingIncomingNewChatAgentID: String?
     /// Offered as "Try Again" in the error alert.
     @State private var actionErrorRetry: (@MainActor () -> Void)?
     @State var isLinkAccountPresented = false
@@ -90,6 +89,8 @@ struct RootShellView: View {
     @State var isAgentSwitcherPresented = false
     @State var isHomeDrawerPresented = false
     @State var didAutoOpenHomeChat = false
+    /// The open Projects screens' chats and project details.
+    @State var projectsStore: ProjectsStore?
     /// Runs after a home sheet closes, so the next sheet can open.
     @State var afterHomeSheet: (@MainActor () -> Void)?
 
@@ -209,10 +210,15 @@ struct RootShellView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             connectionKeeper.setActive(phase == .active)
-            if phase == .background, BighelpShortcutService.holdsHostConnection == 0 {
-                nativeWorkspaceStore?.suspendForPresentationExit()
+            if phase == .background, let store = nativeWorkspaceStore {
+                // Closed only if the app stays away; a Shortcut still running keeps it.
+                BighelpBackgroundGrace.shared.begin("connection") { [weak store] in
+                    guard BighelpShortcutService.holdsHostConnection == 0 else { return }
+                    store?.suspendForPresentationExit()
+                }
             }
             if phase == .active {
+                BighelpBackgroundGrace.shared.cancel()
                 Task { @MainActor in
                     guard scenePhase == .active else { return }
                     await nativeWorkspaceStore?.reconnect()
@@ -536,7 +542,8 @@ struct RootShellView: View {
                                    appState.chatOpenedFromList = true
                                    startNewChat(explicitAgentID: nil)
                                } : nil,
-                               homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: rootBottomSafeArea))
+                               homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: rootBottomSafeArea),
+                               unread: boardUnreadTabs)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -556,54 +563,10 @@ struct RootShellView: View {
         .navigationDestination(for: AppRoute.self) { route in
             // Pushed screens don't reliably inherit values set below the stack.
             routeDestination(route).environment(\.providerUsage, providerUsage)
+                // The root is hidden under a pushed screen and can't present; the top screen does.
+                .modifier(OpenErrorPresentation(root: self))
         }
-        .alert("Unable to open", isPresented: Binding(
-            get: { actionErrorMessage != nil },
-            set: { if !$0 { actionErrorMessage = nil; actionErrorRetry = nil } }
-        )) {
-            if let retry = actionErrorRetry {
-                Button("Try Again") {
-                    actionErrorMessage = nil
-                    actionErrorShowsHostStatus = false
-                    actionErrorRetry = nil
-                    retry()
-                }
-            }
-            if actionErrorShowsHostStatus {
-                Button("View Host Status") {
-                    actionErrorMessage = nil
-                    actionErrorShowsHostStatus = false
-                    actionErrorRetry = nil
-                    isHostStatusPresented = true
-                }
-            }
-            Button("OK", role: .cancel) {
-                actionErrorMessage = nil
-                actionErrorShowsHostStatus = false
-                actionErrorRetry = nil
-            }
-        } message: {
-            Text(actionErrorMessage ?? "Try again.")
-        }
-        .sheet(isPresented: $isHostStatusPresented) {
-            NavigationStack {
-                Form {
-                    HostRuntimeSection(store: currentHostRuntime,
-                                       connectionState: nil,
-                                       agents: agents, theme: theme)
-                }
-                .scrollContentBackground(.hidden)
-                .background(theme.canvas.ignoresSafeArea())
-                .navigationTitle("Host Status")
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { isHostStatusPresented = false }
-                    }
-                }
-            }
-            .accessibilityIdentifier("host-runtime.screen")
-            .presentationDragIndicator(.visible)
-        }
+        .modifier(OpenErrorPresentation(root: self))
         .sheet(isPresented: $isUnifiedSettingsPresented, onDismiss: {
             let action = afterSettingsDismiss
             afterSettingsDismiss = nil
@@ -814,10 +777,8 @@ struct RootShellView: View {
             openSessions(filteredTo: nil)
         case .agents:
             appState.select(.agents)
-        case .home:
-            appState.select(.home)
-        case .inbox:
-            appState.select(.home)
+        case .home, .inbox:
+            openHomeChat()
         case .profile:
             appState.select(.profile)
         case .none:
@@ -1081,22 +1042,77 @@ struct RootShellView: View {
         }
     }
 
+    fileprivate func openErrorPresentations<Content: View>(_ content: Content) -> some View {
+        content
+            .alert("Unable to open", isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil; actionErrorRetry = nil } }
+            )) {
+                if let retry = actionErrorRetry {
+                    Button("Try Again") {
+                        actionErrorMessage = nil
+                        actionErrorShowsHostStatus = false
+                        actionErrorRetry = nil
+                        retry()
+                    }
+                }
+                if actionErrorShowsHostStatus {
+                    Button("View Host Status") {
+                        actionErrorMessage = nil
+                        actionErrorShowsHostStatus = false
+                        actionErrorRetry = nil
+                        isHostStatusPresented = true
+                    }
+                }
+                Button("OK", role: .cancel) {
+                    actionErrorMessage = nil
+                    actionErrorShowsHostStatus = false
+                    actionErrorRetry = nil
+                }
+            } message: {
+                Text(actionErrorMessage ?? "Try again.")
+            }
+            .sheet(isPresented: $isHostStatusPresented) {
+                NavigationStack {
+                    Form {
+                        HostRuntimeSection(store: currentHostRuntime,
+                                           connectionState: nil,
+                                           agents: agents, theme: theme)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(theme.canvas.ignoresSafeArea())
+                    .navigationTitle("Host Status")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isHostStatusPresented = false }
+                        }
+                    }
+                }
+                .accessibilityIdentifier("host-runtime.screen")
+                .presentationDragIndicator(.visible)
+            }
+    }
+
     private func handleIncomingURL(_ url: URL) {
         guard let route = BighelpIncomingURLRoute.parse(url) else { return }
+        // Opened while the app starts or comes back, a link found no workspace
+        // ("host unavailable") or opened its chat under an alert. It waits for
+        // a host that answers instead; the latest one wins.
+        if route.opensWorkspaceContent, !acceptsIncomingLinks {
+            pendingIncomingURL = url
+            return
+        }
         switch route {
         case .home:
-            appState.select(.home)
+            // Notifications and older links named the Activity inbox. Updates,
+            // approvals and questions now live in the agent's chat.
+            openHomeChat()
         case .pairBighelpLink:
             // The old Link pairing flow is retired; hosts connect directly.
             return
         case .chat(let sessionID):
-            guard acceptsIncomingLinks else {
-                pendingIncomingChatSessionID = sessionID
-                return
-            }
             openIncomingChat(sessionID: sessionID)
         case .agent(let tab):
-            guard acceptsIncomingLinks else { return }
             switch tab {
             case "feed": appState.select(.feed)
             case "ideas": appState.select(.ideas)
@@ -1105,10 +1121,6 @@ struct RootShellView: View {
             default: openHomeChat()
             }
         case .newChat(let agentID):
-            guard acceptsIncomingLinks else {
-                pendingIncomingNewChatAgentID = agentID ?? ""
-                return
-            }
             startIncomingNewChat(agentID: agentID)
         case .scheduledTasks:
             appState.select(.scheduledTasks)
@@ -1121,7 +1133,8 @@ struct RootShellView: View {
     }
 
     private func openIncomingChat(sessionID: String) {
-        if sessionID.hasPrefix("native-"), let managedNotifications {
+        // A chat's own ID starts "native-session-v1:"; only the scoped digest is an activity link.
+        if ManagedNotificationValidation.isOpaqueSessionID(sessionID), let managedNotifications {
             sessionRestoreTask?.cancel()
             sessionRestoreTask = Task { @MainActor in
                 do { try await managedNotifications.openActivity(opaqueSessionID: sessionID) }
@@ -1225,21 +1238,23 @@ struct RootShellView: View {
         }
     }
 
-    /// Widgets, notifications and Shortcuts open once a Hermes host's workspace is ready.
+    /// Widgets, notifications and Shortcuts open once the host answers: its
+    /// workspace is loaded and not suspended or reconnecting.
     private var acceptsIncomingLinks: Bool {
         guard requiresLinkAccount else { return true }
-        guard let hostRegistry else { return false }
-        return hostRegistry.isWorkspaceReady && hostRegistry.selectedHostID != nil
+        guard let hostRegistry, hostRegistry.isWorkspaceReady, hostRegistry.selectedHostID != nil,
+              let nativeRuntime else { return false }
+        return nativeRuntime.isReady && !nativeRuntime.isSuspended
     }
 
     private func openPendingIncomingChatIfNeeded() {
-        if let agentID = pendingIncomingNewChatAgentID {
-            pendingIncomingNewChatAgentID = nil
-            startIncomingNewChat(agentID: agentID.isEmpty ? nil : agentID)
+        guard acceptsIncomingLinks else { return }
+        if let url = pendingIncomingURL {
+            pendingIncomingURL = nil
+            handleIncomingURL(url)
         }
-        guard let sessionID = pendingIncomingChatSessionID else { return }
-        pendingIncomingChatSessionID = nil
-        openIncomingChat(sessionID: sessionID)
+        // A notification tap resolved before the workspace was ready.
+        if let open = BighelpExternalSessionOpenCenter.shared.pending { openExternalSession(open) }
     }
 
     func closeLinkDevice(id: String) {
@@ -1422,4 +1437,25 @@ struct RootShellView: View {
 
     @BighelpThemeReader private var theme
 
+}
+
+private extension BighelpIncomingURLRoute {
+    /// Routes that open a chat or the agent home need the host's workspace.
+    var opensWorkspaceContent: Bool {
+        switch self {
+        case .home, .chat, .newChat, .agent: true
+        case .scheduledTasks, .scheduledTask, .sessions, .pairBighelpLink: false
+        }
+    }
+}
+
+/// "Unable to open" and the Host Status it offers. Links and widgets fail
+/// while a chat may be open on top of the root, so every screen in the stack
+/// carries it; only the visible one can present.
+private struct OpenErrorPresentation: ViewModifier {
+    let root: RootShellView
+
+    func body(content: Content) -> some View {
+        root.openErrorPresentations(content)
+    }
 }

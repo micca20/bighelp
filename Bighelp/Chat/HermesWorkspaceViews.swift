@@ -265,16 +265,23 @@ struct HermesWorkspaceRows: View {
 }
 
 @MainActor
-private struct HermesWorkspaceCreateView: View {
+/// A new Hermes project: a name, a folder chats will work in and, from the
+/// Projects screen, a short description.
+struct HermesWorkspaceCreateView: View {
     private enum Field: Hashable {
         case name
+        case summary
         case folderPath
     }
 
     let store: HermesWorkspaceStore
     let agentID: String
+    /// "Workspace" in a chat's folder picker, "Project" on the Projects screen.
+    var noun = "Workspace"
+    var onCreated: (() -> Void)? = nil
 
     @State private var name = ""
+    @State private var summary = ""
     @State private var folderPath = ""
     /// The folder last opened from the list, whose subfolders are shown
     /// (rather than siblings matching its name).
@@ -303,6 +310,12 @@ private struct HermesWorkspaceCreateView: View {
                         .textInputAutocapitalization(.words)
                         .focused($focusedField, equals: .name)
                         .accessibilityIdentifier("hermes-workspaces.create.name")
+                    if noun == "Project" {
+                        TextField("What it's for (optional)", text: $summary, axis: .vertical)
+                            .lineLimit(1...3)
+                            .focused($focusedField, equals: .summary)
+                            .accessibilityIdentifier("hermes-workspaces.create.summary")
+                    }
                     TextField("Folder, like ~/projects/app", text: $folderPath)
                         .font(.system(.body, design: .monospaced))
                         .textInputAutocapitalization(.never)
@@ -311,7 +324,7 @@ private struct HermesWorkspaceCreateView: View {
                         .focused($focusedField, equals: .folderPath)
                         .accessibilityIdentifier("hermes-workspaces.create.path")
                 } header: {
-                    Text("Workspace")
+                    Text(noun)
                 } footer: {
                     if trimmedPath.hasPrefix("~"), let full = HermesFolderPath.expanded(trimmedPath, home: store.homePath) {
                         Text("Full path: \(full)")
@@ -330,14 +343,14 @@ private struct HermesWorkspaceCreateView: View {
                         Text("Remote folders")
                     }
                 } footer: {
-                    Text("Tap a folder to open it, or keep typing to narrow the list. The workspace uses the folder in the path above.")
+                    Text("Tap a folder to open it, or keep typing to narrow the list. The \(noun.lowercased()) uses the folder in the path above.")
                 }
                 .listRowBackground(uiV2Enabled ? theme.surface : nil)
 
                 if uiV2Enabled {
                     if store.isCreating {
                         Section {
-                            ProgressView("Creating workspace…")
+                            ProgressView("Creating \(noun.lowercased())…")
                                 .accessibilityIdentifier("hermes-workspaces.create.progress")
                         }
                         .listRowBackground(theme.surface)
@@ -353,7 +366,7 @@ private struct HermesWorkspaceCreateView: View {
                 }
             }
             .modifier(CapabilitySheetAppearance(theme: theme))
-            .navigationTitle("New Workspace")
+            .navigationTitle("New \(noun)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -365,8 +378,10 @@ private struct HermesWorkspaceCreateView: View {
                             if await store.create(
                                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                                 folderPath: trimmedPath,
+                                description: summary,
                                 agentID: agentID
                             ) {
+                                onCreated?()
                                 dismiss()
                             }
                         }

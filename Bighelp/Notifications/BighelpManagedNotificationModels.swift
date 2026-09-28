@@ -171,6 +171,13 @@ enum ManagedNotificationValidation {
     static func nativeSessionID(host: BighelpConfiguredHost, profile: String, session: String) -> String {
         "native-" + digest([host.notificationScope, host.hostConnectionID, profile, session].joined(separator: "\0"))
     }
+    /// A notification or Live Activity link names this scoped digest. A chat's
+    /// own ID (`native-session-v1:…`, what widgets link to) starts the same way.
+    static func isOpaqueSessionID(_ id: String) -> Bool {
+        guard id.hasPrefix("native-") else { return false }
+        let digest = id.utf8.dropFirst("native-".utf8.count)
+        return digest.count == 64 && digest.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+    }
     static func data<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)

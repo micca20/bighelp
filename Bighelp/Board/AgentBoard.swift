@@ -116,21 +116,31 @@ struct AgentBoardItem: Identifiable, Equatable, Sendable {
     var links: [Link]
     var pictures: [Picture]
     var source: String
-    var liked: Bool
+    /// Thumbs up or down. It tells the agent what's worth posting.
+    var rating: Rating
+    /// Why a thumbs down ("Not relevant"); empty otherwise.
+    var reason: String
+    var read: Bool
     var dismissed: Bool
     var createdAt: Date
     var updatedAt: Date
 
+    enum Rating: String, Sendable { case up, down, none }
+
+    var liked: Bool { rating == .up }
     var isDone: Bool { status == "done" }
     var isTracking: Bool { section == "tracking" }
+    /// Title and text, for Copy and Share.
+    var shareText: String { body.isEmpty ? title : "\(title)\n\n\(body)" }
 
     init(id: String, kind: Kind, title: String, body: String = "", icon: String = "", section: String = "",
          status: String = "", note: String = "", links: [Link] = [], pictures: [Picture] = [],
-         source: String = "", liked: Bool = false, dismissed: Bool = false,
-         createdAt: Date = .now, updatedAt: Date? = nil) {
+         source: String = "", rating: Rating = .none, reason: String = "", read: Bool = true,
+         dismissed: Bool = false, createdAt: Date = .now, updatedAt: Date? = nil) {
         self.id = id; self.kind = kind; self.title = title; self.body = body; self.icon = icon
         self.section = section; self.status = status; self.note = note; self.links = links
-        self.pictures = pictures; self.source = source; self.liked = liked; self.dismissed = dismissed
+        self.pictures = pictures; self.source = source; self.rating = rating; self.reason = reason
+        self.read = read; self.dismissed = dismissed
         self.createdAt = createdAt; self.updatedAt = updatedAt ?? createdAt
     }
 
@@ -157,7 +167,11 @@ struct AgentBoardItem: Identifiable, Equatable, Sendable {
                   icon: object["icon"]?.string ?? "", section: object["section"]?.string ?? "",
                   status: object["status"]?.string ?? "", note: object["note"]?.string ?? "",
                   links: links, pictures: pictures, source: object["source"]?.string ?? "",
-                  liked: object["liked"]?.boolean ?? false, dismissed: object["dismissed"]?.boolean ?? false,
+                  // Plugins before 2.19.0 only know a heart, and have no read state.
+                  rating: object["rating"]?.string.flatMap(Rating.init(rawValue:))
+                      ?? (object["liked"]?.boolean == true ? .up : .none),
+                  reason: object["reason"]?.string ?? "", read: object["read"]?.boolean ?? true,
+                  dismissed: object["dismissed"]?.boolean ?? false,
                   createdAt: date("createdAt"), updatedAt: date("updatedAt"))
     }
 }
@@ -256,10 +270,23 @@ struct AgentIdentityDocuments: Equatable, Sendable {
 
 // MARK: - Clients
 
+/// What the person did to one item. Nil fields stay as they are.
+struct AgentBoardChange: Equatable, Sendable {
+    var rating: AgentBoardItem.Rating?
+    var reason: String?
+    var read: Bool?
+    var dismissed: Bool?
+    var status: String?
+}
+
 @MainActor
 protocol AgentBoardClient: AnyObject {
+    /// Thumbs down, reasons, read state and idea → goal (plugin 2.19.0).
+    var supportsFeedback: Bool { get }
     func items(agentID: String) async throws -> [AgentBoardItem]
-    func update(agentID: String, itemID: String, liked: Bool?, dismissed: Bool?, status: String?) async throws -> AgentBoardItem
+    func update(agentID: String, itemID: String, change: AgentBoardChange) async throws -> AgentBoardItem
+    func markRead(agentID: String, itemIDs: [String]) async throws
+    func promote(agentID: String, itemID: String) async throws -> AgentBoardItem
     func picture(agentID: String, itemID: String, index: Int) async throws -> Data
     func activity(agentID: String) async throws -> [AgentActivityEntry]
     func approvals(agentID: String) async throws -> [AgentApprovalEntry]
@@ -271,10 +298,12 @@ protocol AgentBoardClient: AnyObject {
 final class DirectHermesAgentBoardClient: AgentBoardClient {
     private let workspace: any WorkspaceOperationPerforming
     private let owner: WorkspaceOwner
+    let supportsFeedback: Bool
 
-    init(workspace: any WorkspaceOperationPerforming, owner: WorkspaceOwner) {
+    init(workspace: any WorkspaceOperationPerforming, owner: WorkspaceOwner, supportsFeedback: Bool) {
         self.workspace = workspace
         self.owner = owner
+        self.supportsFeedback = supportsFeedback
     }
 
     private func perform(_ operation: WorkspaceOperation, _ payload: [String: BighelpJSONValue]) async throws
@@ -288,13 +317,38 @@ final class DirectHermesAgentBoardClient: AgentBoardClient {
         return try (result["items"]?.array ?? []).map(AgentBoardItem.init(json:))
     }
 
-    func update(agentID: String, itemID: String, liked: Bool?, dismissed: Bool?, status: String?) async throws
-        -> AgentBoardItem {
+    func update(agentID: String, itemID: String, change: AgentBoardChange) async throws -> AgentBoardItem {
         var payload: [String: BighelpJSONValue] = ["agentId": .string(agentID), "itemId": .string(itemID)]
-        if let liked { payload["liked"] = .boolean(liked) }
-        if let dismissed { payload["dismissed"] = .boolean(dismissed) }
-        if let status { payload["status"] = .string(status) }
+        if let rating = change.rating {
+            if supportsFeedback {
+                payload["rating"] = .string(rating.rawValue)
+            } else {
+                // An older plugin only has the heart.
+                guard rating != .down else { throw WorkspaceClientError.unavailable(.unsupportedOperation) }
+                payload["liked"] = .boolean(rating == .up)
+            }
+        }
+        if supportsFeedback, let reason = change.reason { payload["reason"] = .string(String(reason.prefix(120))) }
+        if supportsFeedback, let read = change.read { payload["read"] = .boolean(read) }
+        if let dismissed = change.dismissed { payload["dismissed"] = .boolean(dismissed) }
+        if let status = change.status { payload["status"] = .string(status) }
         let result = try await perform(.boardUpdate, payload)
+        guard let item = result["item"] else { throw WorkspaceClientError.invalidResponse }
+        return try AgentBoardItem(json: item)
+    }
+
+    func markRead(agentID: String, itemIDs: [String]) async throws {
+        guard supportsFeedback, !itemIDs.isEmpty else { return }
+        for batch in stride(from: 0, to: itemIDs.count, by: 200).map({ Array(itemIDs[$0..<min($0 + 200, itemIDs.count)]) }) {
+            _ = try await perform(.boardRead, ["agentId": .string(agentID),
+                                               "itemIds": .array(batch.map(BighelpJSONValue.string)),
+                                               "read": .boolean(true)])
+        }
+    }
+
+    func promote(agentID: String, itemID: String) async throws -> AgentBoardItem {
+        guard supportsFeedback else { throw WorkspaceClientError.unavailable(.unsupportedOperation) }
+        let result = try await perform(.boardPromote, ["agentId": .string(agentID), "itemId": .string(itemID)])
         guard let item = result["item"] else { throw WorkspaceClientError.invalidResponse }
         return try AgentBoardItem(json: item)
     }
@@ -346,6 +400,9 @@ final class AgentBoardStore {
     private var generation = 0
 
     var isAvailable: Bool { client != nil }
+    var supportsFeedback: Bool { client?.supportsFeedback ?? false }
+    /// Just deleted, for Undo.
+    private(set) var recentlyHidden: AgentBoardItem?
     var feed: [AgentBoardItem] { items.filter { $0.kind == .feed && !$0.dismissed } }
     var ideas: [AgentBoardItem] { items.filter { $0.kind == .idea && !$0.dismissed } }
     var goals: [AgentBoardItem] { items.filter { $0.kind == .goal && !$0.dismissed } }
@@ -356,7 +413,7 @@ final class AgentBoardStore {
         guard client !== self.client else { return }
         self.client = client
         generation &+= 1
-        items = []; activity = []; approvals = []; pictures = [:]; identity = nil
+        items = []; activity = []; approvals = []; pictures = [:]; identity = nil; recentlyHidden = nil
         state = client == nil ? .unavailable : .idle
         logState = state
         agentID = nil
@@ -402,22 +459,79 @@ final class AgentBoardStore {
         }
     }
 
-    func setLiked(_ item: AgentBoardItem, _ liked: Bool) async {
-        await mutate(item) { $0.liked = liked } send: { client, agent in
-            try await client.update(agentID: agent, itemID: item.id, liked: liked, dismissed: nil, status: nil)
+    /// Thumbs up, down, or neither; a thumbs down may say why.
+    func rate(_ item: AgentBoardItem, _ rating: AgentBoardItem.Rating, reason: String? = nil) async {
+        let reason = rating == .down ? (reason ?? "") : ""
+        await mutate(item) { $0.rating = rating; $0.reason = reason } send: { client, agent in
+            try await client.update(agentID: agent, itemID: item.id,
+                                    change: .init(rating: rating, reason: rating == .down ? reason : nil))
         }
     }
 
-    func dismiss(_ item: AgentBoardItem) async {
+    func setRead(_ item: AgentBoardItem, _ read: Bool) async {
+        guard supportsFeedback else { return }
+        await mutate(item) { $0.read = read } send: { client, agent in
+            try await client.update(agentID: agent, itemID: item.id, change: .init(read: read))
+        }
+    }
+
+    /// Items on screen count as read. Quietly retried on the next load if it fails.
+    func markSeen(_ seen: [AgentBoardItem]) async {
+        guard supportsFeedback, let client, let agentID else { return }
+        let ids = Set(seen.filter { !$0.read }.map(\.id))
+        guard !ids.isEmpty else { return }
+        for index in items.indices where ids.contains(items[index].id) { items[index].read = true }
+        try? await client.markRead(agentID: agentID, itemIDs: Array(ids).sorted())
+    }
+
+    func unreadCount(_ kind: AgentBoardItem.Kind) -> Int {
+        guard supportsFeedback else { return 0 }
+        return items.filter { $0.kind == kind && !$0.dismissed && !$0.read }.count
+    }
+
+    /// Delete hides the item (the agent stops seeing it too) and can be undone.
+    func hide(_ item: AgentBoardItem) async {
+        recentlyHidden = item
         await mutate(item) { $0.dismissed = true } send: { client, agent in
-            try await client.update(agentID: agent, itemID: item.id, liked: nil, dismissed: true, status: nil)
+            try await client.update(agentID: agent, itemID: item.id, change: .init(dismissed: true))
+        }
+    }
+
+    func undoHide() async {
+        guard let item = recentlyHidden else { return }
+        recentlyHidden = nil
+        await mutate(item) { $0.dismissed = false } send: { client, agent in
+            try await client.update(agentID: agent, itemID: item.id, change: .init(dismissed: false))
+        }
+    }
+
+    func clearUndo(_ item: AgentBoardItem) {
+        if recentlyHidden?.id == item.id { recentlyHidden = nil }
+    }
+
+    /// An idea the person wants to pursue moves to Goals.
+    @discardableResult
+    func promote(_ idea: AgentBoardItem) async -> Bool {
+        guard supportsFeedback, let client, let agentID,
+              let index = items.firstIndex(where: { $0.id == idea.id }) else { return false }
+        let generation = generation
+        items[index].dismissed = true
+        do {
+            let goal = try await client.promote(agentID: agentID, itemID: idea.id)
+            guard generation == self.generation else { return false }
+            items.removeAll { $0.id == goal.id }
+            items.insert(goal, at: 0)
+            return true
+        } catch {
+            guard generation == self.generation, let current = items.firstIndex(where: { $0.id == idea.id }) else { return false }
+            items[current].dismissed = false
+            return false
         }
     }
 
     func setDone(_ item: AgentBoardItem, _ done: Bool) async {
         await mutate(item) { $0.status = done ? "done" : "active" } send: { client, agent in
-            try await client.update(agentID: agent, itemID: item.id, liked: nil, dismissed: nil,
-                                    status: done ? "done" : "active")
+            try await client.update(agentID: agent, itemID: item.id, change: .init(status: done ? "done" : "active"))
         }
     }
 

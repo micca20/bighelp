@@ -53,6 +53,8 @@ struct FloatingTabBar: View {
     let onNewChat: (() -> Void)?
     /// Points the bar drops into the home indicator's area.
     let homeIndicatorSink: CGFloat
+    /// Feed, Ideas or Goals with something the person hasn't seen: a small dot.
+    let unread: Set<AppTab>
 
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -61,10 +63,12 @@ struct FloatingTabBar: View {
     @ScaledMetric(relativeTo: .caption2) private var iconSize: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var captionHeight: CGFloat = 28
 
-    init(selection: Binding<AppTab>, onNewChat: (() -> Void)? = nil, homeIndicatorSink: CGFloat = 0) {
+    init(selection: Binding<AppTab>, onNewChat: (() -> Void)? = nil, homeIndicatorSink: CGFloat = 0,
+         unread: Set<AppTab> = []) {
         self._selection = selection
         self.onNewChat = onNewChat
         self.homeIndicatorSink = homeIndicatorSink
+        self.unread = unread
     }
 
     /// Like the system tab bar, the bar sits low, just above the home
@@ -125,9 +129,20 @@ struct FloatingTabBar: View {
             itemLabel(title: tab.title, symbol: tab.systemImage(selected: isSelected),
                       identifier: tab.accessibilityIdentifier, selected: isSelected,
                       showsCaption: showsCaption)
+                .overlay(alignment: .topTrailing) {
+                    if unread.contains(tab), !isSelected {
+                        Circle()
+                            .fill(theme.action)
+                            .frame(width: 8, height: 8)
+                            .padding(.top, isVerticallyCompact ? 4 : 8)
+                            .padding(.trailing, 10)
+                            .accessibilityHidden(true)
+                    }
+                }
         }
         .buttonStyle(.bighelpTilePress)
         .accessibilityLabel(tab.title)
+        .accessibilityValue(unread.contains(tab) && !isSelected ? "New" : "")
         .accessibilityShowsLargeContentViewer {
             Label(tab.title, systemImage: tab.systemImage(selected: isSelected))
         }

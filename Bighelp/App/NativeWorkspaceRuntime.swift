@@ -683,6 +683,7 @@ final class NativeWorkspaceRuntime {
                 if context.features.contains("native-device-tools-v1") { supported.insert(.phoneTools) }
                 if context.features.contains("native-project-git-read-v1") { supported.insert(.projectChangesRead) }
                 if context.features.contains("native-agent-board-v1") { supported.insert(.agentBoard) }
+                if context.features.contains("native-agent-board-feedback-v1") { supported.insert(.agentBoardFeedback) }
             }
             try publishCapabilities()
             connections.cloneClient = DirectHermesAgentProfileCloneClient(

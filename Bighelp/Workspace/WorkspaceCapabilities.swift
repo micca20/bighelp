@@ -21,6 +21,8 @@ enum WorkspaceCapability: String, CaseIterable, Sendable {
     case configRead, configEdit, keysRead, keysEdit, systemStatus, filesRead
     /// Feed, Ideas, Goals, Activity and Approvals history (plugin agent board).
     case agentBoard
+    /// Thumbs down, reasons, read state and idea → goal (plugin 2.19.0).
+    case agentBoardFeedback
 }
 
 enum WorkspaceUnavailableReason: String, Equatable, Sendable {

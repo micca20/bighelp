@@ -321,6 +321,12 @@ final class DirectHermesNativePluginClient {
         case .boardIdentity:
             return Route(path: "board/identity", feature: "native-agent-board-v1", isMutation: false,
                          maximumResponseBytes: 2 * 1_024 * 1_024)
+        case .boardRead:
+            return Route(path: "board/read", feature: "native-agent-board-feedback-v1", isMutation: true,
+                         maximumResponseBytes: 16_384)
+        case .boardPromote:
+            return Route(path: "board/promote", feature: "native-agent-board-feedback-v1", isMutation: true,
+                         maximumResponseBytes: 196_608)
         default: throw WorkspaceClientError.unavailable(.unsupportedOperation)
         }
     }

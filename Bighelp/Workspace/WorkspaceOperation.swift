@@ -146,5 +146,7 @@ enum WorkspaceOperation: String, CaseIterable, Sendable {
     case boardActivity = "board.activity"
     case boardApprovals = "board.approvals"
     case boardIdentity = "board.identity"
+    case boardRead = "board.read"
+    case boardPromote = "board.promote"
     case usageList = "usage.list"
 }

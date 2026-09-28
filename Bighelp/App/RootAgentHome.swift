@@ -73,8 +73,18 @@ extension RootShellView {
             onProfile: { profileAgentID = $0 },
             onSwitchAgent: { isAgentSwitcherPresented = true },
             onNewChat: { presentNewChatPicker(seed: $0) },
-            tabSelection: tabSelection
+            tabSelection: tabSelection,
+            unreadTabs: boardUnreadTabs
         )
+    }
+
+    /// Feed, Ideas and Goals with items the person hasn't seen yet.
+    var boardUnreadTabs: Set<AppTab> {
+        var tabs: Set<AppTab> = []
+        if agentBoard.unreadCount(.feed) > 0 { tabs.insert(.feed) }
+        if agentBoard.unreadCount(.idea) > 0 { tabs.insert(.ideas) }
+        if agentBoard.unreadCount(.goal) > 0 { tabs.insert(.goals) }
+        return tabs
     }
 
     var opensHomeChat: Bool {
@@ -116,7 +126,9 @@ extension RootShellView {
 
     /// Opens the home chat once at launch, after saved chats have loaded.
     func autoOpenHomeChatIfNeeded() {
-        guard opensHomeChat, !didAutoOpenHomeChat,
+        // Never push under the "Unable to open" alert: iOS drops that push while
+        // the path keeps it, leaving the Chats list with no ☰ or tab bar.
+        guard opensHomeChat, !didAutoOpenHomeChat, actionErrorMessage == nil,
               appState.selectedTab == .sessions, appState.path.isEmpty,
               sessionCatalog.hasLoadedState, currentWorkspaceOwner != nil, homeAgent != nil else { return }
         didAutoOpenHomeChat = true
@@ -236,13 +248,17 @@ extension RootShellView {
     struct AgentBoardClientKey: Equatable {
         let owner: WorkspaceOwner?
         let supported: Bool
+        let feedback: Bool
         let fixtures: Bool
     }
 
     var agentBoardClientKey: AgentBoardClientKey {
         let owner = currentWorkspaceOwner
         let supported = owner.map { currentWorkspaceCapabilities.supports(.agentBoard, owner: $0, profileID: nil) } ?? false
-        return AgentBoardClientKey(owner: owner, supported: supported,
+        let feedback = owner.map {
+            currentWorkspaceCapabilities.supports(.agentBoardFeedback, owner: $0, profileID: nil)
+        } ?? false
+        return AgentBoardClientKey(owner: owner, supported: supported, feedback: feedback,
                                    fixtures: usesWorkspaceFixtures && workspaceConnections?.isDirectSelected != true)
     }
 
@@ -269,7 +285,8 @@ extension RootShellView {
         if key.fixtures {
             agentBoard.configure(client: DemoAgentBoardClient())
         } else if key.supported, let workspace = workspaceConnections?.workspace {
-            agentBoard.configure(client: DirectHermesAgentBoardClient(workspace: workspace, owner: owner))
+            agentBoard.configure(client: DirectHermesAgentBoardClient(workspace: workspace, owner: owner,
+                                                                      supportsFeedback: key.feedback))
         } else {
             agentBoard.configure(client: nil)
         }
@@ -285,6 +302,14 @@ extension RootShellView {
                 await Task.yield()
                 autoOpenHomeChatIfNeeded()
             }
+            .onChange(of: actionErrorMessage == nil) { _, cleared in
+                if cleared { autoOpenHomeChatIfNeeded() }
+            }
+    }
+
+    struct BoardPreloadKey: Equatable {
+        let client: AgentBoardClientKey
+        let agentID: String?
     }
 
     struct HomeAutoOpenKey: Equatable {
@@ -340,6 +365,12 @@ extension RootShellView {
             .task(id: agentBoardClientKey) {
                 configureAgentBoard(agentBoardClientKey)
                 configureProviderUsage(agentBoardClientKey)
+            }
+            // Loads the home agent's board up front, so new Feed, Ideas and Goals
+            // items show as dots on the tab bar before the tab is opened.
+            .task(id: BoardPreloadKey(client: agentBoardClientKey, agentID: homeAgent?.id)) {
+                guard agentBoard.isAvailable, let agentID = homeAgent?.id, agentBoard.agentID != agentID else { return }
+                await agentBoard.load(agentID: agentID)
             }
             .modifier(ProviderUsageHost(
                 store: providerUsage,
@@ -450,6 +481,7 @@ extension RootShellView {
             },
             onNewGroup: newGroupChatAction == nil ? nil : { afterClosingHomeSheets { inviteToGroup(seed: nil) } },
             onAllChats: { afterClosingHomeSheets { appState.select(.sessions) } },
+            onProjects: canOpenProjects ? { afterClosingHomeSheets { openProjects() } } : nil,
             onAgents: { afterClosingHomeSheets { appState.select(.agents) } },
             onScheduledTasks: { afterClosingHomeSheets { openScheduledTasks(filteredTo: nil) } },
             onHermesTools: settings.nerdModeEnabled ? { afterClosingHomeSheets { appState.select(.workspace) } } : nil,
@@ -462,4 +494,75 @@ extension RootShellView {
         )
     }
 
+}
+
+// MARK: - Projects
+
+extension RootShellView {
+    /// Projects are the host's own (Hermes projects); demo mode has samples.
+    var canOpenProjects: Bool {
+        nativeRuntime != nil || (usesWorkspaceFixtures && workspaceConnections?.isDirectSelected != true)
+    }
+
+    var projectsContext: ProjectsContext? {
+        guard let store = projectsStore else { return nil }
+        return ProjectsContext(
+            store: store, workspaces: hermesWorkspaces, agentID: workspaceAgentID,
+            isNerdMode: settings.nerdModeEnabled,
+            onOpenProject: { appState.open(.project(id: $0)) },
+            onNewChat: { startChat(inProject: $0) },
+            onOpenChat: { openProjectChat($0) },
+            onManage: { openWorkspaceDestination(.projects) }
+        )
+    }
+
+    func openProjects() {
+        let source: any ProjectsSource
+        if let runtime = nativeRuntime {
+            guard let lifecycle = try? runtime.stockGitPresentation(profileID: workspaceAgentID).projects else {
+                actionErrorMessage = "Projects couldn't be opened. Check that your computer is connected, then try again."
+                return
+            }
+            source = LiveProjectsSource(lifecycle: lifecycle)
+        } else if usesWorkspaceFixtures {
+            source = DemoProjectsSource()
+        } else {
+            actionErrorMessage = "Connect to your computer to use Projects."
+            return
+        }
+        projectsStore = ProjectsStore(source: source, profileID: workspaceAgentID)
+        if appState.selectedTab != .sessions { appState.select(.sessions) }
+        appState.path = [.projects]
+    }
+
+    /// Hermes starts new chats in the current project's folder, so the
+    /// project becomes current, then the chat opens.
+    func startChat(inProject id: String) {
+        Task { @MainActor in
+            guard await hermesWorkspaces.select(id: id, agentID: workspaceAgentID) else {
+                actionErrorMessage = hermesWorkspaces.errorMessage ?? "This project couldn't be opened. Try again."
+                return
+            }
+            appState.chatOpenedFromList = true
+            startNewChat(explicitAgentID: workspaceAgentID)
+        }
+    }
+
+    func openProjectChat(_ chat: ProjectsStore.Chat) {
+        appState.chatOpenedFromList = true
+        if let id = chat.catalogID, let record = sessionCatalog.session(id: id) {
+            openSessionSelection(record.summary)
+            return
+        }
+        Task { @MainActor in
+            do {
+                let record = try await sessionCatalog.resolveStoredSession(profileID: chat.profileID,
+                                                                            storedSessionID: chat.id)
+                openSession(record.summary)
+            } catch is CancellationError {
+            } catch {
+                actionErrorMessage = "This chat couldn't be opened. Try again from All chats."
+            }
+        }
+    }
 }

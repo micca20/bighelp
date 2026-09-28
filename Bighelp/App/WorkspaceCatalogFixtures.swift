@@ -188,6 +188,14 @@ final class FixtureHermesWorkspaceClient: HermesWorkspaceCatalogClient {
         return catalog(agentID: agentID)
     }
 
+    func describe(id: String, description: String, agentID: String) async throws -> HermesWorkspaceCatalog {
+        guard let index = createdWorkspaces[agentID]?.firstIndex(where: { $0.id == id }),
+              let row = createdWorkspaces[agentID]?[index] else { return catalog(agentID: agentID) }
+        createdWorkspaces[agentID]?[index] = .init(id: row.id, name: row.name, description: description,
+                                                   folderCount: row.folderCount, isActive: row.isActive)
+        return catalog(agentID: agentID)
+    }
+
     func archive(id: String, agentID: String) async throws -> HermesWorkspaceCatalog {
         guard catalog(agentID: agentID).workspaces.contains(where: { $0.id == id }) else {
             throw BighelpLinkWorkspaceClientError.invalidResponse

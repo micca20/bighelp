@@ -47,6 +47,8 @@ struct BighelpMenuDestinations {
     var onNewChat: () -> Void
     var onNewGroup: (() -> Void)?
     var onAllChats: () -> Void
+    /// Projects: related chats and folders together.
+    var onProjects: (() -> Void)? = nil
     var onAgents: () -> Void
     var onScheduledTasks: () -> Void
     /// Nerd Mode: the host's tools.
@@ -122,6 +124,9 @@ struct BighelpMenu<Recent: View>: View {
                 row("New group chat", symbol: "person.3", id: "menu.new-group", trailing: .none, action: onNewGroup)
             }
             row("All chats", symbol: "bubble.left.and.bubble.right", id: "menu.chats", action: destinations.onAllChats)
+            if let onProjects = destinations.onProjects {
+                row("Projects", symbol: "folder", id: "menu.projects", action: onProjects)
+            }
         }
         .listRowBackground(theme.surface)
     }

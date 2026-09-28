@@ -13,6 +13,17 @@ struct NotificationPresentationTests {
         #expect(BighelpBuzzKitPresentation.thread([:]) == nil)
     }
 
+    /// Tapping an alert opens its chat through the app's tap handler; the
+    /// alert's old dashboard link must not also open the Activity screen.
+    @Test func alertLinksAreClaimedSoTheyNeverOpenActivity() throws {
+        let link = try #require(URL(string: "loopdy:///dashboard?eventId=6f1c2d3e-0000-4000-8000-000000000000%3Aabc"))
+        #expect(BighelpBuzzKitPresentation.isManagedEventLink(link))
+        #expect(!BighelpBuzzKitPresentation.isManagedEventLink(try #require(URL(string: "loopdy:///dashboard"))))
+        #expect(!BighelpBuzzKitPresentation.isManagedEventLink(try #require(URL(string: "loopdy://chat/abc"))))
+        #expect(!BighelpBuzzKitPresentation.isManagedEventLink(try #require(URL(string: "loopdy://new-chat"))))
+        #expect(!BighelpBuzzKitPresentation.isManagedEventLink(try #require(URL(string: "https://example.com/dashboard?eventId=1"))))
+    }
+
     @Test func avatarsAreCachedByHashAndCheckedOnRead() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -12,6 +12,8 @@ struct AgentHomeChrome {
     var onSwitchAgent: @MainActor () -> Void = {}
     var onNewChat: @MainActor (String?) -> Void = { _ in }
     var tabSelection: Binding<AppTab>?
+    /// Board tabs with something new, for the dots on the tab bar.
+    var unreadTabs: Set<AppTab> = []
 }
 
 private struct AgentHomeChromeKey: EnvironmentKey {

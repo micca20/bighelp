@@ -297,21 +297,45 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
         return true
     }
 
+    // UIKit wants both answers below on the main thread. The async forms of
+    // these methods answered from wherever their work finished, and clearing
+    // a notification (which wakes the app in the background) then aborted it.
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        // Stay quiet for the chat you're already looking at; the reply is on screen.
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
+    ) {
         let thread = notification.request.content.threadIdentifier
-        if await BighelpVisibleChats.shared.isShowing(thread: thread) { return [] }
-        return [.banner, .list, .sound]
+        Task { @MainActor in
+            // Stay quiet for the chat you're already looking at; the reply is on screen.
+            let showing = await BighelpVisibleChats.shared.isShowing(thread: thread)
+            completionHandler(showing ? [] : [.banner, .list, .sound])
+        }
     }
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        await receiveNotificationTap(userInfo: response.notification.request.content.userInfo)
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
+        Self.respond(
+            to: BighelpProactiveNotificationOpen(userInfo: response.notification.request.content.userInfo),
+            dismissed: response.actionIdentifier == UNNotificationDismissActionIdentifier,
+            completion: completionHandler
+        )
+    }
+
+    /// Answers iOS on the main thread right away; a tap's chat opens after.
+    /// Clearing a notification isn't opening it.
+    nonisolated static func respond(to open: BighelpProactiveNotificationOpen?, dismissed: Bool,
+                                    completion: @escaping @Sendable () -> Void) {
+        Task { @MainActor in
+            if let open, !dismissed {
+                Task { await BighelpProactiveNotificationOpenCenter.shared.receive(open) }
+            }
+            completion()
+        }
     }
 
     nonisolated func receiveNotificationTap(userInfo: [AnyHashable: Any]) async {

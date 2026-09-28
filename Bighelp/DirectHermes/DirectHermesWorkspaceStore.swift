@@ -740,7 +740,10 @@ final class DirectHermesWorkspaceStore {
     /// this socket generation and is never replayed after an ambiguous result.
     @discardableResult
     func acknowledgePresentation(of prompt: DirectHermesPrompt) async -> Bool {
-        guard let acknowledgement = prompt.presentationAcknowledgement,
+        // The connection outlives a quick trip to the background; a card drawn
+        // then wasn't seen, and the host must still send its notification.
+        guard UIApplication.shared.applicationState == .active,
+              let acknowledgement = prompt.presentationAcknowledgement,
               let context = promptConnection,
               let transport = client,
               ownsPromptConnection(context, owner: context.owner, transport: transport),

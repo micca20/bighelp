@@ -222,6 +222,18 @@ final class DirectHermesProjectClient: HermesWorkspaceCatalogClient {
         return result
     }
 
+    func describe(id: String, description: String, agentID: String) async throws -> HermesWorkspaceCatalog {
+        let profile = try DirectHermesCoreRequestScope.profile(agentID)
+        let id = try DirectHermesCoreRequestScope.identifier(id)
+        let text = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try WorkspaceManagementDecoder.text(.string(text), maximum: 500)
+        try scope.require(.projectsEdit, profile: profile)
+        _ = try await scope.perform(.projectsUpdate, [
+            "profile": .string(profile), "id": .string(id), "description": .string(text)
+        ])
+        return try await load(agentID: profile)
+    }
+
     private func get(id: String, profile: String) async throws -> WorkspaceProject {
         let result = try await scope.perform(.projectsGet, ["profile": .string(profile), "id": .string(id)])
         guard let row = result["project"]?.object else { throw WorkspaceClientError.invalidResponse }

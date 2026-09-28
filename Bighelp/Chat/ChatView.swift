@@ -520,7 +520,8 @@ struct ChatView: View {
                         if homeChrome.isEnabled, homeChrome.isHome, let selection = homeChrome.tabSelection,
                            !isDraftFocused {
                             FloatingTabBar(selection: selection,
-                                           homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: bottomSafeArea))
+                                           homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: bottomSafeArea),
+                                           unread: homeChrome.unreadTabs)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }

@@ -157,7 +157,7 @@ final class HermesWorkspaceStore {
     }
 
     @discardableResult
-    func create(name: String, folderPath: String, agentID: String) async -> Bool {
+    func create(name: String, folderPath: String, description: String = "", agentID: String) async -> Bool {
         guard !isCreating, selectingID == nil, archivingID == nil else { return false }
         loadGeneration += 1
         let generation = loadGeneration
@@ -174,11 +174,16 @@ final class HermesWorkspaceStore {
                 errorMessage = "bighelp couldn't find the home folder on your computer. Type the full path, starting with /."
                 return false
             }
-            let created = try await client.create(
+            var created = try await client.create(
                 name: name,
                 folderPath: fullPath,
                 agentID: agentID
             )
+            // A new project becomes the current one; describe it if asked.
+            let text = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty, let id = created.activeWorkspaceID {
+                created = (try? await client.describe(id: id, description: text, agentID: agentID)) ?? created
+            }
             guard generation == loadGeneration else { return false }
             catalog = created
             catalogAgentID = agentID

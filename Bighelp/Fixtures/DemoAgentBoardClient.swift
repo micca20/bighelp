@@ -6,6 +6,7 @@ import Foundation
 final class DemoAgentBoardClient: AgentBoardClient {
     private var itemsByAgent: [String: [AgentBoardItem]] = [:]
     private let now: Date
+    let supportsFeedback = true
 
     init(now: Date = .now) {
         self.now = now
@@ -20,15 +21,39 @@ final class DemoAgentBoardClient: AgentBoardClient {
         return items
     }
 
-    func update(agentID: String, itemID: String, liked: Bool?, dismissed: Bool?, status: String?) async throws
-        -> AgentBoardItem {
+    func update(agentID: String, itemID: String, change: AgentBoardChange) async throws -> AgentBoardItem {
         var items = try await self.items(agentID: agentID)
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { throw WorkspaceClientError.invalidRequest }
-        if let liked { items[index].liked = liked }
-        if let dismissed { items[index].dismissed = dismissed }
-        if let status { items[index].status = status }
+        if let rating = change.rating {
+            items[index].rating = rating
+            items[index].reason = rating == .down ? (change.reason ?? "") : ""
+        }
+        if let read = change.read { items[index].read = read }
+        if let dismissed = change.dismissed { items[index].dismissed = dismissed }
+        if let status = change.status { items[index].status = status }
         itemsByAgent[agentID] = items
         return items[index]
+    }
+
+    func markRead(agentID: String, itemIDs: [String]) async throws {
+        var items = try await self.items(agentID: agentID)
+        for index in items.indices where itemIDs.contains(items[index].id) { items[index].read = true }
+        itemsByAgent[agentID] = items
+    }
+
+    func promote(agentID: String, itemID: String) async throws -> AgentBoardItem {
+        var items = try await self.items(agentID: agentID)
+        guard let index = items.firstIndex(where: { $0.id == itemID && $0.kind == .idea }) else {
+            throw WorkspaceClientError.invalidRequest
+        }
+        items[index].dismissed = true
+        let idea = items[index]
+        let goal = AgentBoardItem(id: "goal-from-\(idea.id)", kind: .goal, title: idea.title, body: idea.body,
+                                  icon: idea.icon, section: "goal", status: "active", source: "From an idea",
+                                  read: false, createdAt: .now)
+        items.insert(goal, at: 0)
+        itemsByAgent[agentID] = items
+        return goal
     }
 
     func picture(agentID: String, itemID: String, index: Int) async throws -> Data {
@@ -85,7 +110,7 @@ final class DemoAgentBoardClient: AgentBoardClient {
             AgentBoardItem(id: "feed-1", kind: .feed, title: "Lisbon fares dropped 18% for October",
                            body: "Round trips for **October 9–16** are down to $412, the lowest in six weeks. "
                                + "Want me to hold two seats before they climb again?",
-                           icon: "✈️", source: "Flight watch", createdAt: ago(35)),
+                           icon: "✈️", source: "Flight watch", read: false, createdAt: ago(35)),
             AgentBoardItem(id: "feed-2", kind: .feed, title: "Three stories worth your time tonight",
                            body: "A new battery chemistry doubles e-bike range; the city approved the waterfront "
                                + "park; and your favorite bakery opens a second shop on Saturday.",
@@ -97,7 +122,7 @@ final class DemoAgentBoardClient: AgentBoardClient {
             AgentBoardItem(id: "idea-1", kind: .idea, title: "I can plan Sam's birthday dinner end to end",
                            body: "Her birthday is in 12 days. I can shortlist three restaurants she'd like, "
                                + "check who's free on the family calendar and book the table.",
-                           icon: "🎂", section: "Family", createdAt: ago(60 * 2)),
+                           icon: "🎂", section: "Family", read: false, createdAt: ago(60 * 2)),
             AgentBoardItem(id: "idea-2", kind: .idea, title: "I can make your sleep goal trackable again",
                            body: "Sleep data stopped arriving on September 11. I can find why, fix it if it's on "
                                + "my side, and send a short nightly check-in as a fallback.",

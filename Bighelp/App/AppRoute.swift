@@ -26,4 +26,7 @@ enum AppRoute: Hashable {
     case workspaceManagement(WorkspaceDestination)
     case workspaceConnections
     case workspaceHub
+    /// Projects, like Claude's: related chats and folders together.
+    case projects
+    case project(id: String)
 }

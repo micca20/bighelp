@@ -89,7 +89,16 @@ silence marker follows Hermes' rules (`ChatSilentReply`).
 
 Feed, Ideas and Goals start empty. They fill only when the user asks the agent for updates; the agent then posts
 with the plugin's `bighelp_board` tool, often from a scheduled job it sets up. Nothing runs on the user's AI
-provider by itself. Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Settings shows basics first
+provider by itself. Every item has a long-press menu (and the same VoiceOver actions) with only what fits
+it: thumbs up/down on Feed (a thumbs down may ask "Less like this?" with quick reasons, never required), "Turn
+into a goal" and "Start a chat" on Ideas, done/active on Goals, and read/unread, Copy, Share and Delete everywhere.
+Delete hides with Undo. New items carry a dot, and a dot on the Feed, Ideas or Goals tab says something there is
+unseen. The agent reads the ratings and reasons before it posts (plugin 2.19.0).
+
+**Projects** (☰ › Projects) are Hermes projects shown the way Claude shows them: cards with the project's emoji
+and color, description and recent use; a project page with **New chat in this project**, its chats and its
+folders. A chat started there runs in the project's folder (Hermes files chats by folder, and the project becomes
+the current one). Folder and Git management stay in Nerd Mode's Hermes Tools. Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Settings shows basics first
 (you, assistants/default model/providers, appearance, chat & voice, notifications, Hermes connection). Host
 administration — files, gateways/messaging, plugins, MCP, memory, logs, activity, direct links, display & data —
 is hidden until **Nerd Mode** is turned on in Settings, which reveals an Advanced section and the More drawer.

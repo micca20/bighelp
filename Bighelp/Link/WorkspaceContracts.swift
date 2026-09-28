@@ -245,6 +245,8 @@ protocol HermesWorkspaceCatalogClient: AnyObject {
         agentID: String
     ) async throws -> HermesWorkspaceCatalog
     func archive(id: String, agentID: String) async throws -> HermesWorkspaceCatalog
+    /// A project's one-line description, shown on its card.
+    func describe(id: String, description: String, agentID: String) async throws -> HermesWorkspaceCatalog
     func folderSuggestions(
         parentPath: String,
         prefix: String,
@@ -256,6 +258,13 @@ protocol HermesWorkspaceCatalogClient: AnyObject {
 
 extension HermesWorkspaceCatalogClient {
     func load(agentID: String, sessionID _: String?) async throws -> HermesWorkspaceCatalog {
+        try await load(agentID: agentID)
+    }
+}
+
+extension HermesWorkspaceCatalogClient {
+    /// Clients without descriptions keep the project as created.
+    func describe(id: String, description: String, agentID: String) async throws -> HermesWorkspaceCatalog {
         try await load(agentID: agentID)
     }
 }
