@@ -211,7 +211,7 @@ final class ReferenceHubUITests: BighelpUITestCase {
     @MainActor
     func testSendKeepsKeyboardClosedWhileChatUpdates() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat"]
         app.launch()
         let editor = app.textViews["chat.composer.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -233,7 +233,7 @@ final class ReferenceHubUITests: BighelpUITestCase {
     @MainActor
     func testOpenReferencesSurvivesWorkspaceNavigation() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat"]
         app.launch()
         let editor = app.textViews["chat.composer.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -265,8 +265,7 @@ final class ReferenceHubUITests: BighelpUITestCase {
     private func exerciseDrawer(appearance: String, largeText: Bool, rotateAndAudit: Bool = false) throws {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays",
-            "-loopdy.appearance.theme", "loopdy", "-test-chat-sidebar-collapsed",
-            "-loopdy.demo.appearance", appearance]
+            "-loopdy.appearance.theme", "loopdy", "-loopdy.demo.appearance", appearance]
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }

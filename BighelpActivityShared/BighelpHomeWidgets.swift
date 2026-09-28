@@ -1,3 +1,6 @@
+// Home screen widgets live in the iPhone/iPad widget extension. Vision Pro
+// builds of the app share this folder but have no widget extension.
+#if !os(visionOS)
 import SwiftUI
 import WidgetKit
 
@@ -382,3 +385,4 @@ struct BighelpActivityFeedWidget: Widget {
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
+#endif

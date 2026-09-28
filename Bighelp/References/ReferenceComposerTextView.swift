@@ -89,7 +89,9 @@ struct ReferenceComposerTextView: UIViewRepresentable {
         view.alwaysBounceHorizontal = false
         view.showsHorizontalScrollIndicator = false
         view.isScrollEnabled = true
+        #if !os(visionOS)
         view.keyboardDismissMode = .none
+        #endif
         view.autocorrectionType = .default
         view.autocapitalizationType = .sentences
         view.smartQuotesType = .no

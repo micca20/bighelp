@@ -4,7 +4,7 @@ final class ScratchpadExportUITests: BighelpUITestCase {
     @MainActor
     func testNativeMarkdownExport() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-preview-ui-v3", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-preview-ui-v3"]
         app.launch()
         let changes = app.buttons["chat.session-status.changes"]
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
@@ -51,7 +51,7 @@ final class ScratchpadExportUITests: BighelpUITestCase {
     @MainActor
     func testSaveToWikiWithoutHostKeepsDraftAndDoesNotClaimSuccess() {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-ui-v3", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-ui-v3"]
         app.launch()
         let menu = app.buttons["home.drawer.open"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5))

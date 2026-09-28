@@ -704,7 +704,13 @@ struct BighelpTheme: Codable, Equatable, Sendable {
     private var usesNativeSystemPalette: Bool { false }
 
     var canvas: Color {
+        #if os(visionOS)
+        // Vision Pro windows are glass. A light tint keeps the room visible
+        // behind the window and the theme's text readable on it.
+        Color(hex: canvasHex).opacity(0.5)
+        #else
         usesNativeSystemPalette ? Color(uiColor: .systemBackground) : Color(hex: canvasHex)
+        #endif
     }
     var surface: Color {
         usesNativeSystemPalette ? Color(uiColor: .secondarySystemBackground) : Color(hex: surfaceHex)

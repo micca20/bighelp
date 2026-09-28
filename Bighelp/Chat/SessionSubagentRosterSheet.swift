@@ -354,7 +354,8 @@ private struct SessionSubagentDetailView: View {
             items: record.items,
             activityEvents: record.activityEvents,
             visibility: record.activityVisibility,
-            isBotMode: record.kind == .botMode
+            isBotMode: record.kind == .botMode,
+            isScheduled: record.isCronSession
         )
     }
 

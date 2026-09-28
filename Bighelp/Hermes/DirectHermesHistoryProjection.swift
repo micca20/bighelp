@@ -28,6 +28,11 @@ struct DirectHermesHistoryRow: Equatable, Sendable {
         displayKind != "hidden" && displayKind != "internal_notification"
     }
 
+    /// `display_metadata.reply_expected`: false when the message wasn't addressed to the agent.
+    var replyExpected: Bool? {
+        raw["display_metadata"]?.object?["reply_expected"]?.boolean
+    }
+
     init(_ value: BighelpJSONValue, sessionID: String) throws {
         guard let row = value.object, let id = row["id"]?.integer,
               id > 0, id <= 9_007_199_254_740_991 else { throw WorkspaceClientError.invalidResponse }
@@ -226,13 +231,29 @@ struct DirectHermesHistoryProjection: Equatable, Sendable {
             }
         }
         var joinedResultIDs = Set<Int>()
-        for (index, row) in rows.enumerated() where row.isVisible {
+        let isScheduled = ["cron", "webhook"].contains { source?.caseInsensitiveCompare($0) == .orderedSame }
+        var turnPrompt: DirectHermesHistoryRow?
+        for (index, row) in rows.enumerated() {
+            // Hidden rows still own their turn: an off-screen note may be answered with silence.
+            if row.role == "user" { turnPrompt = row }
+            guard row.isVisible else { continue }
             let order = sourceOrderBase.addingReportingOverflow(index)
             guard !order.overflow else { throw WorkspaceClientError.capacityExceeded }
             if row.hasUnsupportedContent { unsupported.append(row.id) }
             let isModelSwitch = row.displayKind == "model_switch"
-            let text = row.role == "user" && !isModelSwitch ? HermesUserMessageDisplay.text(row.text) : row.text
-            if (isModelSwitch || row.role == "user" || row.role == "assistant"),
+            var text = row.role == "user" && !isModelSwitch ? HermesUserMessageDisplay.text(row.text) : row.text
+            // Hermes' rule with the turn's real kind (ChatSilentReply): quiet unless a person's
+            // message got only a marker, which shows Hermes' notice. An unknown turn stays quiet.
+            var isSilent = false
+            if row.role == "assistant", ChatSilentReply.isMarker(text) {
+                if !isScheduled, let prompt = turnPrompt, !ChatSilentReply.silenceAllowed(
+                    displayKind: prompt.displayKind, replyExpected: prompt.replyExpected) {
+                    text = ChatSilentReply.notice
+                } else {
+                    isSilent = true
+                }
+            }
+            if (isModelSwitch || row.role == "user" || row.role == "assistant"), !isSilent,
                !text.isEmpty || row.hasUnsupportedContent {
                 messages.append(TimelineItem(
                     id: "\(appID):row:\(row.id)",

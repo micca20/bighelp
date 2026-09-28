@@ -1,4 +1,6 @@
+#if canImport(ActivityKit)
 import ActivityKit
+#endif
 import SwiftUI
 import UIKit
 import WatchConnectivity
@@ -84,7 +86,9 @@ struct BighelpNotificationSettingsView: View {
         Form {
             notificationEnrollmentSection
             notificationAuthorizationSection
-            liveActivitiesSection
+            #if !os(visionOS)
+            liveActivitiesSection // Vision Pro has no Live Activities.
+            #endif
             if let sendTest {
                 Section("Test") {
                     Button(isTesting ? "Sending Test…" : "Send Test Notification") {
@@ -137,7 +141,7 @@ struct BighelpNotificationSettingsView: View {
             }
             Task {
                 await permissionCenter.refresh(.notification)
-                liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+                liveActivitiesEnabled = Self.liveActivitiesAllowed
             }
         }
         .onDisappear {
@@ -184,6 +188,14 @@ struct BighelpNotificationSettingsView: View {
             }
         }
         .listRowBackground(theme.surface)
+    }
+
+    private static var liveActivitiesAllowed: Bool {
+        #if canImport(ActivityKit)
+        ActivityAuthorizationInfo().areActivitiesEnabled
+        #else
+        false
+        #endif
     }
 
     private var liveActivitiesSection: some View {
@@ -373,7 +385,7 @@ struct BighelpNotificationSettingsView: View {
         runtimeError = nil
         await permissionCenter.refresh(.notification)
         guard operationToken == token, !Task.isCancelled else { return }
-        liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+        liveActivitiesEnabled = Self.liveActivitiesAllowed
         runtime = runtimeSource()
         guard operationToken == token, !Task.isCancelled else { return }
         guard isCurrent() else {

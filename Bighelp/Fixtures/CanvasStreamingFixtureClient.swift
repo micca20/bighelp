@@ -11,7 +11,22 @@ final class CanvasStreamingFixtureClient: ConversationFixtureClient, StreamingCo
     weak var featureStore: ShellFeatureStore?
     weak var catalog: SessionCatalogStore?
     private let toolStress = ProcessInfo.processInfo.arguments.contains("-test-tool-stream")
+    private let silentReply = ProcessInfo.processInfo.arguments.contains("-test-silent-reply")
     private var toolRun = 0
+
+    /// Streams a bare marker the way Hermes does ("NO" on the way to "NO_REPLY").
+    private func runSilentReply(onDraft: @escaping (TimelineItem) -> Void) async throws -> ConversationResponse {
+        let id = "silent-reply-\(UUID().uuidString)"
+        func reply(_ text: String, delivery: String) -> TimelineItem {
+            TimelineItem(id: id, role: .assistant, sender: .agent(id: senderID, snapshot: .init(name: "Canvas fixture")),
+                         content: .message(text), metadata: .init(source: "UI fixture", delivery: delivery))
+        }
+        for partial in ["NO", "NO_REP", "NO_REPLY"] {
+            try await Task.sleep(for: .milliseconds(150))
+            onDraft(reply(partial, delivery: "Streaming"))
+        }
+        return ConversationResponse(items: [reply("NO_REPLY", delivery: "Delivered")])
+    }
 
     private func runToolStream(onDraft: @escaping (TimelineItem) -> Void) async throws -> ConversationResponse {
         guard let model else { throw CancellationError() }
@@ -131,6 +146,7 @@ final class CanvasStreamingFixtureClient: ConversationFixtureClient, StreamingCo
 
     func send(message: String, conversationID: String, onDraft: @escaping (TimelineItem) -> Void) async throws -> ConversationResponse {
         if toolStress { return try await runToolStream(onDraft: onDraft) }
+        if silentReply { return try await runSilentReply(onDraft: onDraft) }
         var text = "CANVAS STREAM START\n"
         var item = TimelineItem(id: "canvas-stream-\(UUID().uuidString)", role: .assistant,
                                 sender: .agent(id: senderID, snapshot: TimelineSenderSnapshot(name: "Canvas fixture")),

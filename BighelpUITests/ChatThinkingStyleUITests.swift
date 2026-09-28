@@ -9,7 +9,7 @@ final class ChatThinkingStyleUITests: BighelpUITestCase {
         for fold in ["NO", "YES"] {
             let app = makeApp()
             app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-                                   "-test-chat-sidebar-collapsed", "-test-thinking-style",
+                                   "-test-thinking-style",
                                    "-loopdy.chat.foldCompletedTurns", fold, "-loopdy.demo.appearance", "light"]
             app.launch()
             func message(_ text: String) -> XCUIElement {

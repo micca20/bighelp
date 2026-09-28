@@ -76,7 +76,8 @@ mechanics, not authorization decisions or a generic endpoint dispatcher.
 
 The XcodeGen manifest defines these application products:
 
-- **bighelp**: the iOS and iPadOS SwiftUI application.
+- **bighelp**: the iOS, iPadOS and visionOS SwiftUI application. On Vision Pro it runs natively and adds the
+  agent-in-the-room volume (`Bighelp/Spatial/`).
 - **BighelpMac**: a native macOS application with a dedicated app entry point and
   adaptive desktop shell.
 - **BighelpWatch**: the watchOS companion application.

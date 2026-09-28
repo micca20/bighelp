@@ -276,7 +276,7 @@ private struct BighelpSurfaceModifier: ViewModifier {
     }
 
     private var supportsLiquidGlass: Bool {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
         if #available(iOS 26.0, *) {
             return true
         }
@@ -313,7 +313,7 @@ private struct BighelpSurfaceModifier: ViewModifier {
         presentation: BighelpSurfacePresentation,
         theme: BighelpTheme
     ) -> some View {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
         if #available(iOS 26.0, *) {
             let glass: Glass = switch tint {
             case .none:

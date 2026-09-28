@@ -206,7 +206,9 @@ struct MarkdownSourceTextView: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.alwaysBounceVertical = true
+        #if !os(visionOS)
         textView.keyboardDismissMode = .none
+        #endif
         textView.accessibilityLabel = accessibilityLabel
         textView.accessibilityHint = "Edits Markdown source"
         textView.accessibilityIdentifier = accessibilityIdentifier

@@ -1,3 +1,5 @@
+// Widgets live in the iPhone/iPad widget extension; Vision Pro has none.
+#if !os(visionOS)
 import SwiftUI
 import WidgetKit
 
@@ -341,3 +343,4 @@ struct BighelpAgentWidgetView: View {
         }
     }
 }
+#endif

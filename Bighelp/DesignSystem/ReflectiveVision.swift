@@ -349,7 +349,9 @@ final class ReflectiveVisionCamera {
                 }
 
                 session.beginConfiguration()
+                #if !os(visionOS)
                 session.sessionPreset = .medium
+                #endif
 
                 if session.inputs.isEmpty {
                     guard session.canAddInput(input) else {

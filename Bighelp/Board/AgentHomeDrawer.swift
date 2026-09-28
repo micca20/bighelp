@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// ☰ on iPhone: bighelp's one menu as a sheet (hosts, chats, and everywhere else).
+/// ☰: bighelp's one menu (hosts, chats, and everywhere else). A sheet on
+/// iPhone, a panel from the leading edge on iPad (see HomeMenuPresentation).
 struct AgentHomeDrawer: View {
     let chats: [SessionSummary]
     let agent: (String) -> (name: String, imageURL: URL?)?
@@ -8,17 +9,18 @@ struct AgentHomeDrawer: View {
     let destinations: BighelpMenuDestinations
     let onOpen: (SessionSummary) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.homeMenuClose) private var panelClose
 
     var body: some View {
         NavigationStack {
-            BighelpMenu(hosts: hosts, destinations: destinations, close: { dismiss() }, hasRecent: !chats.isEmpty) {
+            BighelpMenu(hosts: hosts, destinations: destinations, close: close, hasRecent: !chats.isEmpty) {
                 AnyView(recentChats)
             }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done", action: close)
                         .accessibilityIdentifier("menu.done")
                 }
             }
@@ -28,11 +30,16 @@ struct AgentHomeDrawer: View {
         .accessibilityIdentifier("home.drawer")
     }
 
+    /// The panel isn't a presentation, so `dismiss` would do nothing there.
+    private func close() {
+        if let panelClose { panelClose() } else { dismiss() }
+    }
+
     @ViewBuilder
     private var recentChats: some View {
         ForEach(chats) { chat in
             Button {
-                dismiss()
+                close()
                 onOpen(chat)
             } label: {
                 BighelpMenuChatRow(chat: chat, agent: agent)
@@ -40,5 +47,85 @@ struct AgentHomeDrawer: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("menu.chat.\(chat.id)")
         }
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var homeMenuClose: (@MainActor () -> Void)?
+}
+
+/// Presents ☰ like a side menu on iPad: it slides in from the leading edge
+/// over a dimmed screen, and a tap outside closes it. iPhone keeps the sheet.
+/// The panel is a see-through full-screen cover so it sits above the title bar.
+struct HomeMenuPresentation<Menu: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
+    @ViewBuilder let menu: () -> Menu
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isCoverPresented = false
+    @State private var isPanelVisible = false
+
+    static var panelWidth: CGFloat { 380 }
+
+    func body(content: Content) -> some View {
+        if horizontalSizeClass == .regular {
+            content
+                .fullScreenCover(isPresented: $isCoverPresented, onDismiss: onDismiss) {
+                    panel.presentationBackground(.clear)
+                }
+                .onChange(of: isPresented, initial: true) { _, presented in
+                    presented ? open() : close()
+                }
+        } else {
+            content.sheet(isPresented: $isPresented, onDismiss: onDismiss, content: menu)
+        }
+    }
+
+    private var slide: Animation? { reduceMotion ? nil : .snappy(duration: 0.28) }
+
+    private func open() {
+        guard !isCoverPresented else { return }
+        // The cover itself appears instantly; the panel does the sliding.
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { isCoverPresented = true }
+    }
+
+    private func close() {
+        guard isCoverPresented else { return }
+        withAnimation(slide) {
+            isPanelVisible = false
+        } completion: {
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { isCoverPresented = false }
+        }
+    }
+
+    private var panel: some View {
+        ZStack(alignment: .leading) {
+            if isPanelVisible {
+                Color.black.opacity(0.24)
+                    .ignoresSafeArea()
+                    .contentShape(.rect)
+                    .onTapGesture { isPresented = false }
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
+                menu()
+                    .environment(\.homeMenuClose, { isPresented = false })
+                    .frame(width: Self.panelWidth)
+                    .frame(maxHeight: .infinity)
+                    .clipShape(.rect(topLeadingRadius: 0, bottomLeadingRadius: 0,
+                                     bottomTrailingRadius: 28, topTrailingRadius: 28))
+                    .shadow(color: .black.opacity(0.18), radius: 24, x: 6)
+                    .ignoresSafeArea(.container, edges: .vertical)
+                    .accessibilityAction(.escape) { isPresented = false }
+                    .transition(.move(edge: .leading))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .onAppear { withAnimation(slide) { isPanelVisible = true } }
     }
 }

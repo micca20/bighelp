@@ -167,25 +167,4 @@ struct AppStateTests {
         state.openBighelpLinkDevices()
         #expect(state.path == [.bighelpLinkDevices])
     }
-
-    @Test func conversationRootPresentationUsesSidebarOnlyForRegularWidth() {
-        #expect(ConversationRootNavigationPresentation.usesPersistentSidebar(horizontalSizeClassIsRegular: true))
-        #expect(!ConversationRootNavigationPresentation.usesPersistentSidebar(horizontalSizeClassIsRegular: false))
-    }
-
-    @Test func conversationRootSelectionTracksVisibleDestination() {
-        #expect(ConversationRootDestination.chats.isSelected(tab: .sessions, path: []))
-        #expect(ConversationRootDestination.chats.isSelected(
-            tab: .sessions,
-            path: [.chat(conversationID: "active")]
-        ))
-        #expect(ConversationRootDestination.workspace.isSelected(tab: .workspace, path: []))
-        #expect(ConversationRootDestination.settings.isSelected(tab: .profile, path: []))
-        #expect(ConversationRootDestination.directLinks.isSelected(tab: .workspace, path: [.bighelpLinkDevices]))
-        #expect(ConversationRootDestination.diagnostics.isSelected(
-            tab: .workspace,
-            path: [.workspaceManagement(.logs)]
-        ))
-        #expect(!ConversationRootDestination.workspace.isSelected(tab: .workspace, path: [.workspaceSettings]))
-    }
 }

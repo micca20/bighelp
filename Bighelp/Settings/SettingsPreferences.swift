@@ -61,6 +61,35 @@ enum VoiceMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What a quick pinch on your agent in the room does (Vision Pro).
+enum SpatialAvatarPinchAction: String, CaseIterable, Identifiable, Sendable {
+    case talk
+    case type
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .talk: "Talk"
+        case .type: "Type"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .talk: "Your agent starts listening, in the voice mode you picked in Voice."
+        case .type: "A message box opens with the keyboard, so you can type and send."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .talk: "waveform"
+        case .type: "keyboard"
+        }
+    }
+}
+
 enum VoiceConversationMode: String, CaseIterable, Identifiable, Sendable {
     case codexLive
     case turnBased
@@ -81,7 +110,7 @@ enum VoiceConversationMode: String, CaseIterable, Identifiable, Sendable {
         case .codexLive:
             "A natural, back-and-forth conversation with OpenAI's GPT Live 1. It can keep talking while your agent works. Uses your Codex subscription or an OpenAI API key."
         case .turnBased:
-            "This phone turns your words into text on the device, and your agent's speech provider reads each reply aloud. The provider can run on your own computer."
+            "This device turns your words into text on its own, and your agent's speech provider reads each reply aloud. The provider can run on your own computer."
         }
     }
 }

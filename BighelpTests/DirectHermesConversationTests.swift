@@ -983,6 +983,34 @@ struct DirectHermesConversationTests {
         turn.cancel()
     }
 
+    @Test func reactingUsesHermesReactionsWithoutAnExtraTurn() async throws {
+        // Hermes records the reaction and tells the agent at its next turn
+        // (display.message_reactions). The app must not start a turn of its own.
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = DirectTestRPC()
+        rpc.handler = { method, _ in
+            guard method == "message.react" else { return .object(["status": .string("queued")]) }
+            return .object(["row_id": .integer(42), "reactions": .array([
+                .object(["emoji": .string("❤️"), "author": .string("user")])])])
+        }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Native", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        let reply = TimelineItem(id: "\(client.conversationID):row:42", role: .assistant,
+                                 sender: .agent(id: "default", snapshot: .init(name: "Juno")),
+                                 content: .message("Here you go."), metadata: .init(source: "Hermes", delivery: "Saved"))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [reply])
+        client.model = model
+
+        await model.setNativeMessageReaction("❤️", for: reply.id)
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(rpc.requests.filter { $0.method == "message.react" }.count == 1)
+        #expect(rpc.requests.last(where: { $0.method == "message.react" })?.params["emoji"]?.string == "❤️")
+        #expect(!rpc.requests.contains { $0.method == "prompt.submit" })
+    }
+
     @Test func acknowledgedSteersDoNotBecomeRetainedSubmissionAlerts() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

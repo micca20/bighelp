@@ -120,6 +120,30 @@ struct BighelpShortcutWorkspace {
         self.newChatCoordinator = newChatCoordinator
     }
 
+    /// The chat for a session, attached to this workspace's live stream.
+    static func chatModel(sessionID: String, in featureStore: ShellFeatureStore) throws -> ChatModel {
+        let route = AppRoute.chat(conversationID: sessionID)
+        guard
+            featureStore.prepare(route),
+            case .chat(let model)? = featureStore.preparedModel(for: route)
+        else { throw BighelpShortcutServiceError.sessionUnavailable }
+        return model
+    }
+
+    /// Creates a chat with the agent (or reuses `sessionID` while it still
+    /// exists) and waits until it can take a message.
+    func readyChat(agentID: String, reusing sessionID: String?) async throws -> (sessionID: String, chat: ChatModel) {
+        let id: String
+        if let sessionID, catalog.session(id: sessionID) != nil {
+            id = sessionID
+        } else {
+            id = try await catalog.createDirect(agentID: agentID).id
+        }
+        let chat = try Self.chatModel(sessionID: id, in: featureStore)
+        try await BighelpShortcutService.awaitTransportReady(chat)
+        return (id, chat)
+    }
+
     init(runtime: NativeWorkspaceRuntime) {
         self.init(
             appState: runtime.appState,
@@ -300,10 +324,11 @@ final class BighelpShortcutService: @unchecked Sendable {
             guard let response, case .message(let text) = response.content,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { throw BighelpShortcutServiceError.responseUnavailable }
+            // A person asked, so a bare marker gets Hermes' notice (ChatSilentReply).
             let result = BighelpShortcutChatResult(
                 sessionID: session.id,
                 agentName: agent.name,
-                delivery: .completed(text)
+                delivery: .completed(ChatSilentReply.isMarker(text) ? ChatSilentReply.notice : text)
             )
             return result
         }
@@ -353,6 +378,12 @@ final class BighelpShortcutService: @unchecked Sendable {
             launch.finish()
             throw error
         }
+    }
+
+    /// A host that answers, for the agent in the room on Vision Pro. Reconnects
+    /// once if the socket went quiet, like every other outside entry point.
+    func connectedWorkspace() async throws -> BighelpShortcutWorkspace {
+        try await liveWorkspace()
     }
 
     /// A new chat started from outside the app (a widget or link). The app
@@ -486,12 +517,7 @@ final class BighelpShortcutService: @unchecked Sendable {
     }
 
     private func prepareChat(sessionID: String, in featureStore: ShellFeatureStore) throws -> ChatModel {
-        let route = AppRoute.chat(conversationID: sessionID)
-        guard
-            featureStore.prepare(route),
-            case .chat(let model)? = featureStore.preparedModel(for: route)
-        else { throw BighelpShortcutServiceError.sessionUnavailable }
-        return model
+        try BighelpShortcutWorkspace.chatModel(sessionID: sessionID, in: featureStore)
     }
 
     private func applyModel(

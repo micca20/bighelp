@@ -10,7 +10,9 @@ struct BighelpV2DefaultsModifier: ViewModifier {
         // Native toggles, menus and navigation links retain their platform
         // interaction styles; V2's own button components opt in explicitly.
         content
+            #if !os(visionOS) // visionOS fills tinted toolbar buttons; keep its glass.
             .tint(theme.action)
+            #endif
             .foregroundStyle(theme.primaryText)
     }
 }
@@ -193,7 +195,7 @@ private struct BighelpV3ButtonStyle: ButtonStyle {
                             .allowsHitTesting(false)
                     }
                 }
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
             if #available(iOS 26.0, *), !reduceTransparency {
                 let glass: Glass = filled
                     ? .regular.tint(theme.action).interactive()

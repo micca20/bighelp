@@ -5,7 +5,7 @@ final class ChatStreamingAnchorUITests: BighelpUITestCase {
     @MainActor
     func testSendingFromHistoryReturnsToTheLiveAnswer() {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-chat-sidebar-collapsed", "-test-tool-disclosure-scroll", "-test-canvas-stream"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-tool-disclosure-scroll", "-test-canvas-stream"]
         app.launchEnvironment["BIGHELP_CANVAS_RESUME_NOTIFICATION"] = "app.loopdy.fixture.send-from-history.\(UUID().uuidString)"
         app.launch()
         defer { app.terminate() }
@@ -63,7 +63,7 @@ final class ChatStreamingAnchorUITests: BighelpUITestCase {
     @MainActor
     func testSecondToolTurnRetainsEarlierMessagesAndReturnsToLatest() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-chat-sidebar-collapsed", "-test-tool-stream", "-test-tool-stream-two-turns"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-tool-stream", "-test-tool-stream-two-turns"]
         app.launch()
         let newChat = chatNewChatButton(in: app).waitForExistence(timeout: 5)
             ? chatNewChatButton(in: app) : app.buttons["root.new-chat"]
@@ -113,7 +113,7 @@ final class ChatStreamingAnchorUITests: BighelpUITestCase {
             Unmanaged<XCTestExpectation>.fromOpaque(observer).release()
         }
         app.launchEnvironment["BIGHELP_TOOL_STREAM_COMPLETION_NOTIFICATION"] = completionName
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-chat-sidebar-collapsed", "-test-tool-stream"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-companion-disabled", "-test-tool-stream"]
         if long { app.launchArguments.append("-test-tool-stream-long") }
         if expanded { app.launchArguments.append("-test-tool-stream-expanded") }
         if backgroundChat { app.launchArguments.append("-test-two-chat-stream") }

@@ -77,7 +77,8 @@ struct SessionStatusRailView: View {
         .simultaneousGesture(fittingVerticalDragGesture)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.session-status-rail")
-        .frame(maxWidth: 760, alignment: horizontalSizeClass == .regular ? .center : .leading)
+        .frame(maxWidth: ChatCanvasLayout.regularLaneMaximumWidth,
+               alignment: horizontalSizeClass == .regular ? .center : .leading)
         .frame(maxWidth: .infinity, alignment: horizontalSizeClass == .regular ? .center : .leading)
     }
 

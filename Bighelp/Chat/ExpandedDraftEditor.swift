@@ -102,7 +102,7 @@ struct ExpandedDraftEditor: View {
 
                 if !isCompactHeight { composerActions }
             }
-            .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
+            .frame(maxWidth: horizontalSizeClass == .regular ? ChatCanvasLayout.regularLaneMaximumWidth : .infinity)
         }
         .padding(.horizontal, horizontalSizeClass == .regular ? BighelpTokens.space24 : BighelpTokens.space16)
         .padding(.vertical, isCompactHeight ? BighelpTokens.space4 : BighelpTokens.space12)

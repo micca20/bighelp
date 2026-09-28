@@ -73,6 +73,7 @@ extension Color {
 
 /// Every widget's frame: the app's page color with a soft glow of the bubble
 /// color, text in the app's colors, and the colors in the environment.
+#if !os(visionOS) // Widget-only; Vision Pro has no widget extension.
 struct BighelpWidgetScaffold<Content: View>: View {
     let snapshot: BighelpWidgetSnapshot
     @ViewBuilder let content: Content
@@ -109,6 +110,7 @@ extension WidgetFamily {
         }
     }
 }
+#endif
 
 /// The agent's real picture (or its initial), ringed in the bubble color with
 /// a badge for the work while it runs.

@@ -241,9 +241,11 @@ private final class BighelpLiveBuzzKitSDK: BighelpAwaitableBuzzKitSDK {
     }
 
     func observeActivities() {
+        #if canImport(ActivityKit) // Vision Pro has no Live Activities.
         if #available(iOS 16.2, *) {
             BuzzKit.activities.observe(LoopdySessionActivityAttributes.self)
         }
+        #endif
     }
 }
 

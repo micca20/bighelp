@@ -104,10 +104,16 @@ struct ProviderUsageOverlay: View {
         let shape = RoundedRectangle(cornerRadius: 36, style: .continuous)
         if reduceTransparency {
             shape.fill(theme.surface)
-        } else if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.regular, in: shape)
         } else {
-            shape.fill(.ultraThinMaterial)
+            #if os(visionOS)
+            Color.clear.glassBackgroundEffect(in: shape)
+            #else
+            if #available(iOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: shape)
+            } else {
+                shape.fill(.ultraThinMaterial)
+            }
+            #endif
         }
     }
 

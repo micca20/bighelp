@@ -93,6 +93,11 @@ final class SettingsStore {
         didSet { defaults.set(voiceConversationMode.rawValue, forKey: Keys.voiceConversationMode) }
     }
 
+    /// Vision Pro: a quick pinch on the agent in the room talks or types.
+    var spatialAvatarPinchAction: SpatialAvatarPinchAction {
+        didSet { defaults.set(spatialAvatarPinchAction.rawValue, forKey: Keys.spatialAvatarPinchAction) }
+    }
+
     var liveVoiceProvider: LiveVoiceProvider {
         didSet { defaults.set(liveVoiceProvider.rawValue, forKey: Keys.liveVoiceProvider) }
     }
@@ -255,6 +260,9 @@ final class SettingsStore {
         voiceConversationMode = VoiceConversationMode(
             rawValue: defaults.string(forKey: Keys.voiceConversationMode) ?? ""
         ) ?? .codexLive
+        spatialAvatarPinchAction = SpatialAvatarPinchAction(
+            rawValue: defaults.string(forKey: Keys.spatialAvatarPinchAction) ?? ""
+        ) ?? .talk
         liveVoiceProvider = LiveVoiceProvider(
             rawValue: defaults.string(forKey: Keys.liveVoiceProvider) ?? ""
         ) ?? .codexSubscription
@@ -847,6 +855,7 @@ private extension SettingsStore {
         static let voiceSpeed = "loopdy.demo.voiceSpeed"
         static let voiceMode = "loopdy.voice.mode"
         static let voiceConversationMode = "loopdy.voice.conversation-mode"
+        static let spatialAvatarPinchAction = "bighelp.spatial-avatar.pinch-action"
         static let liveVoiceProvider = "loopdy.voice.live.provider"
         static let codexLiveVoice = "loopdy.voice.live.codex-voice"
         static let apiLiveVoice = "loopdy.voice.live.api-voice"

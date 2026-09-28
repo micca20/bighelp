@@ -64,7 +64,6 @@ extension RootShellView {
     /// tab's own chat gets ☰ and the tab bar; a chat picked from the full list
     /// or opened from somewhere else (Feed, a task, a deeper page) gets Back.
     func homeChrome(for route: AppRoute) -> AgentHomeChrome {
-        guard !usesPersistentSidebar else { return AgentHomeChrome() }
         let isHome = appState.selectedTab == .sessions && appState.path.count == 1 && appState.path.first == route
             && !appState.chatOpenedFromList
         return AgentHomeChrome(
@@ -117,7 +116,7 @@ extension RootShellView {
 
     /// Opens the home chat once at launch, after saved chats have loaded.
     func autoOpenHomeChatIfNeeded() {
-        guard opensHomeChat, !didAutoOpenHomeChat, !usesPersistentSidebar,
+        guard opensHomeChat, !didAutoOpenHomeChat,
               appState.selectedTab == .sessions, appState.path.isEmpty,
               sessionCatalog.hasLoadedState, currentWorkspaceOwner != nil, homeAgent != nil else { return }
         didAutoOpenHomeChat = true
@@ -132,7 +131,7 @@ extension RootShellView {
 
     func switchHomeAgent(to agent: AgentProfile) {
         agents.select(agent.id)
-        if appState.selectedTab == .sessions, !usesPersistentSidebar { openHomeChat(replacing: true) }
+        if appState.selectedTab == .sessions { openHomeChat(replacing: true) }
     }
 
     /// Header New chat: pick one agent for a 1:1 chat or several for a group.
@@ -376,13 +375,13 @@ extension RootShellView {
             .sheet(isPresented: $isAgentSwitcherPresented, onDismiss: runAfterHomeSheet) {
                 agentSwitcherSheet
             }
-            .sheet(isPresented: $isHomeDrawerPresented, onDismiss: runAfterHomeSheet) {
+            .modifier(HomeMenuPresentation(isPresented: $isHomeDrawerPresented, onDismiss: runAfterHomeSheet) {
                 homeDrawer
                     .task {
                         // Hosts paired through bighelp Link (no independent hosts yet).
                         if hostRegistry?.hosts.isEmpty != false, linkDevices.loadState == .idle { await linkDevices.load() }
                     }
-            }
+            })
     }
 
     private func agentProfileSheet(_ agent: AgentProfile) -> some View {

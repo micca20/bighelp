@@ -250,7 +250,9 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
         table.selfSizingInvalidation = .enabled
         table.sectionHeaderTopPadding = 0
         table.allowsSelection = false
+        #if !os(visionOS)
         table.keyboardDismissMode = .interactive
+        #endif
         table.contentInsetAdjustmentBehavior = .automatic
         table.alwaysBounceVertical = true
         table.accessibilityIdentifier = "chat.timeline"
@@ -545,7 +547,7 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
             case .transcript(.entry(.message(let item))), .earlierMessage(let item):
                 guard case .message(let text) = item.content else { return 240 }
                 let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: tableView.traitCollection)
-                let width = max(80, min(tableView.bounds.width - 40, 760))
+                let width = max(80, min(tableView.bounds.width - 40, ChatCanvasLayout.regularLaneMaximumWidth))
                 let columns = max(10, width / (font.pointSize * 0.5))
                 let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
                     .reduce(CGFloat.zero) { $0 + max(1, ceil(CGFloat($1.count) / columns)) }

@@ -470,13 +470,16 @@ final class VoiceModel {
                 to: transcript,
                 conversationID: conversationID,
                 onDraft: { [weak self] draft in
-                    guard let self, generation == self.turnGeneration, self.status == .working else { return }
+                    guard let self, generation == self.turnGeneration, self.status == .working,
+                          !ChatSilentReply.mayBecomeMarker(draft) else { return }
                     self.liveAgentTranscript = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             )
             guard generation == turnGeneration, isActive || isTurnHandedOff else { return }
             isAgentRunActive = false
-            let normalizedReply = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // The person spoke, so a bare marker gets Hermes' notice (ChatSilentReply).
+            let normalizedReply = ChatSilentReply.isMarker(reply.text)
+                ? ChatSilentReply.notice : reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalizedReply.isEmpty else { throw VoiceSessionError.emptyResponse }
             if isTurnHandedOff {
                 onCompletedTurn(transcript, reply)

@@ -189,7 +189,7 @@ struct BotModeCreateRoomView: View {
             .padding(.vertical, BighelpTokens.space16)
             .bighelpShellContentWidth()
         }
-        .scrollDismissesKeyboard(.interactively)
+        .dismissesKeyboardOnScroll(true)
         .safeAreaInset(edge: .bottom) { createBar }
     }
 

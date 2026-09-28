@@ -6,7 +6,7 @@ final class ChatBuild2UITests: BighelpUITestCase {
     private func launch() -> XCUIApplication {
         XCUIDevice.shared.orientation = .portrait
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-v3-header-context", "-test-chat-sidebar-expanded", "-loopdy.demo.appearance", "light"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-v3-header-context", "-loopdy.demo.appearance", "light"]
         app.launch()
         return app
     }
@@ -82,8 +82,7 @@ final class ChatBuild2UITests: BighelpUITestCase {
             XCUIDevice.shared.appearance = mode == "dark" ? .dark : .light
             let app = makeApp()
             app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat",
-                                   "-preview-ui-v3", "-test-v3-header-context", "-test-chat-sidebar-collapsed",
-                                   "-loopdy.demo.appearance", mode]
+                                   "-preview-ui-v3", "-test-v3-header-context", "-loopdy.demo.appearance", mode]
             app.launch()
             app.textViews["chat.composer.text"].tap()
             app.buttons["chat.options"].tap()

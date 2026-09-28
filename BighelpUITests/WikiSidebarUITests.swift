@@ -5,7 +5,7 @@ final class WikiSidebarUITests: BighelpUITestCase {
     @MainActor
     func testRetiredFeaturesAreAbsentFromChatAndSettings() {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat"]
         app.launch()
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
         openChatWorkspaceMenu(in: app)

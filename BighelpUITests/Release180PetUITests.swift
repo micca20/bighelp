@@ -48,7 +48,7 @@ final class Release180PetUITests: BighelpUITestCase {
     @MainActor
     func testAdventurousPetActuallyTravelsAndLeavesControlsUsable() {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-companion-character", "clip", "-test-companion-adventure", "on", "-test-companion-scale", "1", "-start-chat", "-preview-ui-v3", "-test-v3-header-context", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-companion-character", "clip", "-test-companion-adventure", "on", "-test-companion-scale", "1", "-start-chat", "-preview-ui-v3", "-test-v3-header-context"]
         app.launch()
         let pet = app.descendants(matching: .any)["companion-chat"].firstMatch
         XCTAssertTrue(pet.waitForExistence(timeout: 6))
@@ -96,7 +96,7 @@ final class Release180PetUITests: BighelpUITestCase {
     private func launch(chat: Bool = false) -> XCUIApplication {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-companion-character", "clip", "-test-companion-reduced-motion"]
-        if chat { app.launchArguments += ["-start-chat", "-preview-ui-v3", "-test-v3-header-context", "-test-chat-sidebar-collapsed"] }
+        if chat { app.launchArguments += ["-start-chat", "-preview-ui-v3", "-test-v3-header-context"] }
         app.launch()
         return app
     }

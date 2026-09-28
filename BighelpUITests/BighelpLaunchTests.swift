@@ -533,97 +533,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
     }
 
     @MainActor
-    func testIPadSidebarContentsStayInsideBothEdges() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad-only sidebar") }
-        defer { XCUIDevice.shared.orientation = .portrait }
-        let app = makeApp()
-        app.launchArguments = [
-            "-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-chat-sidebar-expanded", "-loopdy.demo.appearance", "light",
-        ]
-        app.launch()
-
-        for (orientation, name) in [(UIDeviceOrientation.landscapeLeft, "landscape"), (.portrait, "portrait")] {
-            XCUIDevice.shared.orientation = orientation
-            let sidebar = app.descendants(matching: .any)["quick-workspace.persistent-sidebar"].firstMatch
-            XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
-            let close = app.buttons["menu.done"]
-            XCTAssertTrue(close.waitForExistence(timeout: 5))
-            let bounds = sidebar.frame.intersection(app.frame)
-            let controls = sidebar.descendants(matching: .button).allElementsBoundByIndex
-            XCTAssertGreaterThan(controls.count, 5)
-            for control in controls where !control.frame.isEmpty {
-                XCTAssertGreaterThanOrEqual(control.frame.minX, bounds.minX,
-                    "\(name): \(control.identifier) clips at leading edge")
-                XCTAssertLessThanOrEqual(control.frame.maxX, bounds.maxX,
-                    "\(name): \(control.identifier) clips at trailing edge")
-            }
-            for label in sidebar.descendants(matching: .staticText).allElementsBoundByIndex where !label.frame.isEmpty {
-                XCTAssertGreaterThanOrEqual(label.frame.minX, bounds.minX,
-                    "\(name): \(label.label) clips at leading edge")
-                XCTAssertLessThanOrEqual(label.frame.maxX, bounds.maxX,
-                    "\(name): \(label.label) clips at trailing edge")
-            }
-            saveV2Evidence(app, name: "sidebar-contained-\(name)")
-        }
-    }
-
-    @MainActor
-    func testIPadChatUsesPersistentCollapsibleSidebarAndRecentersTheCanvas() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad-only canvas") }
-        XCUIDevice.shared.orientation = .portrait
-        defer { XCUIDevice.shared.orientation = .portrait }
-        let app = makeApp()
-        app.launchArguments = [
-            "-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-chat-sidebar-expanded", "-test-v3-header-context", "-loopdy.demo.appearance", "light",
-        ]
-        app.launch()
-        XCUIDevice.shared.orientation = .landscapeRight
-        expectation(for: NSPredicate { _, _ in app.frame.width > app.frame.height }, evaluatedWith: app)
-        waitForExpectations(timeout: 10)
-
-        let sidebar = app.descendants(matching: .any)["quick-workspace.persistent-sidebar"]
-        let picker = app.buttons["chat.session-controls"]
-        let composer = app.descendants(matching: .any)["chat.composer-shell"].firstMatch
-        let canvas = app.descendants(matching: .any)["chat.canvas"].firstMatch
-        XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
-        XCTAssertGreaterThanOrEqual(picker.frame.minX, canvas.frame.minX + 16)
-        XCTAssertEqual(composer.frame.midX, canvas.frame.midX, accuracy: 1,
-                       "The readable chat and composer column must center inside the open canvas")
-        saveV2Evidence(app, name: "restored-ipad-sidebar-open")
-
-        app.buttons["menu.done"].tap()
-        XCTAssertTrue(sidebar.waitForNonExistence(timeout: 5))
-        // Quick Workspace now reopens from the ⋯ menu; the back button leads the header.
-        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
-        XCTAssertLessThan(app.buttons["chat.back"].frame.maxX, picker.frame.minX)
-        expectation(for: NSPredicate { _, _ in
-            abs(composer.frame.midX - app.frame.midX) <= 1
-        }, evaluatedWith: app)
-        waitForExpectations(timeout: 5)
-        XCTAssertEqual(composer.frame.midX, app.frame.midX, accuracy: 1)
-        saveV2Evidence(app, name: "restored-ipad-sidebar-collapsed")
-
-        app.terminate()
-        app.launchArguments = [
-            "-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-loopdy.demo.appearance", "light",
-        ]
-        app.launch()
-        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.descendants(matching: .any)["quick-workspace.persistent-sidebar"].exists)
-        openChatWorkspaceMenu(in: app)
-        XCTAssertTrue(
-            app.descendants(matching: .any)["quick-workspace.persistent-sidebar"]
-                .waitForExistence(timeout: 5)
-        )
-    }
-
-    @MainActor
     func testLiveThinkingCardShowsNativeTextOutsideCollapsedTools() throws {
         let app = makeApp()
         app.launchArguments = [
@@ -746,7 +655,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let app = makeApp()
         let common = [
             "-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-chat-sidebar-expanded", "-test-session-reasoning-high",
+            "-test-session-reasoning-high",
             "-loopdy.demo.appearance", "light",
         ]
         app.launchArguments = common + ["-test-reasoning-activity"]
@@ -821,8 +730,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-v3-header-context", "-test-chat-sidebar-expanded",
-            "-loopdy.demo.appearance", "light"]
+            "-test-v3-header-context", "-loopdy.demo.appearance", "light"]
         if accessibility {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
@@ -890,87 +798,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
     }
 
     @MainActor
-    func testV3IPadHeaderUsesFullWidthAndLargerAlignedControls() throws {
-        try verifyV3IPadHeader()
-    }
-
-    @MainActor
-    func testV3IPadHeaderInLandscape() throws {
-        try verifyV3IPadHeader(landscape: true)
-    }
-
-    @MainActor
-    func testV3IPadHeaderAtAccessibilityXXXL() throws {
-        try verifyV3IPadHeader(accessibility: true)
-    }
-
-    @MainActor
-    private func verifyV3IPadHeader(landscape: Bool = false, accessibility: Bool = false) throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad-only geometry") }
-        XCUIDevice.shared.orientation = .portrait
-        defer { XCUIDevice.shared.orientation = .portrait }
-        let app = makeApp()
-        // No interface-version argument: this also exercises the real V3 default.
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-v3-header-context", "-test-chat-sidebar-expanded",
-            "-loopdy.demo.appearance", "light"]
-        if accessibility {
-            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        }
-        app.launch()
-        let sidebar = app.descendants(matching: .any)["quick-workspace.persistent-sidebar"]
-        let back = app.buttons["chat.back"]
-        if accessibility {
-            XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
-            XCTAssertFalse(sidebar.exists)
-        } else {
-            XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
-        }
-        XCUIDevice.shared.orientation = landscape ? .landscapeRight : .portrait
-        expectation(for: NSPredicate { _, _ in
-            landscape ? app.frame.width > app.frame.height : app.frame.height > app.frame.width
-        }, evaluatedWith: app)
-        waitForExpectations(timeout: 10)
-        app.activate()
-        let create = chatNewChatButton(in: app)
-        let picker = app.buttons["chat.session-controls"]
-        let context = app.buttons["chat.session-context"]
-        let canvas = app.descendants(matching: .any)["chat.canvas"].firstMatch
-        XCTAssertEqual(app.descendants(matching: .any)["chat.header-surface"].firstMatch.value as? String, "UI V3")
-        // Quick Workspace lives inside the ⋯ menu, never as a header button.
-        XCTAssertFalse(app.buttons["chat.workspace-menu"].exists)
-        if accessibility {
-            XCTAssertGreaterThanOrEqual(picker.frame.minX, back.frame.maxX + 8)
-        } else {
-            XCTAssertGreaterThanOrEqual(picker.frame.minX, canvas.frame.minX + 16)
-            XCTAssertLessThanOrEqual(picker.frame.minX, canvas.frame.minX + 32)
-        }
-        XCTAssertEqual(create.frame.maxX, canvas.frame.maxX - 16, accuracy: 1)
-        XCTAssertEqual(create.frame.width, 48, accuracy: 0.5)
-        XCTAssertEqual(create.frame.height, 48, accuracy: 0.5)
-        XCTAssertLessThan(picker.frame.midX, canvas.frame.midX)
-        XCTAssertFalse(app.staticTexts["chat.session-title"].exists)
-        XCTAssertTrue(app.otherElements["chat.session-status-rail"].firstMatch.frame.contains(context.frame))
-        let raw = XCUIScreen.main.screenshot().image
-        let image = UIGraphicsImageRenderer(size: app.frame.size).image { _ in
-            raw.draw(in: CGRect(origin: .zero, size: app.frame.size))
-        }
-        let createInk = try headerGlyphBounds(in: create.frame, screenshot: image, appFrame: app.frame)
-        XCTAssertGreaterThanOrEqual(createInk.width, 24)
-        XCTAssertEqual(createInk.midY, create.frame.midY - 1.5, accuracy: 0.75)
-        XCTAssertTrue(create.wait(for: \.isHittable, toEqual: true, timeout: 5))
-        XCTAssertTrue(picker.wait(for: \.isHittable, toEqual: true, timeout: 5))
-        XCTAssertTrue(context.wait(for: \.isHittable, toEqual: true, timeout: 5))
-        XCTAssertFalse(app.buttons["chat.people"].exists)
-        saveV2Evidence(app, name: "v3-ipad-header-\(landscape ? "landscape" : accessibility ? "accessibility" : "portrait")")
-        if !accessibility {
-            app.buttons["menu.done"].tap()
-            XCTAssertTrue(sidebar.waitForNonExistence(timeout: 5))
-            XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
-        }
-    }
-
-    @MainActor
     func testV3ModelPickerOccupiesHeaderCenter() throws {
         try verifyV3HeaderCenter()
     }
@@ -991,8 +818,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-            "-test-v3-header-context", "-test-chat-sidebar-expanded",
-            "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", "light"]
+            "-test-v3-header-context", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", "light"]
         if accessibility {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
@@ -1073,7 +899,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
     @MainActor
     private func verifyV3PreferredControls(accessibility: Bool = false, dark: Bool = false) throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-chat-sidebar-collapsed", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", dark ? "dark" : "light", "-loopdy.appearance.theme", "loopdy"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", dark ? "dark" : "light", "-loopdy.appearance.theme", "loopdy"]
         if accessibility {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
@@ -3679,7 +3505,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
     @MainActor
     func testCachedTranscriptHasNoHydrationOverlay() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-held-session-history", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-held-session-history"]
         app.launch()
         let sessions = app.buttons["tab.sessions"]
         XCTAssertTrue(sessions.waitForExistence(timeout: 5)); sessions.tap()
@@ -3730,7 +3556,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
     func testCachedSessionIsUsableBeforeMetadataAndHistoryReturn() throws {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-held-session-metadata",
-            "-test-held-session-history", "-test-chat-sidebar-collapsed"]
+            "-test-held-session-history"]
         app.launch()
         let sessionsTab = app.buttons["tab.sessions"]
         XCTAssertTrue(sessionsTab.waitForExistence(timeout: 5)); sessionsTab.tap()
@@ -3772,7 +3598,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
     @MainActor
     func testRestoringIdleChatReturnsToSessionsOnFirstTap() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-held-session-history", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-held-session-history"]
         app.launch()
         for destination in ["sessions", "home"] {
             if destination == "home" { openActivity(in: app) }
@@ -3842,7 +3668,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
     @MainActor
     func testV3ChatSidebarDestinationsNavigateOnFirstTap() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays"]
         app.launch()
         for origin in ["home", "sessions"] {
             for destination in ["home", "sessions"] {
@@ -3884,7 +3710,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let points = [CGVector(dx: 0.1, dy: 0.1), CGVector(dx: 0.9, dy: 0.1), CGVector(dx: 0.9, dy: 0.5)]
         for (index, point) in points.enumerated() {
             let app = makeApp()
-            app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-chat-sidebar-collapsed"]
+            app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays"]
             app.launch()
             let newChat = app.buttons["root.new-chat"]
             XCTAssertTrue(newChat.waitForExistence(timeout: 3))

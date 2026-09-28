@@ -149,6 +149,9 @@ struct SettingsView: View {
             BighelpDeferredSection { appearance }
             BighelpDeferredSection { chatExperience }
             BighelpDeferredSection { voiceExperience }
+            #if os(visionOS)
+            BighelpDeferredSection { SpatialAvatarSettingsSection(settings: settings) }
+            #endif
             BighelpDeferredSection { providerUsageSection }
             BighelpDeferredSection {
                 settingsMenuGroup("Notifications & Access", sections: [.notifications, .permissions])

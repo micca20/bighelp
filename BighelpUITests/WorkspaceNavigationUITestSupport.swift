@@ -5,42 +5,8 @@ extension BighelpUITestCase {
     func openRootDestination(_ destination: String, sidebarIdentifier: String,
                              in app: XCUIApplication,
                              file: StaticString = #filePath, line: UInt = #line) {
-        let persistentDestination = app.buttons["root.destination.\(destination)"].firstMatch
-        let sidebar = app.collectionViews["root.sidebar"]
-        if sidebar.exists {
-            // AX can call a row hittable while its center is under the bottom toolbar.
-            // Scroll the real sidebar before the one navigation tap.
-            let top = app.navigationBars.firstMatch.frame.maxY
-            let bottom = app.buttons.matching(identifier: "root.new-chat").allElementsBoundByIndex
-                .filter { $0.frame.midX > sidebar.frame.maxX && $0.frame.midY > sidebar.frame.midY }
-                .map { $0.frame.minY }.min() ?? sidebar.frame.maxY
-            let destinationIDs = ["chats", "agents", "scheduledTasks", "activity", "workspace",
-                                  "directLinks", "diagnostics", "settings"].map { "root.destination.\($0)" }
-            for _ in 0..<8 {
-                if persistentDestination.exists && persistentDestination.isHittable
-                    && persistentDestination.frame.minY >= top
-                    && persistentDestination.frame.maxY <= bottom {
-                    persistentDestination.tap()
-                    return
-                }
-                let firstVisibleIndex = sidebar.buttons.allElementsBoundByIndex
-                    .compactMap { destinationIDs.firstIndex(of: $0.identifier) }.min() ?? 0
-                let targetIndex = destinationIDs.firstIndex(of: "root.destination.\(destination)") ?? 0
-                let moveDown = persistentDestination.exists
-                    ? persistentDestination.frame.minY < top
-                    : targetIndex < firstVisibleIndex
-                let upper = sidebar.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.45))
-                let lower = sidebar.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.68))
-                // A full flick can skip the target and virtualize it out of the AX tree.
-                (moveDown ? upper : lower).press(forDuration: 0.05,
-                    thenDragTo: moveDown ? lower : upper, withVelocity: .slow,
-                    thenHoldForDuration: 0.1)
-            }
-            XCTFail("Persistent sidebar destination must be fully visible: \(destination)",
-                    file: file, line: line)
-        } else {
-            openSidebarDestination(sidebarIdentifier, in: app, file: file, line: line)
-        }
+        // iPad and iPhone share ☰; there's no always-open sidebar.
+        openSidebarDestination(sidebarIdentifier, in: app, file: file, line: line)
     }
 
     @MainActor
@@ -54,10 +20,10 @@ extension BighelpUITestCase {
 
     @MainActor
     func openSettings(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        // Settings sits in ☰ on iPhone and in the sidebar on iPad.
+        // Settings sits in ☰ on iPhone and iPad.
         openRootTab("tab.profile", in: app, timeout: 10, file: file, line: line)
         XCTAssertTrue(app.descendants(matching: .any)["settings.screen"].firstMatch.waitForExistence(timeout: 5),
-                      "The Settings destination must open through the current sidebar.", file: file, line: line)
+                      "The Settings destination must open through ☰.", file: file, line: line)
     }
 
     /// Root lists keep search under the large title; it appears on pull-down.

@@ -9,13 +9,8 @@ from pathlib import Path
 
 IPAD_TESTS = (
     "BighelpCardCatalogUITests/testIPadUsesReadableTwoColumnCatalogLayout",
-    "BighelpLaunchTests/testIPadChatUsesPersistentCollapsibleSidebarAndRecentersTheCanvas",
     "BighelpLaunchTests/testIPadReasoningChipReflectsRealActiveAndCompletedLifecycle",
-    "BighelpLaunchTests/testIPadSidebarContentsStayInsideBothEdges",
     "BighelpLaunchTests/testProjectChangesMarkdownPreviewAndPanelExpansionOnIPad",
-    "BighelpLaunchTests/testV3IPadHeaderAtAccessibilityXXXL",
-    "BighelpLaunchTests/testV3IPadHeaderInLandscape",
-    "BighelpLaunchTests/testV3IPadHeaderUsesFullWidthAndLargerAlignedControls",
     "BighelpLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRail",
     "BighelpLaunchTests/testV3IPadWideModelPopoverAndCenteredChangesRailInLandscape",
     "BighelpLaunchTests/testV3IPadWideModelPopoverAtAccessibilityXXXL",
@@ -23,6 +18,8 @@ IPAD_TESTS = (
     "SimplifiedShellUITests/testChatMatchesUnclutteredReferenceAndDisclosesComposerControls",
     "SimplifiedShellUITests/testAgentsDestinationSearchGroupsAndDrawerOrder",
     "AgentsUITests/testLastRowClearsSearchAndNavigationInPortraitAndLandscape",
+    "IPadShellUITests/testMenuIsCollapsedBehindTheMenuButton",
+    "IPadShellUITests/testChatBubblesUseTheLandscapeWidth",
 )
 SELECTOR_PREFIX = "-only-testing:BighelpUITests/"
 

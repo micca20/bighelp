@@ -82,7 +82,7 @@ struct ChatComposer: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
 
                 composerControlRow
-                    .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
+                    .frame(maxWidth: horizontalSizeClass == .regular ? ChatCanvasLayout.regularLaneMaximumWidth : .infinity)
                     .companionComposerAnchor(.input)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("chat.composer-shell")
@@ -226,7 +226,7 @@ struct ChatComposer: View {
             )
             .padding(.leading, horizontalSizeClass == .regular ? companionRailReservation : 0)
             .padding(.trailing, companionRailReservation)
-            .frame(maxWidth: 760)
+            .frame(maxWidth: ChatCanvasLayout.regularLaneMaximumWidth)
             .frame(maxWidth: .infinity)
         }
     }

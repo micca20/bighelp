@@ -125,8 +125,6 @@ final class ChatModel {
     }
 
     var nativeMessageReactionSnapshots: [Int: NativeMessageReactionSnapshot] = [:]
-    /// Settings › Chat: reacting to an agent's message tells the agent.
-    var reactionsReachAgent = true
     /// Reactions set on a just-finished message before it had a saved row.
     var newestReactionRowByItemID: [String: Int] = [:]
     var pendingUnsavedReactionItemIDs: Set<String> = []

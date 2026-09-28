@@ -209,7 +209,7 @@ extension SettingsView {
         } header: {
             Text("Voice")
         } footer: {
-            Text("TTS listens on this phone and reads replies aloud with your agent's speech provider. GPT Live 1 is a live conversation with OpenAI.")
+            Text("TTS listens on this device and reads replies aloud with your agent's speech provider. GPT Live 1 is a live conversation with OpenAI.")
                 .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
@@ -246,7 +246,7 @@ extension SettingsView {
             Toggle(isOn: $settings.reactionsReachAgent) {
                 settingLabel(
                     "Agents see your reactions",
-                    detail: "React to a reply and your agent may answer."
+                    detail: "Your agent sees them the next time you message it."
                 )
             }
             .accessibilityIdentifier("settings.chat.reactions-reach-agent")

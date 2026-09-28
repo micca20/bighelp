@@ -41,6 +41,9 @@ struct BighelpApp: App {
     private let shortcutService: BighelpShortcutService
     @State private var reflectiveVisionCamera: ReflectiveVisionCamera
     @State private var providerLogoStore: ProviderLogoStore?
+    #if os(visionOS)
+    @State private var spatialAvatar: SpatialAvatarModel
+    #endif
     private let requiresLinkAccount: Bool
     private let clearLocalCache: @MainActor () async -> Bool
     @Environment(\.scenePhase) private var scenePhase
@@ -204,7 +207,29 @@ struct BighelpApp: App {
         _reflectiveVisionCamera = State(initialValue: ReflectiveVisionCamera())
         requiresLinkAccount = composition.requiresLinkAccount
         clearLocalCache = composition.clearLocalCache
+        #if os(visionOS)
+        _spatialAvatar = State(initialValue: Self.makeSpatialAvatar(composition, arguments: arguments))
+        #endif
     }
+
+    #if os(visionOS)
+    /// The agent in the room talks through the same live host as Shortcuts;
+    /// demo runs use the local fixtures.
+    private static func makeSpatialAvatar(_ composition: BighelpAppComposition,
+                                          arguments: [String]) -> SpatialAvatarModel {
+        let shortcuts = composition.shortcutService
+        #if DEBUG
+        if arguments.contains("-use-demo-fixtures") {
+            let demo = BighelpShortcutWorkspace(
+                appState: composition.appState, agents: composition.agentDirectory,
+                runtimeDefaults: composition.agentRuntimeDefaults, catalog: composition.sessionCatalog,
+                featureStore: composition.featureStore, newChatCoordinator: composition.newChatCoordinator)
+            return SpatialAvatarModel { demo }
+        }
+        #endif
+        return SpatialAvatarModel { try await shortcuts.connectedWorkspace() }
+    }
+    #endif
 
     private var nativeClarificationFixtureEnabled: Bool {
         #if DEBUG
@@ -245,7 +270,7 @@ struct BighelpApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: SpatialAvatarSceneID.main) {
             if isInjectedUnitTestHost {
                 Color.clear
             } else if isModelsPageFixture {
@@ -346,9 +371,16 @@ struct BighelpApp: App {
             .environment(\.bighelpUIV2Enabled, settings.uiV2Enabled)
             .environment(\.bighelpUIV3Enabled, settings.interfaceVersion == .v3)
             .environment(\.nerdModeEnabled, settings.nerdModeEnabled)
+            #if os(visionOS)
+            .modifier(SpatialAvatarMainWindowHooks(
+                model: spatialAvatar,
+                canIntroduce: hostRegistry.selectedHostID != nil || usesFixtureWorkspace))
+            // No app-wide tint here: visionOS would fill every toolbar button with it.
+            #else
             // Lavender (asset AccentColor, light/dark) for every control that
             // doesn't set its own tint, including switches that default to green.
             .tint(Color.accentColor)
+            #endif
             .environment(\.companionStore, companion)
             .environment(\.providerLogoStore, providerLogoStore)
             .environment(\.companionAgentScope, companionAgentScope)
@@ -428,6 +460,10 @@ struct BighelpApp: App {
             }
             }
         }
+        #if os(visionOS)
+        SpatialAvatarScenes(model: spatialAvatar, settings: settings, companion: companion,
+                            companionAgentScope: companionAgentScope, permissionCenter: permissionCenter)
+        #endif
     }
 
     private var isModelsPageFixture: Bool {

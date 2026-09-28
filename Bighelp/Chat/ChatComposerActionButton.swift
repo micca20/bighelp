@@ -256,10 +256,10 @@ struct AdaptiveComposerActionButton: View {
         case .voice:
             onVoice()
         case .send:
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            BighelpHaptics.tap()
             onSend()
         case .stop:
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            BighelpHaptics.tap(rigid: true)
             onStop()
         }
     }

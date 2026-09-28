@@ -487,7 +487,7 @@ struct MessageBubble: View {
 
     private func copy(_ value: String) {
         UIPasteboard.general.string = value
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        BighelpHaptics.success()
         if uiV3Enabled {
             // The native menu path has no visible badge; confirm for VoiceOver too.
             UIAccessibility.post(notification: .announcement, argument: "Copied")

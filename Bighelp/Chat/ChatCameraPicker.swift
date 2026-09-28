@@ -5,14 +5,25 @@ struct ChatCameraPicker: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
     let onCancel: () -> Void
 
+    /// Vision Pro doesn't let apps take photos, so the camera option hides there.
+    static var isAvailable: Bool {
+        #if os(visionOS)
+        false
+        #else
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+        #endif
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(onCapture: onCapture, onCancel: onCancel)
     }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let controller = UIImagePickerController()
+        #if !os(visionOS)
         controller.sourceType = .camera
         controller.cameraCaptureMode = .photo
+        #endif
         controller.delegate = context.coordinator
         return controller
     }

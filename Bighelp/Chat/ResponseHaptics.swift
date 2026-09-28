@@ -36,11 +36,15 @@ final class ResponseHapticsController {
     private let output: (() -> Void)?
     private let minimumInterval: TimeInterval
     private var lastPulseTime: TimeInterval?
+    #if !os(visionOS)
     private var generator: UIImpactFeedbackGenerator?
+    #endif
     weak var surface: UIView? {
         didSet {
             guard oldValue !== surface else { return }
+            #if !os(visionOS)
             generator = nil
+            #endif
             prepareGenerator()
         }
     }
@@ -75,13 +79,16 @@ final class ResponseHapticsController {
         if let output {
             output()
         } else {
+            #if !os(visionOS)
             prepareGenerator()
             generator?.impactOccurred(intensity: 0.5)
             generator?.prepare()
+            #endif
         }
     }
 
     private func prepareGenerator() {
+        #if !os(visionOS) // Vision Pro has no haptics.
         guard output == nil, generator == nil, let surface else { return }
         if #available(iOS 17.5, *) {
             generator = UIImpactFeedbackGenerator(style: .light, view: surface)
@@ -89,6 +96,7 @@ final class ResponseHapticsController {
             generator = UIImpactFeedbackGenerator(style: .light)
         }
         generator?.prepare()
+        #endif
     }
 
     /// Check UIKit at delivery time as child sheets can be owned inside ChatView

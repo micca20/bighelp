@@ -161,13 +161,8 @@ final class FloatingTabBarUITests: BighelpUITestCase {
             (name: "activity", root: "activity", sidebar: "", screen: "dashboard.screen"),
         ]
         for route in routes {
-            // Activity is one of the host's tools: Hermes Tools in the ☰ menu or the sidebar.
-            if route.sidebar.isEmpty, app.collectionViews["root.sidebar"].exists {
-                openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
-                let activity = app.buttons["workspace.open.activity"].firstMatch
-                XCTAssertTrue(activity.waitForExistence(timeout: 5), route.name)
-                activity.tap()
-            } else if route.sidebar.isEmpty { openActivity(in: app) }
+            // Activity is one of the host's tools: Hermes Tools in the ☰ menu.
+            if route.sidebar.isEmpty { openActivity(in: app) }
             else { openRootDestination(route.root, sidebarIdentifier: route.sidebar, in: app) }
             let screen = app.descendants(matching: .any)[route.screen].firstMatch
             XCTAssertTrue(screen.waitForExistence(timeout: 5), route.name)

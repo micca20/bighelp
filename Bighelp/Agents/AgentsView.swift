@@ -117,7 +117,7 @@ struct AgentsView: View {
             .contentMargins(.top, BighelpTokens.space4, for: .scrollContent)
             .contentMargins(.bottom, BighelpTokens.space24, for: .scrollContent)
             .environment(\.defaultMinListRowHeight, BighelpTokens.hitTarget)
-            .scrollDismissesKeyboard(.interactively)
+            .dismissesKeyboardOnScroll(true)
             .accessibilityIdentifier("agents.screen")
             .searchable(text: $query, isPresented: $isSearchPresented,
                         placement: .navigationBarDrawer, prompt: "Search agents and groups")

@@ -96,7 +96,7 @@ struct ReferenceHubDrawer: View {
                 }
                 .padding(.vertical, BighelpTokens.space8)
             }
-            .scrollDismissesKeyboard(.never)
+            .dismissesKeyboardOnScroll(false)
             .frame(
                 minHeight: reservesResultsSpace ? (verticalSizeClass == .compact ? 60 : 120) : nil,
                 maxHeight: reservesResultsSpace ? (verticalSizeClass == .compact ? 60 : 120)
@@ -305,7 +305,7 @@ struct ReferenceDraftStrip: View {
                         ReferenceSnapshotSource(snapshot: value.snapshot)
                     }
                 }
-                    .frame(maxHeight: verticalSizeClass == .compact ? 60 : 160).scrollDismissesKeyboard(.never)
+                    .frame(maxHeight: verticalSizeClass == .compact ? 60 : 160).dismissesKeyboardOnScroll(false)
             }
             if !hub.pendingChanges.isEmpty {
                 ScrollView {
@@ -321,7 +321,7 @@ struct ReferenceDraftStrip: View {
                             .frame(minHeight: 44)
                             .accessibilityIdentifier("reference-hub.confirm-changes")
                     }
-                }.frame(maxHeight: verticalSizeClass == .compact ? 80 : 200).scrollDismissesKeyboard(.never)
+                }.frame(maxHeight: verticalSizeClass == .compact ? 80 : 200).dismissesKeyboardOnScroll(false)
             }
             if let message = hub.message {
                 HStack {

@@ -183,7 +183,7 @@ struct AgentEditorView: View {
                 Text(deleteError ?? "")
             }
             .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
+            .dismissesKeyboardOnScroll(true)
             .background(theme.canvas.ignoresSafeArea())
             .navigationTitle(model.isEditing ? "Edit Agent" : "Agent Studio")
             .navigationBarTitleDisplayMode(.inline)
@@ -227,11 +227,13 @@ struct AgentEditorView: View {
                     .accessibilityLabel(model.isEditing ? "Save agent" : "Create agent")
                     .accessibilityIdentifier("agent.editor.save")
                 }
+                #if !os(visionOS) // Vision Pro's keyboard has its own dismiss key.
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { focusedField = nil }
                         .accessibilityLabel("Dismiss keyboard")
                 }
+                #endif
             }
         }
         // Starts once for the whole editor, including Advanced. See loadIfNeeded().

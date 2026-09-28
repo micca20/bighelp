@@ -6,7 +6,7 @@ final class ToolDisclosureUITests: BighelpUITestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3",
-                               "-test-chat-sidebar-collapsed", "-test-completed-turn-context", "-test-clarification-fallback",
+                               "-test-completed-turn-context", "-test-clarification-fallback",
                                "-loopdy.chat.foldCompletedTurns", "YES", "-loopdy.demo.appearance", "light"]
         app.launch()
         let timeline = app.tables["chat.timeline"]
@@ -67,7 +67,7 @@ final class ToolDisclosureUITests: BighelpUITestCase {
     @MainActor
     func testOpenedToolSurvivesEnclosingWorkTrailRecreation() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-chat-sidebar-collapsed", "-test-tool-disclosure-scroll", "-loopdy.chat.foldCompletedTurns", "NO"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-test-tool-disclosure-scroll", "-loopdy.chat.foldCompletedTurns", "NO"]
         app.launch()
         let trail = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat.work-trail.")).firstMatch
         XCTAssertTrue(app.tables["chat.timeline"].waitForExistence(timeout: 5))

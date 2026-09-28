@@ -8,7 +8,7 @@ extension ChatDestinationView {
     func performChatAction(_ action: ChatActionMenuAction) {
         switch action {
             case .camera:
-                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                guard ChatCameraPicker.isAvailable else {
                     attachmentRecoveryKind = nil
                     attachmentErrorMessage = "Camera capture is unavailable on this device."
                     return

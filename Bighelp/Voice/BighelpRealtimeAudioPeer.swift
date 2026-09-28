@@ -1,6 +1,10 @@
 import AVFoundation
 import Foundation
+#if os(visionOS)
+@preconcurrency import LiveKitWebRTC // Names mapped in WebRTCVisionNames.swift.
+#else
 @preconcurrency import WebRTC
+#endif
 
 /// Pure lifecycle state for native capture recovery. The peer owns the actual
 /// audio session and track; keeping these transitions separate makes route and

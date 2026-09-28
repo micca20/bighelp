@@ -15,7 +15,7 @@ struct BighelpGlassGroup<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
         if #available(iOS 26.0, *), isEnabled {
             GlassEffectContainer(spacing: spacing) { content }
         } else {

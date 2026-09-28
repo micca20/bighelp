@@ -469,7 +469,8 @@ extension ChatModel {
                 items: projectedItems,
                 activityEvents: events,
                 visibility: activityVisibility,
-                isBotMode: isBotMode
+                isBotMode: isBotMode,
+                isScheduled: sourceSession?.isCronSession == true
             )
             rebuildTranscriptIndexes(work: &work)
             recordProjectionWork(work)
@@ -506,7 +507,11 @@ extension ChatModel {
             items: suffixItems,
             activityEvents: suffixEvents,
             visibility: activityVisibility,
-            isBotMode: false
+            isBotMode: false,
+            isScheduled: sourceSession?.isCronSession == true,
+            after: projectedItems.last {
+                ($0.metadata.sourceOrder ?? .max) < invalidationOrder && ChatSilentReply.isConversationMessage($0)
+            }
         )
         rebuildTranscriptIndexes(work: &work)
         recordProjectionWork(work)
@@ -514,7 +519,7 @@ extension ChatModel {
 
     func appendProjectedMessage(_ item: TimelineItem) {
         guard !deferTranscriptMutationIfNeeded() else { return }
-        guard !ChatSilentReply.hides(item) else { return }
+        guard let item = silentReplyPresented(item) else { return }
         guard !isBotMode else {
             rebuildTranscript()
             return
@@ -530,6 +535,22 @@ extension ChatModel {
         recordProjectionWork(1)
     }
 
+    /// A live reply as shown (see ChatSilentReply), or nil when it stays silent.
+    private func silentReplyPresented(_ item: TimelineItem) -> TimelineItem? {
+        let lane: ChatSilentReply.Lane = isBotMode ? .room : sourceSession?.isCronSession == true ? .scheduled : .chat
+        // Only a finished bare marker in a chat needs what it answered.
+        var previous: TimelineItem?
+        if lane == .chat, item.metadata.delivery != "Streaming", case .message(let text) = item.content,
+           ChatSilentReply.isMarker(text), let index = items.lastIndex(where: { $0.id == item.id }) {
+            previous = items[..<index].last(where: ChatSilentReply.isConversationMessage)
+        }
+        switch ChatSilentReply.presentation(of: item, after: previous, lane: lane) {
+        case .show: return item
+        case .hide: return nil
+        case .notice: return ChatSilentReply.noticeItem(replacing: item)
+        }
+    }
+
     private func transcriptUpperOrder(_ entry: ChatTranscriptEntry) -> Int {
         switch entry {
         case .message(let item):
@@ -541,7 +562,7 @@ extension ChatModel {
 
     func updateProjectedMessage(_ item: TimelineItem) {
         guard !deferTranscriptMutationIfNeeded() else { return }
-        if ChatSilentReply.hides(item) {
+        guard let item = silentReplyPresented(item) else {
             removeProjectedMessage(id: item.id)
             return
         }

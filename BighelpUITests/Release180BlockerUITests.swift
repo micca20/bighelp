@@ -4,7 +4,7 @@ final class Release180BlockerUITests: BighelpUITestCase {
     @MainActor
     func testScratchpadOpensFromDiffHeader() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat"]
         app.launch()
         let attachment = app.buttons["chat.attachment"]
         XCTAssertTrue(attachment.waitForExistence(timeout: 5))
@@ -28,7 +28,7 @@ final class Release180BlockerUITests: BighelpUITestCase {
     @MainActor
     func testScratchpadRichDraftStagesMarkdownWithoutSending() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-preview-ui-v3", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-preview-ui-v3"]
         app.launch()
         let composer = app.textViews["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))

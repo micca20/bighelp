@@ -248,7 +248,7 @@ private struct BighelpNavigationGlass<S: InsettableShape>: ViewModifier {
     }
 
     private var supportsLiquidGlass: Bool {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
         if #available(iOS 26.0, *) { return true }
         #endif
         return false
@@ -282,7 +282,7 @@ private struct NavigationSurface<S: InsettableShape>: ViewModifier {
         case .thickMaterial:
             content.background(.thickMaterial, in: shape)
         case .regularLiquidGlass:
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
             if #available(iOS 26.0, *) {
                 content.glassEffect(isInteractive ? .regular.interactive() : .regular, in: shape)
             } else {

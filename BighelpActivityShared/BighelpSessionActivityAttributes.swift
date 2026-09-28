@@ -1,10 +1,12 @@
+#if canImport(ActivityKit)
 import ActivityKit
+#endif
 import Foundation
 import SwiftUI
 
 /// Keeps its original "Loopdy" name: push-started Live Activities name this type,
 /// and BuzzKit sends the type name to the push service.
-struct LoopdySessionActivityAttributes: ActivityAttributes, Hashable {
+struct LoopdySessionActivityAttributes: Hashable {
     struct ContentState: Codable, Hashable, Sendable {
         enum Phase: String, Codable, Hashable, Sendable {
             case thinking
@@ -231,3 +233,8 @@ struct BighelpActivityAgentMark: View {
             .accessibilityHidden(true)
     }
 }
+
+#if canImport(ActivityKit)
+// Vision Pro has no Live Activities; the same work state still drives the app there.
+extension LoopdySessionActivityAttributes: ActivityAttributes {}
+#endif

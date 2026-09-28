@@ -90,12 +90,13 @@ extension ChatModel {
                   items[currentIndex].id.utf8.elementsEqual(itemID.utf8),
                   items[currentIndex].role == item.role else { return }
             let role: DirectHermesReactionRole = item.role == .human ? .user : .assistant
-            guard native.publishMessageReactionReadback(
+            // Hermes tells the agent about the reaction at its next turn
+            // (display.message_reactions); the app sends nothing of its own.
+            _ = native.publishMessageReactionReadback(
                 result,
                 role: role,
                 connectionGeneration: connectionGeneration
-            ) else { return }
-            tellAgentAboutReaction(emoji, on: item, through: native)
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -114,15 +115,6 @@ extension ChatModel {
             }
             advanceNativeMessageReactionRevision()
         }
-    }
-
-    /// The agent sees a reaction to its message right away and may answer it.
-    private func tellAgentAboutReaction(_ emoji: String?, on item: TimelineItem,
-                                        through native: DirectHermesConversationClient) {
-        guard let emoji, item.role == .assistant, reactionsReachAgent, !isSending,
-              case .message(let text) = item.content else { return }
-        let note = ChatReactionNote.text(emoji: emoji, message: text)
-        Task { try? await native.sessionActions.submitHiddenNote(note) }
     }
 
     /// A reply that just finished streaming has no saved row yet. Hermes can
@@ -180,9 +172,8 @@ extension ChatModel {
                   native.sessionActionsConnectionGeneration == connectionGeneration,
                   itemIndexByID[item.id] != nil else { return }
             newestReactionRowByItemID[item.id] = result.rowID
-            guard native.publishMessageReactionReadback(result, role: role,
-                                                        connectionGeneration: connectionGeneration) else { return }
-            tellAgentAboutReaction(emoji, on: item, through: native)
+            _ = native.publishMessageReactionReadback(result, role: role,
+                                                      connectionGeneration: connectionGeneration)
         } catch {
             guard nativeConversationClient === native, let mapped else { return }
             nativeMessageReactionErrors[mapped] = Self.nativeMessageReactionErrorMessage(error)

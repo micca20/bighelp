@@ -425,7 +425,8 @@ struct BighelpAppComposition {
             ? { session, agent in
                 #if DEBUG
                 if let clarificationFixture { return clarificationFixture }
-                if arguments.contains("-test-canvas-stream") || arguments.contains("-test-tool-stream") {
+                if arguments.contains("-test-canvas-stream") || arguments.contains("-test-tool-stream")
+                    || arguments.contains("-test-silent-reply") {
                     return CanvasStreamingFixtureClient(senderID: session.agentIDs.first ?? "default")
                 }
                 #endif

@@ -58,7 +58,9 @@ is covered. Tap for a compact pill, touch and hold to open the chat. Settings �
 turns it off. Outside the app the Live Activity shows the agent's picture and the same icon (the plugin sends only
 a fixed category). Every phone chat uses this big-avatar header; only the Chat tab's first page has ☰ and the tab
 bar, any other chat (from the list, Feed, a task) has Back. Chat Info lives in ⋯ › People & Chat, and the line under
-the name says "Updating…" while a chat reloads from Hermes. iPad keeps its sidebar and the name-chip header.
+the name says "Updating…" while a chat reloads from Hermes. iPad works the same way, with no always-open sidebar:
+☰ slides the menu in from the leading edge, and chats use the width of the screen. On Vision Pro the agent can also
+stand in the room in its own volume (Settings › In your space).
 
 Widgets (`BighelpActivityShared`, rendered by the Live Activity extension) use the Colors picks through
 `BighelpWidgetSnapshot` palettes and show real agent pictures (`BighelpActivityAvatarStore`). **Your Agent** is the
@@ -79,9 +81,10 @@ The app icon badge means "something arrived while you were away": pushes set it,
 Shortcuts run with bighelp closed, in the background or open. The app closes its host connection in the
 background, so a Shortcut first proves the host answers (the agent list) and reconnects once if not.
 
-Reactions: reacting to an agent's reply sends it a hidden note, and it may answer; `[SILENT]` answers show nothing.
-Settings › Chat › "Agents see your reactions" also turns on the host's `display.message_reactions`. Agents tapback
-through the plugin's `loopdy_react_to_message`.
+Reactions use Hermes' own: the app saves them with `message.react`, and with Settings › Chat › "Agents see your
+reactions" on (the host's `display.message_reactions`), Hermes tells the agent at its next turn. The app sends no
+note or turn of its own. Agents tapback through the plugin's `loopdy_react_to_message`. A reply that is only a
+silence marker follows Hermes' rules (`ChatSilentReply`).
 
 Feed, Ideas and Goals start empty. They fill only when the user asks the agent for updates; the agent then posts
 with the plugin's `bighelp_board` tool, often from a scheduled job it sets up. Nothing runs on the user's AI

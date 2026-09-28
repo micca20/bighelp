@@ -111,7 +111,7 @@ struct EmberBrandToolbarItem: ToolbarContent {
     var linkDevices: BighelpLinkDeviceStore?
 
     var body: some ToolbarContent {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && !os(visionOS) // visionOS toolbars have no shared glass.
         if #available(iOS 26.0, *) {
             ToolbarItem(placement: .topBarLeading) { EmberHostSwitcherLockup(linkDevices: linkDevices) }
                 .sharedBackgroundVisibility(.hidden)

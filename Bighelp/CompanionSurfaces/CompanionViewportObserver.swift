@@ -6,6 +6,9 @@ struct CompanionViewportObserver: ViewModifier {
     @Binding var isInViewport: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
+        #if os(visionOS) // Always has scroll visibility; there's no UIScreen.
+        content.onScrollVisibilityChange(threshold: 0.01) { isInViewport = $0 }
+        #else
         if #available(iOS 18.0, *) {
             content.onScrollVisibilityChange(threshold: 0.01) { isInViewport = $0 }
         } else {
@@ -19,5 +22,6 @@ struct CompanionViewportObserver: ViewModifier {
                 .allowsHitTesting(false)
             }
         }
+        #endif
     }
 }

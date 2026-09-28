@@ -36,7 +36,6 @@ struct ChatDestinationView: View {
     @State private var isProjectChangesPresented = false
     @State private var projectChangesPanelWidth: CGFloat = ProjectChangesPanelWidthPolicy.minimum
     @State private var projectChangesPanelDragStartWidth: CGFloat?
-    @AppStorage("loopdy.chat.sidebar.collapsed") private var isPersistentWorkspaceCollapsed = false
 
     let appState: AppState
     let linkDevices: BighelpLinkDeviceStore
@@ -174,19 +173,9 @@ struct ChatDestinationView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if usesPersistentWorkspace, !isPersistentWorkspaceCollapsed {
-                persistentWorkspaceSidebar
-                Divider()
-            }
-            chatCanvas
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("chat.canvas")
-        }
-        .animation(
-            reduceMotion ? nil : .snappy(duration: 0.24),
-            value: isPersistentWorkspaceCollapsed
-        )
+        chatCanvas
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("chat.canvas")
         .safeAreaInset(edge: .top, spacing: 0) {
             if let native = model.nativeConversationClient,
                !native.prompts.isEmpty {
@@ -210,11 +199,6 @@ struct ChatDestinationView: View {
             isHapticsSurfaceVisible = true
             if featureStore.ownsNativeNavigationHydration {
                 featureStore.retainModels(ownedBy: appState.path)
-            }
-            if ProcessInfo.processInfo.arguments.contains("-test-chat-sidebar-expanded") {
-                isPersistentWorkspaceCollapsed = false
-            } else if ProcessInfo.processInfo.arguments.contains("-test-chat-sidebar-collapsed") {
-                isPersistentWorkspaceCollapsed = true
             }
         }
         .onDisappear {
@@ -329,8 +313,7 @@ struct ChatDestinationView: View {
             onPeopleTap: { isPeopleAndChatPresented = true },
             onWorkspaceTap: { presentWorkspace() },
             // "Go to…" (Quick Workspace) is an advanced host tool: Nerd Mode only.
-            showsWorkspaceButton: settings.nerdModeEnabled
-                && (!usesPersistentWorkspace || isPersistentWorkspaceCollapsed),
+            showsWorkspaceButton: settings.nerdModeEnabled,
             onNewChatTap: onNewChat,
             onLoadPreviousMessages: loadPreviousMessages,
             onForkMessage: onForkMessage,
@@ -531,7 +514,7 @@ struct ChatDestinationView: View {
                 agentID: model.memberIDs.first ?? "default",
                 sessionID: model.conversationID,
                 currentModelName: model.runtimeControls?.modelDisplayName ?? "Session model",
-                isCameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
+                isCameraAvailable: ChatCameraPicker.isAvailable,
                 agents: agents,
                 runtimeControls: model.runtimeControls,
                 slashCommandCatalog: { model.slashCommandCatalog },
@@ -653,9 +636,6 @@ struct ChatDestinationView: View {
             guard !selections.isEmpty else { return }
             Task { await importPhotos(selections) }
         }
-        .onChange(of: settings.reactionsReachAgent, initial: true) { _, reaches in
-            model.reactionsReachAgent = reaches
-        }
         .task(id: appState.pendingComposerText) {
             // Only a fresh chat takes the board's text, never one already in use.
             guard appState.pendingComposerText != nil, model.transcriptEntries.isEmpty, model.draft.isEmpty,
@@ -719,10 +699,6 @@ struct ChatDestinationView: View {
             organizeByProjects: settings.organizeChatsByProjects,
             projectOrder: layout.projectOrder
         )
-    }
-
-    private var usesPersistentWorkspace: Bool {
-        horizontalSizeClass == .regular && uiV3Enabled && !dynamicTypeSize.isAccessibilitySize
     }
 
     private var chatOpenURLAction: OpenURLAction {
@@ -902,34 +878,6 @@ struct ChatDestinationView: View {
         .accessibilityAddTraits(.isModal)
     }
 
-    private var persistentWorkspaceSidebar: some View {
-        QuickWorkspaceDrawer(
-            content: quickWorkspaceContent,
-            hostDevices: linkDevices,
-            settings: settings,
-            sessionOrganizationAccountID: sessionOrganizationAccountID,
-            sessionOrganizationHostID: sessionOrganizationHostID,
-            agents: agents,
-            userIdentity: userIdentity,
-            activeWorkspaceName: activeHermesWorkspaceName,
-            selectedTab: selectedTab,
-            onDismiss: collapsePersistentWorkspace,
-            onNewChat: onNewChat,
-            onOpenSessions: onOpenSessions,
-            onOpenSession: onOpenSession,
-            onOpenAgents: { onSelectTab(.agents) },
-            onOpenScheduledTasks: onOpenScheduledTasks,
-            onOpenWorkspaceHub: { onSelectTab(.workspace) },
-            onOpenWorkspaces: presentHermesWorkspacePicker,
-            onSelectAgent: onSelectAgent,
-            onOpenMore: { onSelectTab(.profile) },
-            isEmbedded: true
-        )
-        .frame(width: 320)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("quick-workspace.persistent-sidebar")
-    }
-
     private var voiceWorkspaceDrawer: some View {
         Group {
             QuickWorkspaceDrawer(
@@ -977,10 +925,6 @@ struct ChatDestinationView: View {
     }
 
     private func presentWorkspace() {
-        if usesPersistentWorkspace {
-            isPersistentWorkspaceCollapsed = false
-            return
-        }
         withAnimation(.snappy(duration: 0.28)) {
             isWorkspacePresented = true
         }
@@ -990,10 +934,6 @@ struct ChatDestinationView: View {
         withAnimation(.snappy(duration: 0.24)) {
             isWorkspacePresented = false
         }
-    }
-
-    private func collapsePersistentWorkspace() {
-        isPersistentWorkspaceCollapsed = true
     }
 
     private func dismissVoiceWorkspace() {
@@ -1111,8 +1051,6 @@ struct ChatDestinationView: View {
         isNativeAttentionPresented = true
     }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.bighelpUIV3Enabled) private var uiV3Enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 }
 

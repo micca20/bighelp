@@ -3,8 +3,7 @@ import SwiftUI
 /// iMessage-like presentation metrics kept separate from model and transport state.
 /// Rich cards receive a wider lane while ordinary prose remains conversational on iPad.
 enum BighelpV3MessagePresentation {
-    // Replies use nearly the full lane on a phone; iPad stays capped by
-    // ChatBubbleLayoutMetrics.maximumAbsoluteWidth for readable lines.
+    // Replies use nearly the full lane on phone and iPad alike.
     static let outgoingMaximumWidthFraction: CGFloat = 0.84
     static let incomingMaximumWidthFraction: CGFloat = 0.92
     static let richContentMaximumWidthFraction: CGFloat = 0.94

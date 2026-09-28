@@ -5,7 +5,9 @@ import Testing
 struct MarkdownDocumentTests {
     @Test func chatBubbleWidthUsesAnIMessageLikeResponsiveMaximum() {
         #expect(abs(ChatBubbleLayoutMetrics.maximumWidth(containerWidth: 390) - 319.8) < 0.001)
-        #expect(ChatBubbleLayoutMetrics.maximumWidth(containerWidth: 1_024) == 560)
+        // A landscape iPad's lane gets wide bubbles; only huge widths are capped.
+        #expect(abs(ChatBubbleLayoutMetrics.maximumWidth(containerWidth: 1_024) - 839.68) < 0.001)
+        #expect(ChatBubbleLayoutMetrics.maximumWidth(containerWidth: 2_000) == ChatBubbleLayoutMetrics.maximumAbsoluteWidth)
         #expect(ChatBubbleLayoutMetrics.maximumWidth(containerWidth: 0) == 0)
     }
 

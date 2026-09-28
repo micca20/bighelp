@@ -420,6 +420,113 @@ struct BighelpShortcutServiceTests {
     }
 }
 
+/// The agent in the room (Vision Pro) talks through the same workspace as
+/// Shortcuts; its logic is plain, so it's tested here with the same fake host.
+@MainActor
+struct SpatialAvatarModelTests {
+    /// The fake host answers as Finley, so Finley is the agent in the room.
+    private func makeModel(_ harness: ShortcutServiceHarness) -> SpatialAvatarModel {
+        _ = harness.agents.setPrimaryAgent("finance")
+        return SpatialAvatarModel {
+            BighelpShortcutWorkspace(appState: harness.state, agents: harness.agents,
+                                     runtimeDefaults: harness.runtimeDefaults, catalog: harness.catalog,
+                                     featureStore: harness.featureStore, newChatCoordinator: harness.newChat)
+        }
+    }
+
+    private func reply(of model: SpatialAvatarModel) async -> String? {
+        for _ in 0..<100 {
+            if let reply = model.reply { return reply }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return nil
+    }
+
+    @Test func typedMessagesGoToOneOngoingChatAndTheAnswerShows() async throws {
+        let harness = try await ShortcutServiceHarness()
+        let model = makeModel(harness)
+        await model.connectIfNeeded()
+        #expect(model.connection == .ready)
+        #expect(model.agent?.name == "Finley")
+        #expect(model.status(pinch: .type) == "Pinch to type")
+
+        #expect(model.pinch(.type) == .prompt)
+        #expect(model.isPromptPresented)
+        model.draft = "Plan my week"
+        await model.send()
+        #expect(!model.isPromptPresented, "Sending puts the message box away")
+        #expect(model.draft.isEmpty)
+        #expect(await reply(of: model) == "Finished from Finley")
+        #expect(harness.state.path.isEmpty, "The main window stays where it was")
+
+        model.draft = "And tomorrow?"
+        await model.send()
+        _ = await reply(of: model)
+        let messages = harness.conversation.waitedMessages
+        #expect(messages.map(\.message) == ["Plan my week", "And tomorrow?"])
+        #expect(messages.map(\.sessionID) == [model.sessionID, model.sessionID])
+
+        model.dismissReply()
+        #expect(model.reply == nil)
+        #expect(model.openConversation())
+        #expect(harness.state.path == [.chat(conversationID: model.sessionID ?? "")])
+    }
+
+    @Test func aNewConversationStartsAFreshChat() async throws {
+        let harness = try await ShortcutServiceHarness()
+        let model = makeModel(harness)
+        model.draft = "First"
+        await model.send()
+        _ = await reply(of: model)
+        let first = model.sessionID
+        model.startNewConversation()
+        #expect(model.sessionID == nil)
+        model.draft = "Second"
+        await model.send()
+        _ = await reply(of: model)
+        #expect(first != nil)
+        #expect(model.sessionID != nil && model.sessionID != first)
+    }
+
+    @Test func talkingOpensVoiceForTheOngoingChat() async throws {
+        let harness = try await ShortcutServiceHarness()
+        let model = makeModel(harness)
+        await model.connectIfNeeded()
+        #expect(model.pinch(.talk) == .voice)
+        let settings = SettingsStore(defaults: isolatedDefaults())
+        settings.voiceConversationMode = .turnBased
+        let voice = await model.startVoice(settings)
+        #expect(voice != nil)
+        #expect(model.voice?.id == voice?.id)
+        #expect(model.restingState == .listening)
+        #expect(model.status(pinch: .talk) == "Listening")
+        #expect(model.sessionID != nil)
+        model.endVoice()
+        #expect(model.voice == nil)
+    }
+
+    @Test func anUnreachableHostSaysSoAndPinchRetries() async {
+        let model = SpatialAvatarModel { throw BighelpShortcutServiceError.connectionUnavailable }
+        #expect(model.status(pinch: .talk) == "Connecting…")
+        await model.connectIfNeeded()
+        guard case .unavailable = model.connection else {
+            Issue.record("Expected the host to be unavailable")
+            return
+        }
+        #expect(model.pinch(.type) == .retrying)
+        #expect(model.pinch(.talk) == .retrying)
+        #expect(!model.isPromptPresented)
+        #expect(model.status(pinch: .talk) == "Can't reach your computer. Pinch to try again.")
+    }
+
+    @Test func thePinchChoiceIsRemembered() {
+        let defaults = isolatedDefaults()
+        #expect(SettingsStore(defaults: defaults).spatialAvatarPinchAction == .talk)
+        SettingsStore(defaults: defaults).spatialAvatarPinchAction = .type
+        #expect(SettingsStore(defaults: defaults).spatialAvatarPinchAction == .type)
+    }
+}
+
 @MainActor
 private final class ShortcutServiceHarness {
     let state = AppState()

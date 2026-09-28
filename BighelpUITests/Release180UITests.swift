@@ -4,7 +4,7 @@ final class Release180UITests: BighelpUITestCase {
     @MainActor
     func testEmptyUnlabelledCodeBlockRemainsLosslesslyEditableInSource() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat"]
         app.launch()
         let composer = app.textViews["Message"].exists ? app.textViews["Message"] : app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -22,7 +22,7 @@ final class Release180UITests: BighelpUITestCase {
     @MainActor
     func testRichTextSwitchPreservesStructuredDraftThroughEditingAndCollapse() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-test-chat-sidebar-collapsed", "-loopdy.appearance.interface-version", "v3"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-loopdy.appearance.interface-version", "v3"]
         app.launch()
         let composer = app.textViews["Message"].exists ? app.textViews["Message"] : app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -86,7 +86,7 @@ final class Release180UITests: BighelpUITestCase {
     @MainActor
     func testProjectChangesOutsideTapDismissesWithoutBreakingInsideControls() throws {
         let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-test-chat-sidebar-collapsed"]
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat"]
         app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }

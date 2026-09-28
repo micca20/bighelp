@@ -59,204 +59,15 @@ struct ApprovalDestinationView: View {
 
 }
 
-enum ConversationRootDestination: String, CaseIterable, Identifiable, Sendable {
-    case chats
-    case feed
-    case ideas
-    case goals
-    case apps
-    case agents
-    case scheduledTasks
-    case activity
-    case workspace
-    case directLinks
-    case diagnostics
-    case settings
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .chats: "Chats"
-        case .feed: "Feed"
-        case .ideas: "Ideas"
-        case .goals: "Goals"
-        case .apps: "Apps"
-        case .agents: "Agents"
-        case .scheduledTasks: "Scheduled Tasks"
-        case .activity: "Activity"
-        case .workspace: "Hermes Tools"
-        case .directLinks: "Direct Links"
-        case .diagnostics: "Diagnostics"
-        case .settings: "Settings"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .chats: "bubble.left.and.bubble.right"
-        case .feed: "newspaper"
-        case .ideas: "lightbulb"
-        case .goals: "checkmark.square"
-        case .apps: "square.on.circle"
-        case .agents: "person.2"
-        case .scheduledTasks: "calendar.badge.clock"
-        case .activity: "waveform.path"
-        case .workspace: "square.grid.2x2"
-        case .directLinks: "link"
-        case .diagnostics: "stethoscope"
-        case .settings: "gearshape"
-        }
-    }
-
-    var accessibilityIdentifier: String {
-        "root.destination.\(rawValue)"
-    }
-
-    func isSelected(tab: AppTab, path: [AppRoute]) -> Bool {
-        switch self {
-        case .chats:
-            tab == .sessions
-        case .feed: tab == .feed
-        case .ideas: tab == .ideas
-        case .goals: tab == .goals
-        case .apps: tab == .apps
-        case .agents:
-            tab == .agents
-        case .scheduledTasks:
-            tab == .scheduledTasks
-        case .activity:
-            tab == .workspace && path == [.workspaceActivity]
-        case .directLinks:
-            tab == .workspace && path == [.bighelpLinkDevices]
-        case .diagnostics:
-            tab == .workspace && path == [.workspaceManagement(.logs)]
-        case .settings:
-            tab == .profile
-        case .workspace:
-            tab == .workspace
-                && path != [.workspaceActivity]
-                && path != [.bighelpLinkDevices]
-                && path != [.workspaceManagement(.logs)]
-                && path != [.workspaceSettings]
-        }
-    }
-}
-
 enum ConversationRootNavigationPresentation {
-    static let settingsAccessibilityIdentifier = "root.settings"
     static let composeAccessibilityIdentifier = "root.new-chat"
-    static let sidebarAccessibilityIdentifier = "root.sidebar"
-
-    static func usesPersistentSidebar(horizontalSizeClassIsRegular: Bool) -> Bool {
-        horizontalSizeClassIsRegular
-    }
 }
-
-/// A persistent iPad destination list. The detail remains owned by the root
-/// NavigationStack so opening a chat preserves the existing route lifecycle.
-struct ConversationRootSidebar: View {
-    let theme: BighelpTheme
-    let selectedTab: AppTab
-    let path: [AppRoute]
-    let onOpen: (ConversationRootDestination) -> Void
-    let onNewChat: () -> Void
-    var showsAdvanced = false
-    @Environment(\.bighelpHostRegistry) private var hostRegistry
-
-    var body: some View {
-        List {
-            // Same hosts as the ☰ menu: tap one to switch.
-            let hosts = BighelpMenuHosts.current(registry: hostRegistry, linkDevices: nil)
-            if !hosts.hosts.isEmpty || hosts.add != nil {
-                Section("Hosts") {
-                    ForEach(hosts.hosts) { host in
-                        Button { hosts.select(host.id) } label: {
-                            Label(host.name, systemImage: host.isSelected ? "checkmark.circle.fill" : "desktopcomputer")
-                                .foregroundStyle(host.isSelected ? theme.action : theme.primaryText)
-                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityAddTraits(host.isSelected ? .isSelected : [])
-                        .accessibilityIdentifier("menu.host.\(host.id)")
-                    }
-                    if let add = hosts.add {
-                        Button(action: add) {
-                            Label("Add host", systemImage: "plus")
-                                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier("menu.host.add")
-                    }
-                }
-            }
-
-            Section {
-                Button(action: onNewChat) {
-                    Label("New Chat", systemImage: "square.and.pencil")
-                }
-                .accessibilityIdentifier(ConversationRootNavigationPresentation.composeAccessibilityIdentifier)
-            }
-
-            Section("Home") {
-                destinationButton(.chats)
-                destinationButton(.feed)
-                destinationButton(.ideas)
-                destinationButton(.goals)
-                destinationButton(.apps)
-            }
-
-            Section("Manage") {
-                destinationButton(.agents)
-                destinationButton(.scheduledTasks)
-            }
-
-            Section {
-                destinationButton(.settings)
-            }
-
-            // Activity, logs and the rest of the host's tools are inside Hermes Tools.
-            if showsAdvanced {
-                Section("Advanced") {
-                    destinationButton(.workspace)
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(theme.canvas)
-        .tint(theme.action)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(EmberBrand.appName) navigation")
-        .accessibilityIdentifier(ConversationRootNavigationPresentation.sidebarAccessibilityIdentifier)
-    }
-
-    private func destinationButton(_ destination: ConversationRootDestination) -> some View {
-        let selected = destination.isSelected(tab: selectedTab, path: path)
-        return Button {
-            onOpen(destination)
-        } label: {
-            Label(destination.title, systemImage: destination.systemImage)
-                .foregroundStyle(selected ? theme.action : theme.primaryText)
-                .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.borderless)
-        .listRowBackground(selected ? theme.action.opacity(0.12) : Color.clear)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier(destination.accessibilityIdentifier)
-    }
-}
-
 
 /// The Chats compose action: a large, tinted Liquid Glass circle that floats
 /// over the list like the iMessage compose affordance, instead of a small
 /// toolbar glyph.
 struct RootComposeButton: View {
     static let diameter: CGFloat = 60
-    /// iPad's sidebar already owns the shared compose identifier.
     var identifier = ConversationRootNavigationPresentation.composeAccessibilityIdentifier
     let action: () -> Void
 
@@ -289,7 +100,7 @@ struct RootComposeButton: View {
         let reduceTransparency: Bool
 
         func body(content: Content) -> some View {
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && !os(visionOS) // visionOS has no glassEffect.
             if #available(iOS 26.0, *), !reduceTransparency {
                 content.glassEffect(.regular.tint(tint).interactive(), in: .circle)
             } else {

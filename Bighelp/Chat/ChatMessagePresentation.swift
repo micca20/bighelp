@@ -53,7 +53,9 @@ enum ChatMessageActionMetrics {
 }
 
 enum ChatBubbleLayoutMetrics {
-    static let maximumAbsoluteWidth: CGFloat = 560
+    /// Bubbles follow the lane (ChatCanvasLayout.regularLaneMaximumWidth), so a
+    /// landscape iPad gets wide replies; this only stops runaway widths.
+    static let maximumAbsoluteWidth: CGFloat = 1_000
     static let maximumWidthFraction: CGFloat = 0.82
 
     static func maximumWidth(

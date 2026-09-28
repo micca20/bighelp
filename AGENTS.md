@@ -7,7 +7,7 @@ It isn't in the public mirror.
 
 ## What bighelp is
 
-bighelp is a native iPhone app (plus Watch, widgets, Live Activities and Shortcuts) for personal AI agents running
+bighelp is a native iPhone, iPad and Vision Pro app (plus Watch, widgets, Live Activities and Shortcuts) for personal AI agents running
 on [Hermes](https://github.com/NousResearch/hermes-agent). It should feel like texting a friend, not like running a
 server. The app talks straight to the user's own Hermes host. There's no bighelp account.
 
@@ -61,9 +61,11 @@ change in both repos.
 | `Bighelp/Agents/`, `Board/`, `Companion/` | Agents, Feed/Ideas/Goals, the avatar kit renderer |
 | `Bighelp/Usage/` | Provider Usage overlay, store and settings |
 | `Bighelp/Voice/` | Turn-based and live voice |
+| `Bighelp/Spatial/` | Vision Pro: the agent in the room (`SpatialAvatarModel`, its volume and voice panel, its Settings section) |
 | `Bighelp/DesignSystem/` | `BighelpTheme`, `BighelpTokens`, glass surfaces, fonts, provider logos, `BighelpDeferredSection` |
 | `Bighelp/Hosts/`, `Bighelp/LiveActivity/`, `Bighelp/Notifications/`, `Bighelp/Shortcuts/` | Host setup, Live Activities, notifications, App Intents |
 | `BighelpTests/` (Swift Testing), `BighelpUITests/` (XCUITest) | Tests. The UI test base class `BighelpUITestCase` is in `ReferenceHubUITests.swift` |
+| `BighelpVisionUITests/` | Vision Pro UI tests, run with the `BighelpVision` scheme |
 | `Scripts/` | Real-host probes, logo export, CI helpers, public mirror publishing |
 | `Design/AvatarKit/` | Source of the avatar characters (`tools/build.py`, `tools/export_native.py`) |
 | `docs/` | Contracts and deep dives. Start with `ARCHITECTURE.md`, `NATIVE_TRANSPORT.md`, `DEVELOPMENT.md` |
@@ -74,7 +76,8 @@ change in both repos.
 
 - `project.yml` is the source of truth. Run `xcodegen generate` after adding, moving or removing files, and commit
   the regenerated `Bighelp.xcodeproj`. Never hand-edit the `.pbxproj`.
-- The app needs Swift 6 and supports iOS 17 and later. Keep Swift 6 concurrency correct.
+- The app needs Swift 6 and supports iOS 17 and later, and visionOS 26 and later. Keep Swift 6 concurrency
+  correct.
 - Unit tests use Swift Testing and UI tests use XCUITest. Run the smallest relevant suite while you iterate.
 - **Demo mode:** `-use-demo-fixtures -disable-demo-delays` runs the app with sample data and no host. Fixture clients
   are in `Bighelp/App/AppFixtureClients.swift` and `AppFixtureSetup.swift`. New host features need a demo client too,
@@ -163,6 +166,37 @@ sections can crash only on devices ("Thread stack size exceeded").
 - Before shipping a big new screen, run `ReleaseScreensWalkthroughUITests`. It's a Release build linked with
   `-Wl,-stack_size,0x100000` that walks real onboarding through a password proxy. The test file explains its
   environment variables.
+
+### iPad layout
+
+- iPad has no always-open sidebars. ☰ opens the one menu, which slides in from the leading edge
+  (`HomeMenuPresentation`); iPhone shows the same menu as a sheet. The bottom tab bar shows on iPad too.
+- The chat lane (messages, message box, status rail) is `ChatCanvasLayout.regularLaneMaximumWidth` wide on iPad
+  and Vision Pro. Bubbles take their share of it; don't reintroduce a fixed narrow column.
+
+### Vision Pro
+
+- The app target builds natively for visionOS (`supportedDestinations`), not as the iPad app in a window. Every
+  change must build for both: `xcodebuild -destination 'generic/platform=visionOS Simulator'`.
+- visionOS lacks Live Activities, widgets, haptics, apps' camera access, keyboard-dismiss-on-scroll and iOS 26's
+  `glassEffect`. Use the shims in `BighelpPlatform.swift` and `#if os(visionOS)`. `if #available(iOS 26, *)` is
+  true on visionOS, so it doesn't fence off iOS-only APIs.
+- visionOS has its own layered app icon, `AppIconVision.solidimagestack` (the iPhone icon's art split into a
+  cream back layer and the orb). Update it when the app icon changes; uploads without it are rejected.
+- WebRTC comes from LiveKit's package on visionOS. Its Objective-C names carry an `LK` prefix, mapped back in
+  `WebRTCVisionNames.swift`.
+- Extra windows need multiple scenes, which only the visionOS Info.plist turns on (generated keys in
+  `project.yml`). Conditional settings need both `[sdk=xros*]` and `[sdk=xrsimulator*]`; the first doesn't match
+  the simulator.
+- An app-wide `.tint` fills every toolbar button with that color on visionOS, so there's none there.
+  `theme.canvas` is a light tint so windows stay glass.
+- The agent in the room (`Bighelp/Spatial/`) talks through `BighelpShortcutService.connectedWorkspace()`, the same
+  host path as Shortcuts. Apps can't move windows themselves: people move the volume with the system bar under it,
+  and visionOS remembers the spot and snaps it to tables.
+- Vision Pro UI tests: `XCUIScreen` screenshots come back blank, so tests ask the Mac for `simctl io` screenshots
+  (see `SpatialAvatarUITests`). `app.swipeUp()` fails with several windows open; swipe the list instead. The speech
+  permission can't be pre-granted, and an unanswered prompt comes back on every launch, so reset privacy and reboot
+  the simulator before a run.
 
 ### Connections, widgets and Shortcuts
 

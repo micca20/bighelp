@@ -315,11 +315,15 @@ struct HostSetupView: View {
         .controlSize(.large)
         .disabled(disabled)
         .accessibilityIdentifier(identifier)
+        #if os(visionOS) // No glass button styles on visionOS.
+        button.bighelpProminentButtonStyle()
+        #else
         if #available(iOS 26.0, *) {
             button.buttonStyle(.glassProminent).foregroundStyle(Color.bighelpActionInk)
         } else {
             button.bighelpProminentButtonStyle()
         }
+        #endif
     }
 
     private var connectionAction: some View {

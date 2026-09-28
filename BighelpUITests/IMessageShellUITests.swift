@@ -299,7 +299,7 @@ final class IMessageShellUITests: BighelpUITestCase {
     func testPartnerThemeChatRetainsAccessibleWorkspaceMenu() {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat",
-                               "-test-chat-sidebar-collapsed", "-preview-ui-v3",
+                               "-preview-ui-v3",
                                "-loopdy.appearance.interface-version", "v3",
                                "-loopdy.appearance.theme", "nous", "-loopdy.demo.appearance", "light"]
         app.launch()

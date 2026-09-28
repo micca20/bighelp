@@ -119,7 +119,7 @@ private struct ChatToolDetailReader: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Copy all", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = value
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        BighelpHaptics.success()
                     }
                 }
             }

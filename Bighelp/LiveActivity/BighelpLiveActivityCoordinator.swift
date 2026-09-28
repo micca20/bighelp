@@ -1,4 +1,6 @@
+#if canImport(ActivityKit)
 @preconcurrency import ActivityKit
+#endif
 import CryptoKit
 import BuzzKit
 import Foundation
@@ -726,6 +728,7 @@ final class BighelpLiveActivityCoordinator {
     }
 }
 
+#if canImport(ActivityKit)
 /// ActivityKit deadlocks when push tokens are read from several threads while it delivers one
 /// (a 2.3.0 (22) watchdog kill). Token reads and token streams go through BuzzKit's serial lane,
 /// never the main thread; the current token comes from the last one that lane delivered.
@@ -844,3 +847,19 @@ final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
         case disabled
     }
 }
+#else
+/// Vision Pro has no Live Activities: nothing starts, so nothing needs a push token.
+@MainActor
+final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
+    private enum ActivityError: Error { case unsupported }
+
+    func start(attributes: LoopdySessionActivityAttributes,
+               state: LoopdySessionActivityAttributes.ContentState) throws -> String {
+        throw ActivityError.unsupported
+    }
+    func update(id: String, state: LoopdySessionActivityAttributes.ContentState) async {}
+    func end(id: String, state: LoopdySessionActivityAttributes.ContentState) async {}
+    func currentPushToken(id: String) -> Data? { nil }
+    func pushTokenUpdates(id: String) -> AsyncStream<Data> { AsyncStream { $0.finish() } }
+}
+#endif

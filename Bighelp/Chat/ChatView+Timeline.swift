@@ -45,7 +45,8 @@ extension ChatView {
                             top: headerHeight, left: 0,
                             bottom: composerHeight + ChatCanvasLayout.composerInsetSpacing, right: 0)) { row in
             canvasRowContent(row)
-                .frame(maxWidth: horizontalSizeClass == .regular ? 800 : .infinity, alignment: .leading)
+                .frame(maxWidth: horizontalSizeClass == .regular ? ChatCanvasLayout.regularLaneMaximumWidth : .infinity,
+                       alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.horizontal, BighelpTokens.space12)
                 .padding(.top, row.id == firstID ? BighelpTokens.space12 : 0)

@@ -6,7 +6,7 @@ final class CompactChatComposerUITests: BighelpUITestCase {
     func testSlashCommandsInLandscapeAndKeyboardDismissal() {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-simple-chat",
-            "-test-chat-sidebar-collapsed", "-preview-ui-v3"]
+            "-preview-ui-v3"]
         app.launch()
         let conversation = app.buttons["session.row.demo-finance"]
         XCTAssertTrue(conversation.waitForExistence(timeout: 10))
@@ -134,8 +134,7 @@ final class CompactChatComposerUITests: BighelpUITestCase {
     private func openCompactSessionMenu() -> XCUIApplication {
         let app = makeApp()
         app.launchArguments = [
-            "-use-demo-fixtures", "-disable-demo-delays", "-preview-simple-chat", "-test-chat-sidebar-collapsed",
-            "-preview-ui-v3", "-test-v3-header-context",
+            "-use-demo-fixtures", "-disable-demo-delays", "-preview-simple-chat", "-preview-ui-v3", "-test-v3-header-context",
             "-enable-project-changes", "-use-project-changes-markdown-fixture"
         ]
         app.launch()
@@ -170,8 +169,7 @@ final class CompactChatComposerUITests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = [
             "-use-demo-fixtures", "-disable-demo-delays",
-            "-loopdy.appearance.theme", "loopdy", "-test-chat-sidebar-collapsed",
-            "-loopdy.demo.appearance", "light"
+            "-loopdy.appearance.theme", "loopdy", "-loopdy.demo.appearance", "light"
         ]
         app.launch()
         let workspace = app.buttons["home.drawer.open"]

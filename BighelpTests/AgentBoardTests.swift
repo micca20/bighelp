@@ -127,25 +127,6 @@ struct AgentBoardTests {
         #expect(BoardTimeBucket.title(for: at(24, 14), now: now, calendar: calendar) == "Yesterday afternoon")
     }
 
-    @Test func silentAnswersToReactionsLeaveNoBubble() {
-        func reply(_ text: String, streaming: Bool = false) -> TimelineItem {
-            TimelineItem(id: "a", role: .assistant, sender: .agent(id: "default", snapshot: .init(name: "Juno")),
-                         content: .message(text),
-                         metadata: .init(source: "Direct Hermes", delivery: streaming ? "Streaming" : "Received"))
-        }
-        #expect(ChatSilentReply.hides(reply("[SILENT]")))
-        #expect(ChatSilentReply.hides(reply("  no_reply\n")))
-        #expect(ChatSilentReply.hides(reply("[SIL", streaming: true)))
-        #expect(!ChatSilentReply.hides(reply("[SIL")))
-        #expect(!ChatSilentReply.hides(reply("Silent films are great.")))
-        #expect(!ChatSilentReply.hides(reply("[Link](https://example.com)", streaming: true)))
-
-        let note = ChatReactionNote.text(emoji: "❤️", message: String(repeating: "word ", count: 80))
-        #expect(note.hasPrefix("[The user reacted ❤️ to your message: \""))
-        #expect(note.contains("…\"]"))
-        #expect(note.hasSuffix("respond with exactly [SILENT]."))
-    }
-
     @Test func islandAndAvatarShareOneActivityVocabulary() {
         for kind in AgentActivityKind.allCases {
             #expect(kind.pose.rawValue == kind.rawValue)

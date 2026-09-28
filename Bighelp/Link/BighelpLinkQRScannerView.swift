@@ -59,6 +59,18 @@ struct BighelpLinkQRScannerView: View {
     }
 }
 
+#if os(visionOS)
+/// Apps can't read the camera on Vision Pro, so pairing codes are typed there.
+private struct BighelpLinkCameraPreview: View {
+    let onPayload: (String) -> Void
+
+    var body: some View {
+        ContentUnavailableView("Type the code instead", systemImage: "keyboard",
+                               description: Text("Vision Pro can't scan codes. Close this and type the pairing code."))
+            .foregroundStyle(.white)
+    }
+}
+#else
 private struct BighelpLinkCameraPreview: UIViewRepresentable {
     let onPayload: (String) -> Void
 
@@ -157,3 +169,4 @@ private struct BighelpLinkCameraPreview: UIViewRepresentable {
         }
     }
 }
+#endif

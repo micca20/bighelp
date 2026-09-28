@@ -135,6 +135,10 @@ struct ChatReturnToLatestState: Equatable, Sendable {
 
 enum ChatCanvasLayout {
     static let composerInsetSpacing = BighelpTokens.space4
+    /// The widest the messages, message box and status rail get on iPad and
+    /// Vision Pro. Wide enough to fill a landscape iPad; the cap only keeps
+    /// lines readable on a big external display.
+    static let regularLaneMaximumWidth: CGFloat = 1_100
 }
 
 /// Geometry compatibility for the timeline inset contract. UI V3 no longer

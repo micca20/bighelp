@@ -140,7 +140,7 @@ struct ChatActivityRow: View {
                             if event.contentReference == nil {
                                 Button {
                                     UIPasteboard.general.string = section.value
-                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                    BighelpHaptics.success()
                                 } label: {
                                     Image(systemName: "doc.on.doc")
                                         .bighelpFont(.metadata)

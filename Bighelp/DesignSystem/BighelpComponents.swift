@@ -256,11 +256,17 @@ struct FloatingTabBarActionSurfaceModifier: ViewModifier {
             content.bighelpSurface(.circularControl, isInteractive: true)
         } else if reduceTransparency {
             content.background(theme.raisedSurface, in: .circle)
-        } else if #available(iOS 26, *) {
-            content
-                .glassEffect(.regular.interactive(), in: .circle)
         } else {
-            content.background(.ultraThinMaterial, in: .circle)
+            #if os(visionOS)
+            content.glassBackgroundEffect(in: .circle)
+            #else
+            if #available(iOS 26, *) {
+                content
+                    .glassEffect(.regular.interactive(), in: .circle)
+            } else {
+                content.background(.ultraThinMaterial, in: .circle)
+            }
+            #endif
         }
     }
 }

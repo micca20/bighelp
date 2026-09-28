@@ -76,7 +76,6 @@ struct RootShellView: View {
     @Environment(\.scenePhase) var scenePhase
     @State var connectionKeeper = WorkspaceConnectionKeeper()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State var isUnifiedSettingsPresented = false
     @State private var isKeyboardVisible = false
@@ -508,24 +507,22 @@ struct RootShellView: View {
     }
 
     private var shell: some View {
-        rootLayout
+        rootTabs
         .toolbar(.hidden, for: .tabBar)
         .toolbar(showsAgentBoard ? .hidden : .automatic, for: .navigationBar)
         .navigationTitle(showsAgentBoard ? "" : rootNavigationTitle)
         .navigationBarTitleDisplayMode(showsAgentBoard ? .inline : .large)
         .toolbar {
             if appState.path.isEmpty, !appState.selectedTab.isAgentBoard {
-                if !usesPersistentSidebar {
-                    // ☰ always opens chats, agents, tasks and settings.
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            isHomeDrawerPresented = true
-                        } label: {
-                            Image(systemName: "line.3.horizontal")
-                        }
-                        .accessibilityLabel("Chats and menu")
-                        .accessibilityIdentifier("home.drawer.open")
+                // ☰ always opens chats, agents, tasks and settings, on iPad too.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isHomeDrawerPresented = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
                     }
+                    .accessibilityLabel("Chats and menu")
+                    .accessibilityIdentifier("home.drawer.open")
                 }
                 // Ember lives only in chrome: the brand bar on root screens.
                 // Touch and hold it to switch hosts.
@@ -533,7 +530,6 @@ struct RootShellView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            // iPhone gets the familiar bottom tab bar; iPad keeps its sidebar.
             if showsBottomNavigation {
                 FloatingTabBar(selection: tabSelection,
                                onNewChat: appState.selectedTab == .sessions ? {
@@ -545,13 +541,6 @@ struct RootShellView: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { rootBottomSafeArea = $0 }
-        .overlay(alignment: .bottomTrailing) {
-            if appState.path.isEmpty, appState.selectedTab == .sessions, usesPersistentSidebar {
-                RootComposeButton(identifier: "root.new-chat.floating") { startNewChat(explicitAgentID: nil) }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 12)
-            }
-        }
         .animation(reduceMotion ? nil : .snappy(duration: BighelpTokens.transitionDuration), value: showsBottomNavigation)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             isKeyboardVisible = true
@@ -706,39 +695,8 @@ struct RootShellView: View {
         }
     }
 
-    var usesPersistentSidebar: Bool {
-        ConversationRootNavigationPresentation.usesPersistentSidebar(
-            horizontalSizeClassIsRegular: horizontalSizeClass == .regular
-        )
-    }
-
     private var showsBottomNavigation: Bool {
-        appState.path.isEmpty && !usesPersistentSidebar && !isKeyboardVisible
-    }
-
-    @ViewBuilder
-    private var rootLayout: some View {
-        if ConversationRootNavigationPresentation.usesPersistentSidebar(
-            horizontalSizeClassIsRegular: horizontalSizeClass == .regular
-        ) {
-            HStack(spacing: 0) {
-                ConversationRootSidebar(
-                    theme: theme,
-                    selectedTab: appState.selectedTab,
-                    path: appState.path,
-                    onOpen: openRootDestination,
-                    onNewChat: { startNewChat(explicitAgentID: nil) },
-                    showsAdvanced: settings.nerdModeEnabled
-                )
-                .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
-
-                Divider()
-
-                rootTabs
-            }
-        } else {
-            rootTabs
-        }
+        appState.path.isEmpty && !isKeyboardVisible
     }
 
     @ViewBuilder
@@ -767,53 +725,18 @@ struct RootShellView: View {
         }
     }
 
-    private var selectedRootDestination: ConversationRootDestination {
-        switch appState.selectedTab {
-        case .sessions: .chats
-        case .agents: .agents
-        case .scheduledTasks: .scheduledTasks
-        case .home, .inbox: .activity
-        case .workspace: .workspace
-        case .profile: .settings
-        case .feed: .feed
-        case .ideas: .ideas
-        case .goals: .goals
-        case .apps: .apps
-        }
-    }
-
     private var rootNavigationTitle: String {
-        selectedRootDestination.title
-    }
-
-    private func openRootDestination(_ destination: ConversationRootDestination) {
-        switch destination {
-        // Match the iPhone tab bar: root destinations show everything, not
-        // the last agent filter.
-        case .chats:
-            openSessions(filteredTo: nil)
-        case .agents:
-            appState.select(.agents)
-        case .scheduledTasks:
-            openScheduledTasks(filteredTo: nil)
-        case .activity:
-            appState.select(.home)
-        case .workspace:
-            appState.select(.workspace)
-        case .directLinks:
-            openBighelpLinkDevices()
-        case .diagnostics:
-            openWorkspaceDestination(.logs)
-        case .settings:
-            appState.select(.profile)
-        case .feed:
-            appState.select(.feed)
-        case .ideas:
-            appState.select(.ideas)
-        case .goals:
-            appState.select(.goals)
-        case .apps:
-            appState.select(.apps)
+        switch appState.selectedTab {
+        case .sessions: "Chats"
+        case .agents: "Agents"
+        case .scheduledTasks: "Scheduled Tasks"
+        case .home, .inbox: "Activity"
+        case .workspace: "Hermes Tools"
+        case .profile: "Settings"
+        case .feed: "Feed"
+        case .ideas: "Ideas"
+        case .goals: "Goals"
+        case .apps: "Apps"
         }
     }
 
@@ -906,7 +829,7 @@ struct RootShellView: View {
         Binding(
             get: { appState.selectedTab },
             set: { tab in
-                if tab == .sessions, !usesPersistentSidebar, opensHomeChat {
+                if tab == .sessions, opensHomeChat {
                     // Chat is the agent's own chat; ☰ and swipe-back reach the full list.
                     openHomeChat()
                 } else if tab == .sessions {

@@ -624,20 +624,6 @@ final class DirectHermesSessionActions {
         }
     }
 
-    /// A note only the agent sees (Hermes stores it as a hidden row), queued
-    /// like any turn. The reply streams through the ordinary native lifecycle.
-    func submitHiddenNote(_ text: String) async throws {
-        try Self.validateText(text, maximumBytes: 8_192, allowsEmpty: false)
-        let response = try Self.object(try await request(
-            .promptSubmit,
-            extras: ["text": .string(text), "queued": .boolean(true), "display_kind": .string("hidden")],
-            mutation: true
-        ))
-        guard let status = response["status"]?.string, ["queued", "streaming", "ok"].contains(status) else {
-            throw DirectHermesError.invalidResponse
-        }
-    }
-
     func redirect(_ text: String) async throws -> DirectHermesRedirectResult {
         try Self.validateText(text, maximumBytes: 1_048_576, allowsEmpty: false)
         let object = try Self.object(try await request(.redirect,

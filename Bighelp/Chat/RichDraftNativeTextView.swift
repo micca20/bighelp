@@ -50,7 +50,9 @@ struct RichDraftNativeTextView: UIViewRepresentable {
         view.adjustsFontForContentSizeCategory = true
         view.isScrollEnabled = true
         view.alwaysBounceVertical = true
+        #if !os(visionOS)
         view.keyboardDismissMode = .none
+        #endif
         view.allowsEditingTextAttributes = true
         view.autocorrectionType = .no
         view.autocapitalizationType = .none
