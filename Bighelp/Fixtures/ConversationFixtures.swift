@@ -204,6 +204,73 @@ enum ConversationFixtures {
                              activityVisibility: .init(showReasoning: true, showToolCalls: true), hasAcceptedMessage: true)
     }
 
+    /// `-test-card-replies`: the agent asks with a selection card and a form;
+    /// answering either sends the answer as the person's next message.
+    static var cardRepliesPreview: SessionRecord {
+        let sessionID = "demo-finance"
+        let agent = TimelineSender.agent(id: "finance", snapshot: .init(name: "Avery Park"))
+        // Hosts deliver cards as a fenced block in the reply's text.
+        func card(_ document: [String: Any]) -> String {
+            let json = try! JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
+            return "```\(ChatCardMessageProjection.fenceLanguage)\n" + String(decoding: json, as: UTF8.self) + "\n```"
+        }
+        let common: [String: Any] = [
+            "schema": "loopdy.generative_ui", "version": 2, "created_at": "2026-09-30T18:00:00Z", "origin": "live",
+        ]
+        let selection = card(common.merging([
+            "component": "selection", "title": "Where to this weekend?",
+            "card_id": "5e1ec7105e1ec7105e1ec7105e1ec710",
+            "content_hash": String(repeating: "a", count: 64),
+            "provenance": ["source_name": "Trip ideas"],
+            "data": [
+                "description": "Pick one and I'll plan the rest.",
+                "mode": "single", "submit_label": "Send",
+                "options": [
+                    ["id": "coast", "label": "The coast", "detail": "2 hours, ocean views", "enabled": true,
+                     "stage_text": "Let's go to the coast."],
+                    ["id": "mountains", "label": "The mountains", "detail": "3 hours, hiking and a cabin",
+                     "enabled": true, "stage_text": "Let's go to the mountains."],
+                    ["id": "city", "label": "A city weekend", "detail": "Museums and food", "enabled": true,
+                     "stage_text": "Let's do a city weekend."],
+                ],
+            ],
+        ]) { $1 })
+        let form = card(common.merging([
+            "component": "form", "title": "Trip details",
+            "card_id": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+            "content_hash": String(repeating: "b", count: 64),
+            "action": [
+                "kind": "submit_form", "request_id": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+                "owner": ["profile": "finance", "session_id": "demo-finance-stored"],
+                "expires_at": "2026-10-07T18:00:00Z",
+            ],
+            "data": [
+                "description": "A few details so I can book the right things.",
+                "submit_label": "Send",
+                "fields": [
+                    ["id": "travelers", "kind": "integer", "label": "Travelers", "required": true, "default": 2],
+                    ["id": "pace", "kind": "select", "label": "Pace", "required": true,
+                     "options": [["id": "slow", "label": "Slow and easy"], ["id": "packed", "label": "Packed"]]],
+                    ["id": "pet", "kind": "toggle", "label": "Bringing the dog", "required": false],
+                    ["id": "notes", "kind": "textarea", "label": "Anything else", "required": false],
+                ],
+            ],
+        ]) { $1 })
+        let items = [
+            TimelineItem(id: "cards-q", role: .human, sender: .user(snapshot: .init(name: "You")),
+                         content: .message("Can you help me plan a weekend trip?"), metadata: .init(sourceOrder: 10)),
+            TimelineItem(id: "cards-intro", role: .assistant, sender: agent,
+                         content: .message("Happy to. Pick a place, then fill in the details."),
+                         metadata: .init(sourceOrder: 20)),
+            TimelineItem(id: "cards-selection", role: .assistant, sender: agent, content: .message(selection),
+                         metadata: .init(sourceOrder: 30)),
+            TimelineItem(id: "cards-form", role: .assistant, sender: agent, content: .message(form),
+                         metadata: .init(sourceOrder: 40)),
+        ]
+        return SessionRecord(id: sessionID, kind: .direct, agentIDs: ["finance"], title: "Weekend trip",
+                             items: items, hasAcceptedMessage: true)
+    }
+
     /// `-test-thinking-style`: a finished turn (thinking, two interim messages,
     /// tools, answer) and a turn still in progress with visible thinking.
     static var thinkingStylePreview: SessionRecord {

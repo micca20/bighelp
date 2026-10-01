@@ -208,6 +208,18 @@ against fixture implementations in tests.
 Native host selection belongs to the independently authenticated host registry.
 `NativeWorkspaceSelectionStore` binds the selected host and exact owner to one
 runtime, retires changed authority, and preserves same-authority recovery.
+The all-hosts view (`Bighelp/Fleet`) lists every configured host's agents,
+direct chats and scheduled tasks without changing that selection model.
+`FleetStore` keeps one snapshot per host in Application Support
+(`BighelpFleet`, complete file protection): the selected host's comes from its
+live runtime stores; `RegistryFleetReader` reads the others at most once a
+minute through each host's own `DirectHermesWorkspaceStore` (one connection per
+host, never a second client for the same credentials), discovering its
+capabilities like a runtime does, then suspends a connection it opened. A read
+stops if that host becomes selected. Opening an agent, chat or task on another
+host selects that host and runs the open once its runtime is ready; host-only
+screens ask which host first. Removing a host deletes its snapshot.
+
 The optional account device list retains separate selected/primary preferences
 for account management and fixtures. Those paired-device preferences cannot
 choose, reset or gate the production native workspace.

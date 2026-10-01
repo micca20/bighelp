@@ -20,6 +20,7 @@ struct GenerativeUICardView: View {
             }
         }
         .frame(maxWidth: 560, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.generative-ui.\(card.component.rawValue)")
     }
 
@@ -75,7 +76,7 @@ struct GenerativeUICardView: View {
         case .dashboard:
             dashboard
         case .form:
-            GenerativeUIFormPreview(card: card)
+            GenerativeUIFormPreview(card: card, messageID: messageID)
         case .checklist:
             GenerativeUIChecklistView(card: card, messageID: messageID)
         case .selection:
@@ -382,7 +383,7 @@ struct GenerativeUICardView: View {
 
     private var cardBadge: String {
         switch card.component {
-        case .checklist, .selection: "LOCAL"
+        case .checklist: "LOCAL"
         case .automation: "SNAPSHOT"
         default: "LIVE"
         }
@@ -478,6 +479,8 @@ private struct GenerativeUISelectionView: View {
     let card: GenerativeUICard
     let messageID: String
     @State private var selection = Set<String>()
+    /// What this card already sent to the agent; the choice is then fixed.
+    @State private var sentReply: String?
     @State private var stagedText = ""
     @State private var showingDraftChoice = false
     @State private var confirmation: String?
@@ -509,20 +512,29 @@ private struct GenerativeUISelectionView: View {
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!option.enabled || interactions?.isCurrent != true || messageID.isEmpty)
+                    .disabled(!option.enabled || sentReply != nil || interactions?.isCurrent != true || messageID.isEmpty)
                     .accessibilityValue(option.enabled ? (selection.contains(option.id) ? "Selected" : "Not selected") : "Unavailable")
                 }
             }
             .background(theme.raisedSurface, in: .rect(cornerRadius: 12))
 
-            Button(action: prepareStaging) {
-                Label(card.data["submit_label"]?.string ?? "Use selection", systemImage: "text.cursor")
+            if sentReply != nil {
+                Label("Sent", systemImage: "checkmark.circle.fill")
+                    .bighelpFont(.label)
+                    .foregroundStyle(theme.success)
                     .frame(maxWidth: .infinity, minHeight: 44)
+                    .accessibilityIdentifier("chat.generative-ui.selection.sent")
+            } else {
+                Button(action: send) {
+                    Label(card.data["submit_label"]?.string ?? "Send", systemImage: "arrow.up.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .bighelpProminentButtonStyle()
+                .tint(theme.action)
+                .disabled(selection.isEmpty || interactions?.isCurrent != true || messageID.isEmpty)
+                .accessibilityHint("Sends your choice to the agent.")
+                .accessibilityIdentifier("chat.generative-ui.selection.send")
             }
-            .bighelpProminentButtonStyle()
-            .tint(theme.action)
-            .disabled(selection.isEmpty || interactions?.isCurrent != true)
-            .accessibilityHint("Adds text to the composer for review. Nothing is sent.")
 
             if let confirmation {
                 Text(confirmation).bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
@@ -534,7 +546,7 @@ private struct GenerativeUISelectionView: View {
             Button("Replace Draft", role: .destructive) { commit(.replace) }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Choose how to stage this selection. Nothing will be sent.")
+            Text("This choice runs a command, so it goes in the composer for you to send.")
         }
     }
 
@@ -567,6 +579,7 @@ private struct GenerativeUISelectionView: View {
             allowedOptionIDs: Set(options.map(\.id)),
             maximum: maximum
         )
+        sentReply = interactions.store.reply(for: identity(interactions))
     }
 
     private func choose(_ option: Option) {
@@ -586,10 +599,26 @@ private struct GenerativeUISelectionView: View {
         confirmation = nil
     }
 
-    private func prepareStaging() {
+    /// The choice goes straight to the agent as the person's reply.
+    private func send() {
+        guard let interactions, interactions.isCurrent, sentReply == nil else { return }
+        let reply = CardReplyText.selection(options.filter { selection.contains($0.id) }.map(\.stageText))
+        guard !reply.isEmpty else { return }
+        // A command is the person's to send.
+        if reply.hasPrefix("/") { prepareStaging(reply); return }
+        do {
+            try interactions.reply(reply, for: identity(interactions))
+            sentReply = reply
+            confirmation = nil
+        } catch {
+            confirmation = (error as? LocalizedError)?.errorDescription
+                ?? "This chat can't send right now. Try again in a moment."
+        }
+    }
+
+    private func prepareStaging(_ text: String) {
         guard let interactions, interactions.isCurrent else { return }
-        stagedText = options.filter { selection.contains($0.id) }.map(\.stageText).joined(separator: "\n")
-        guard !stagedText.isEmpty else { return }
+        stagedText = text
         if interactions.currentDraft().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             commit(.replace)
         } else {
@@ -864,8 +893,12 @@ private struct GenerativeUIChartView: View {
 
 private struct GenerativeUIFormPreview: View {
     let card: GenerativeUICard
+    let messageID: String
 
     @State private var showingForm = false
+    /// The answers this card already sent to the agent.
+    @State private var sentReply: String?
+    @Environment(\.chatCardInteractions) private var interactions
 
     var body: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
@@ -901,29 +934,56 @@ private struct GenerativeUIFormPreview: View {
                     .background(theme.raisedSurface, in: .rect(cornerRadius: 12))
                 }
             }
-            Button {
-                showingForm = true
-            } label: {
-                HStack(spacing: BighelpTokens.space8) {
-                    Image(systemName: "hand.tap.fill")
-                    Text(card.data["submit_label"]?.string ?? "Respond")
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
+            if sentReply != nil {
+                Label("Sent", systemImage: "checkmark.circle.fill")
+                    .bighelpFont(.label)
+                    .foregroundStyle(theme.success)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("chat.generative-ui.form.sent")
+            } else {
+                Button {
+                    showingForm = true
+                } label: {
+                    HStack(spacing: BighelpTokens.space8) {
+                        Image(systemName: "hand.tap.fill")
+                        Text(card.data["submit_label"]?.string ?? "Respond")
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                    }
+                    .bighelpFont(.label)
+                    .foregroundStyle(theme.action)
+                    .padding(.horizontal, BighelpTokens.space12)
+                    .frame(minHeight: 44)
+                    .background(theme.action.opacity(0.09), in: .rect(cornerRadius: 12))
                 }
-                .bighelpFont(.label)
-                .foregroundStyle(theme.action)
-                .padding(.horizontal, BighelpTokens.space12)
-                .frame(minHeight: 44)
-                .background(theme.action.opacity(0.09), in: .rect(cornerRadius: 12))
+                .buttonStyle(.plain)
+                .disabled(interactions?.isCurrent != true || messageID.isEmpty)
+                .accessibilityIdentifier("chat.generative-ui.form.open")
             }
-            .buttonStyle(.plain)
         }
+        .onAppear(perform: restore)
         .sheet(isPresented: $showingForm) {
-            GenerativeUIFormSheet(card: card)
+            GenerativeUIFormSheet(card: card, send: send)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private func restore() {
+        guard let interactions, interactions.isCurrent else { return }
+        sentReply = interactions.store.reply(for: identity(interactions))
+    }
+
+    /// The answers go straight to the agent as the person's reply.
+    private func send(_ reply: String) throws {
+        guard let interactions else { throw ChatCardInteractionError.unavailable }
+        try interactions.reply(reply, for: identity(interactions))
+        sentReply = reply
+    }
+
+    private func identity(_ handler: ChatCardInteractionHandler) -> ChatCardInteractionIdentity {
+        .init(scope: handler.scope, messageID: messageID, cardID: card.id)
     }
 
     private func fieldSymbol(_ kind: String?) -> String {
@@ -982,48 +1042,22 @@ private struct GenerativeUIFormSheet: View {
         }
     }
 
-    private struct ActionContext {
-        let requestID: String
-        let profile: String
-        let sessionID: String
-        let expiresAt: Date
-
-        init?(card: GenerativeUICard) {
-            guard
-                let action = card.action,
-                action["kind"]?.string == "submit_form",
-                let requestID = action["request_id"]?.string,
-                let owner = action["owner"]?.object,
-                let profile = owner["profile"]?.string,
-                let sessionID = owner["session_id"]?.string,
-                let expires = action["expires_at"]?.string,
-                let expiresAt = ISO8601DateFormatter().date(from: expires)
-            else { return nil }
-            self.requestID = requestID
-            self.profile = profile
-            self.sessionID = sessionID
-            self.expiresAt = expiresAt
-        }
-    }
-
     let card: GenerativeUICard
+    /// Sends the finished answers to the agent; throws when the chat can't.
+    let send: @MainActor (String) throws -> Void
     private let fields: [Field]
-    private let action: ActionContext?
 
     @State private var textValues: [String: String]
     @State private var toggleValues: [String: Bool]
     @State private var multipleValues: [String: Set<String>]
-    @State private var isSubmitting = false
     @State private var resultMessage: String?
-    @State private var resultSucceeded = false
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.generativeUIFormMessaging) private var messaging
 
-    init(card: GenerativeUICard) {
+    init(card: GenerativeUICard, send: @escaping @MainActor (String) throws -> Void) {
         self.card = card
+        self.send = send
         let fields = (card.data["fields"]?.array ?? []).compactMap(Field.init)
         self.fields = fields
-        action = ActionContext(card: card)
         var text: [String: String] = [:]
         var toggles: [String: Bool] = [:]
         var multiples: [String: Set<String>] = [:]
@@ -1062,11 +1096,8 @@ private struct GenerativeUIFormSheet: View {
 
                 if let resultMessage {
                     Section {
-                        Label(
-                            resultMessage,
-                            systemImage: resultSucceeded ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
-                        )
-                        .foregroundStyle(resultSucceeded ? Color.green : theme.danger)
+                        Label(resultMessage, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(theme.danger)
                     }
                 }
 
@@ -1074,27 +1105,14 @@ private struct GenerativeUIFormSheet: View {
                     Button {
                         submit()
                     } label: {
-                        HStack {
-                            if isSubmitting {
-                                ProgressView()
-                                    .accessibilityHidden(true)
-                            }
-                            Text(card.data["submit_label"]?.string ?? "Submit")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        Text(card.data["submit_label"]?.string ?? "Send")
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: BighelpTokens.hitTarget)
                     }
                     .bighelpProminentButtonStyle()
                     .tint(theme.action)
-                    .disabled(isSubmitting || resultSucceeded || messaging == nil || isExpired)
-
-                    if messaging == nil {
-                        Text("Connect to your Hermes host to send this response.")
-                            .foregroundStyle(.secondary)
-                    } else if isExpired {
-                        Text("This response card has expired. Ask the agent to create a fresh one.")
-                            .foregroundStyle(.secondary)
-                    }
+                    .accessibilityHint("Sends your answers to the agent.")
+                    .accessibilityIdentifier("chat.generative-ui.form.send")
                 }
             }
             .navigationTitle(card.title)
@@ -1195,35 +1213,24 @@ private struct GenerativeUIFormSheet: View {
     }
 
     private func submit() {
-        guard let messaging, let action else {
-            resultSucceeded = false
-            resultMessage = "This response can’t be sent right now."
+        let values: [String: BighelpJSONValue]
+        do { values = try submissionValues() } catch {
+            resultMessage = "Complete the required fields with valid values."
             return
         }
-        do {
-            let request = try BighelpLinkGenerativeUIFormSubmission(
-                requestID: action.requestID,
-                sessionID: action.sessionID,
-                profile: action.profile,
-                values: try submissionValues(),
-                submittedAt: Int(Date.now.timeIntervalSince1970)
+        let answers = fields.map { field in
+            CardReplyText.Answer(
+                label: field.label,
+                text: CardReplyText.value(values[field.id], kind: field.kind,
+                                          options: field.options.map { ($0.id, $0.label) })
             )
-            isSubmitting = true
-            resultMessage = nil
-            Task { @MainActor in
-                do {
-                    let result = try await messaging.submit(request)
-                    resultSucceeded = result.state == .success
-                    resultMessage = result.message
-                } catch {
-                    resultSucceeded = false
-                    resultMessage = "The response didn’t reach your agent. Try again."
-                }
-                isSubmitting = false
-            }
+        }
+        do {
+            try send(CardReplyText.form(title: card.title, answers: answers))
+            dismiss()
         } catch {
-            resultSucceeded = false
-            resultMessage = "Complete the required fields with valid values."
+            resultMessage = (error as? LocalizedError)?.errorDescription
+                ?? "This chat can't send right now. Try again in a moment."
         }
     }
 
@@ -1234,9 +1241,9 @@ private struct GenerativeUIFormSheet: View {
             case "toggle":
                 result[field.id] = .boolean(toggleValues[field.id] ?? false)
             case "multi_select":
-                result[field.id] = .array(
-                    (multipleValues[field.id] ?? []).sorted().map(BighelpJSONValue.string)
-                )
+                let chosen = field.options.map(\.id).filter { multipleValues[field.id]?.contains($0) == true }
+                if chosen.isEmpty, field.required { throw BighelpLinkWireError.invalidValue }
+                result[field.id] = .array(chosen.map(BighelpJSONValue.string))
             case "integer":
                 let raw = (textValues[field.id] ?? "").trimmingCharacters(in: .whitespaces)
                 if raw.isEmpty, !field.required { continue }
@@ -1299,11 +1306,6 @@ private struct GenerativeUIFormSheet: View {
             selection.insert(option)
         }
         multipleValues[field.id] = selection
-    }
-
-    private var isExpired: Bool {
-        guard let action else { return true }
-        return action.expiresAt <= .now
     }
 
     @BighelpThemeReader private var theme

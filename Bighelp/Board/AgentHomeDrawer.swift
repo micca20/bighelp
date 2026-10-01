@@ -8,12 +8,14 @@ struct AgentHomeDrawer: View {
     let hosts: BighelpMenuHosts
     let destinations: BighelpMenuDestinations
     let onOpen: (SessionSummary) -> Void
+    /// In the all-hosts view, recent chats come from every host.
+    var fleetChats: (fleet: FleetStore, open: (FleetChat) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.homeMenuClose) private var panelClose
 
     var body: some View {
         NavigationStack {
-            BighelpMenu(hosts: hosts, destinations: destinations, close: close, hasRecent: !chats.isEmpty) {
+            BighelpMenu(hosts: hosts, destinations: destinations, close: close, hasRecent: hasRecent) {
                 AnyView(recentChats)
             }
             .navigationTitle("Menu")
@@ -35,8 +37,30 @@ struct AgentHomeDrawer: View {
         if let panelClose { panelClose() } else { dismiss() }
     }
 
+    private var hasRecent: Bool {
+        if let fleetChats { return !fleetChats.fleet.chats().isEmpty }
+        return !chats.isEmpty
+    }
+
     @ViewBuilder
     private var recentChats: some View {
+        if let fleetChats {
+            ForEach(fleetChats.fleet.chats().prefix(12)) { chat in
+                Button {
+                    close()
+                    fleetChats.open(chat)
+                } label: {
+                    FleetChatRow(chat: chat, fleet: fleetChats.fleet, compact: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("menu.fleet-chat.\(chat.title)")
+            }
+        } else {
+            sessionChats
+        }
+    }
+
+    private var sessionChats: some View {
         ForEach(chats) { chat in
             Button {
                 close()

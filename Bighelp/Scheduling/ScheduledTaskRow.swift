@@ -88,14 +88,19 @@ enum ScheduledTaskCopy {
 
     /// Compact next-run line, e.g. "Next: Tue 8:00 AM".
     static func shortNextRun(_ task: ScheduledTask, isRunning: Bool = false, now: Date = .now) -> String {
+        shortNextRun(status: task.status, nextRun: task.nextRun, isRunning: isRunning, now: now)
+    }
+
+    static func shortNextRun(status: ScheduledTaskStatus, nextRun: Date?, isRunning: Bool = false,
+                             now: Date = .now) -> String {
         if isRunning { return "Working on it now" }
-        switch task.status {
+        switch status {
         case .completed: return "Finished"
         case .failed: return "Needs a look"
         case .paused: return "Paused"
         case .active: break
         }
-        guard let nextRun = task.nextRun else { return "Next run confirmed by your agent" }
+        guard let nextRun else { return "Next run confirmed by your agent" }
         return "Next: \(shortDate(nextRun, now: now))"
     }
 

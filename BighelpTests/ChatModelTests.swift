@@ -381,6 +381,74 @@ struct ChatModelTests {
         await owner.value
     }
 
+    // A card's answer (a form, a picked option) goes to the agent as the
+    // person's next message. Before, picks were only put in the composer and
+    // form answers waited on the host where nothing told the agent.
+    @Test func cardReplySendsItsOwnMessageAndKeepsTheDraft() async {
+        let client = RecordingSlashConversationClient()
+        let model = ChatModel(conversationID: "card-reply-idle", client: client, initialItems: [])
+        model.draft = "Half-typed note"
+
+        let sent = await model.sendCardReply("My answers to “Trip”:\n- Days: 3")
+
+        #expect(sent)
+        #expect(client.messages == ["My answers to “Trip”:\n- Days: 3"])
+        #expect(model.transcriptEntries.compactMap(\.messageText) == ["My answers to “Trip”:\n- Days: 3"])
+        #expect(model.draft == "Half-typed note")
+    }
+
+    @Test func cardReplyDuringATurnSteersItAndKeepsTheDraft() async {
+        let client = ControlledMidSessionConversationClient()
+        let model = ChatModel(conversationID: "card-reply-steer", client: client, initialItems: [])
+        model.draft = "Start"
+        let owner = Task { await model.send() }
+        await client.waitUntilInitialStarted()
+        model.draft = "Keep my draft"
+
+        let reply = Task { await model.sendCardReply("Book the 9:40 flight") }
+        await client.waitUntilMidSessionStarted()
+
+        #expect(client.midSessionBehaviors == [.steer])
+        #expect(model.transcriptEntries.compactMap(\.messageText).suffix(2) == ["Start", "Book the 9:40 flight"])
+        #expect(model.draft == "Keep my draft")
+
+        client.resolveMidSession(.accepted)
+        #expect(await reply.value)
+        client.finishInitial(text: "Done")
+        await owner.value
+        #expect(model.draft == "Keep my draft")
+    }
+
+    @Test func aRefusedCardReplyNeverReplacesTheDraft() async {
+        let client = ControlledMidSessionConversationClient()
+        let model = ChatModel(conversationID: "card-reply-refused", client: client, initialItems: [])
+        model.draft = "Start"
+        let owner = Task { await model.send() }
+        await client.waitUntilInitialStarted()
+        model.draft = "Keep my draft"
+
+        let reply = Task { await model.sendCardReply("Option B") }
+        await client.waitUntilMidSessionStarted()
+        client.rejectMidSession()
+        _ = await reply.value
+
+        #expect(model.draft == "Keep my draft")
+        #expect(!model.transcriptEntries.compactMap(\.messageText).contains("Option B"))
+        #expect(model.failureMessage != nil)
+        client.finishInitial(text: "Done")
+        await owner.value
+    }
+
+    @Test func cardRepliesNeverRunCommands() async {
+        let client = RecordingSlashConversationClient()
+        let model = ChatModel(conversationID: "card-reply-command", client: client, initialItems: [])
+
+        #expect(!model.acceptsCardReply("/goal ship it"))
+        #expect(await model.sendCardReply("/goal ship it") == false)
+        #expect(await model.sendCardReply("   ") == false)
+        #expect(client.messages.isEmpty)
+    }
+
     @Test func quickActionProjectsItsHumanIntentBeforePerforming() async {
         let sleeper = ControlledDemoSleeper()
         let model = ChatModel(

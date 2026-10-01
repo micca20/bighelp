@@ -18,6 +18,9 @@ HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
   update    no sign-in, with an older plugin release installed by Hermes' own
             installer from GitHub: the app finds the latest GitHub Release and
             updates to it (PluginReleaseUpdateHostUITests; needs the internet)
+  fleet     two hosts with the bighelp plugin (--plugin) and different agents:
+            the all-hosts view lists both and opens an agent on the host that
+            isn't selected (AllHostsHostUITests)
 
 HERMES_DISABLE_LAZY_INSTALLS=1 keeps Hermes from "finishing a source update"
 into its checkout on first launch. Use a separate Hermes checkout anyway: never
@@ -60,6 +63,7 @@ TESTS = {
     "widgets": ["WidgetLinkHostUITests/testRecentChatAndNewChatWidgetLinksOpenChats"],
     "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost"],
     "update": ["PluginReleaseUpdateHostUITests/testUpdatesToTheLatestReleaseOnARealHost"],
+    "fleet": ["AllHostsHostUITests/testAllHostsListsBothHostsAndOpensTheOther"],
 }
 # 2.18.2, older than any release the app should offer.
 OLD_PLUGIN_REVISION = "34f2a16938ba69185a7f5ed9fa4a963f9a9fe1b4"
@@ -293,7 +297,98 @@ def session_sources(home: Path) -> list[str]:
         return sorted({row[0] or "" for row in connection.execute("SELECT source FROM sessions")})
 
 
+def run_fleet(args, repo: Path) -> int:
+    """Two open hosts with the plugin: "Desk agent" on one; "Lab agent" and "researcher" on the other."""
+    if not args.plugin:
+        raise SystemExit("fleet mode needs --plugin <bighelp plugin folder>")
+    with tempfile.TemporaryDirectory(prefix="signin-fleet-", dir="/tmp") as temporary:
+        temp = Path(temporary).resolve()
+        model = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticModel)
+        threading.Thread(target=model.serve_forever, daemon=True).start()
+        hosts, logs = [], []
+        try:
+            for label, display, extra in (("desk", "Desk agent", []), ("lab", "Lab agent", ["researcher"])):
+                home, project = temp / label / "home", temp / label / "project"
+                home.mkdir(parents=True)
+                project.mkdir(parents=True)
+                port = free_port()
+                origin = f"http://127.0.0.1:{port}"
+                config = {"dashboard": {"public_url": origin},
+                          "model": {"default": "fixture-model", "provider": "custom",
+                                    "base_url": f"http://127.0.0.1:{model.server_port}/v1",
+                                    "api_key": "local-synthetic-no-auth"},
+                          "agent": {"max_turns": 3}, "terminal": {"backend": "local", "cwd": str(project)},
+                          "memory": {"memory_enabled": False, "user_profile_enabled": False},
+                          "plugins": {"enabled": ["loopdy"]}}
+                shutil.copytree(args.plugin, home / "plugins" / "loopdy",
+                                ignore=shutil.ignore_patterns("tests", "__pycache__", ".git"))
+                (home / "config.yaml").write_text(json.dumps(config))
+                env = {k: os.environ[k] for k in ("PATH", "LANG", "TMPDIR") if k in os.environ}
+                env.update(HOME=str(home), HERMES_HOME=str(home), HERMES_DISABLE_LAZY_INSTALLS="1",
+                           HERMES_DASHBOARD_SESSION_TOKEN=secrets.token_urlsafe(32), PYTHONUNBUFFERED="1",
+                           NO_PROXY="127.0.0.1,localhost")
+                quiet = {"cwd": project, "env": env, "check": True, "timeout": 120,
+                         "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+                subprocess.run([args.hermes, "profile", "rename", "default", display], **quiet)
+                for name in extra:
+                    subprocess.run([args.hermes, "profile", "create", name, "--no-alias", "--no-skills"], **quiet)
+                log = (args.results / f"hermes-fleet-{label}.log").open("w")
+                logs.append(log)
+                process = subprocess.Popen([args.hermes, "serve", "--host", "127.0.0.1", "--port", str(port),
+                                            "--isolated", "--skip-build"], cwd=project, env=env, stdout=log,
+                                           stderr=subprocess.STDOUT)
+                hosts.append((label, origin, env["HERMES_DASHBOARD_SESSION_TOKEN"], process, home))
+            for label, origin, token, process, _ in hosts:
+                deadline = time.monotonic() + 90
+                while True:
+                    if process.poll() is not None:
+                        raise RuntimeError(f"Hermes exited (fleet {label}); see hermes-fleet-{label}.log")
+                    try:
+                        if request_status(origin, token)[0] == 200:
+                            break
+                    except OSError:
+                        pass
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"Hermes not ready (fleet {label})")
+                    time.sleep(0.3)
+            secret = temp / "probe.json"
+            secret.write_text(json.dumps({"mode": "fleet", "address_a": hosts[0][1].removeprefix("http://"),
+                                          "address_b": hosts[1][1].removeprefix("http://")}))
+            secret.chmod(0o600)
+            client_env = dict(os.environ, TEST_RUNNER_BIGHELP_SIGNIN_PROBE=str(secret),
+                              TEST_RUNNER_BIGHELP_SIGNIN_EVIDENCE=str(args.results / "fleet"))
+            (args.results / "fleet").mkdir(parents=True, exist_ok=True)
+            command = ["xcodebuild", "test-without-building", "-project", str(repo / "Bighelp.xcodeproj"),
+                       "-scheme", "Bighelp", "-destination", f"platform=iOS Simulator,id={args.simulator_id}",
+                       "-derivedDataPath", str(args.derived_data), "-parallel-testing-enabled", "NO",
+                       "-resultBundlePath", str(args.results / "fleet.xcresult")]
+            command += [f"-only-testing:BighelpUITests/{name}" for name in TESTS["fleet"]]
+            with (args.results / "xcodebuild-fleet.log").open("w") as output:
+                result = subprocess.run(command, env=client_env, cwd=repo, stdout=output, stderr=subprocess.STDOUT,
+                                        timeout=1500)
+            for label, *_, home in hosts:
+                print(json.dumps({"host": label, "session_sources_on_host": session_sources(home)}), flush=True)
+            print(json.dumps({"mode": "fleet", "exit_code": result.returncode}), flush=True)
+            return result.returncode
+        finally:
+            for label, _, _, process, home in hosts:
+                if (home / "logs").exists():
+                    shutil.copytree(home / "logs", args.results / f"hermes-fleet-{label}-logs", dirs_exist_ok=True)
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            for log in logs:
+                log.close()
+            model.shutdown()
+            model.server_close()
+
+
 def run_mode(mode: str, args, repo: Path) -> int:
+    if mode == "fleet":
+        return run_fleet(args, repo)
     with tempfile.TemporaryDirectory(prefix=f"signin-{mode}-", dir="/tmp") as temporary:
         temp = Path(temporary).resolve()
         home, project = temp / "home", temp / "project"

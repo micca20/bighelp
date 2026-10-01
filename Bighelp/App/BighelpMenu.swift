@@ -9,9 +9,16 @@ struct BighelpMenuHosts {
         let isSelected: Bool
     }
 
+    /// The all-hosts view's switch: every agent on every host in one list.
+    struct AllHosts {
+        let isOn: Bool
+        let toggle: () -> Void
+    }
+
     var hosts: [Host] = []
     var select: (String) -> Void = { _ in }
     var add: (() -> Void)?
+    var allHosts: AllHosts?
 
     @MainActor
     static func current(registry: BighelpHostRegistry?, linkDevices: BighelpLinkDeviceStore?) -> BighelpMenuHosts {
@@ -43,6 +50,8 @@ struct BighelpMenuHosts {
 
 /// Where the menu can go.
 struct BighelpMenuDestinations {
+    /// The all-hosts view's list, its home while it's on.
+    var onAllAgents: (() -> Void)? = nil
     var newChatTitle = "New chat"
     var onNewChat: () -> Void
     var onNewGroup: (() -> Void)?
@@ -96,6 +105,9 @@ struct BighelpMenu<Recent: View>: View {
 
     private var mainSection: some View {
         Section {
+            if let onAllAgents = destinations.onAllAgents {
+                row("All agents", symbol: "square.stack.3d.up", id: "menu.all-agents", action: onAllAgents)
+            }
             newChatRow
             row("Agents", symbol: "person.2", id: "menu.agents", action: destinations.onAgents)
             if let onProjects = destinations.onProjects {
@@ -108,7 +120,13 @@ struct BighelpMenu<Recent: View>: View {
                 action: destinations.onScheduledTasks)
             row("Settings", symbol: "gearshape", id: "menu.settings", action: destinations.onSettings)
         } header: {
-            if !hosts.hosts.isEmpty || hosts.add != nil { hostSwitcher }
+            if !hosts.hosts.isEmpty || hosts.add != nil {
+                HStack(spacing: BighelpTokens.space8) {
+                    hostSwitcher
+                    if let allHosts = hosts.allHosts { allHostsToggle(allHosts) }
+                }
+                .padding(.bottom, BighelpTokens.space4)
+            }
         }
         .listRowBackground(theme.surface)
     }
@@ -160,7 +178,7 @@ struct BighelpMenu<Recent: View>: View {
         } label: {
             HStack(spacing: BighelpTokens.space8) {
                 Image(systemName: "desktopcomputer")
-                Text(hosts.hosts.first(where: \.isSelected)?.name ?? "Choose a host")
+                Text(hostTitle)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2.weight(.semibold))
@@ -173,10 +191,33 @@ struct BighelpMenu<Recent: View>: View {
             .contentShape(.capsule)
         }
         .textCase(nil)
-        .padding(.bottom, BighelpTokens.space4)
-        .accessibilityLabel("Host: \(hosts.hosts.first(where: \.isSelected)?.name ?? "none")")
+        .accessibilityLabel("Host: \(hostTitle)")
         .accessibilityHint("Switch hosts or add one.")
         .accessibilityIdentifier("menu.hosts")
+    }
+
+    private var hostTitle: String {
+        if hosts.allHosts?.isOn == true { return "All hosts" }
+        return hosts.hosts.first(where: \.isSelected)?.name ?? "Choose a host"
+    }
+
+    /// Shows every agent on every host in one list, or just this host's.
+    private func allHostsToggle(_ allHosts: BighelpMenuHosts.AllHosts) -> some View {
+        Button { choose(allHosts.toggle) } label: {
+            Image(systemName: allHosts.isOn ? "square.stack.3d.up.fill" : "square.stack.3d.up")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(allHosts.isOn ? theme.actionForeground : theme.primaryText)
+                .frame(width: 34, height: 34)
+                .background(allHosts.isOn ? theme.action : theme.surface, in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.borderless)
+        .textCase(nil)
+        .accessibilityLabel("All hosts")
+        .accessibilityValue(allHosts.isOn ? "On" : "Off")
+        .accessibilityHint("Shows every agent on every host in one list.")
+        .accessibilityAddTraits(allHosts.isOn ? .isSelected : [])
+        .accessibilityIdentifier("menu.all-hosts")
     }
 
     // MARK: Recent

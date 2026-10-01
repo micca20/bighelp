@@ -527,6 +527,14 @@ private struct RemoteAgentAvatarCache {
     }
 }
 
+extension AgentDirectoryStore {
+    /// A host's pinned agents, as saved while it was selected (the all-hosts
+    /// view reads them for hosts that aren't).
+    static func savedPinnedAgentIDs(in defaults: UserDefaults, hostBucket: String) -> [String]? {
+        (defaults.dictionary(forKey: Keys.pinnedAgentIDsByHost) as? [String: [String]])?[hostBucket]
+    }
+}
+
 private extension AgentDirectoryStore {
     enum Keys {
         static let selectedAgentID = "loopdy.demo.selectedAgentID"

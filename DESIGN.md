@@ -145,6 +145,15 @@ the AI provider. On iPhone the board opens on Needs you as one lane at a time; i
 the board in its own glass window beside bighelp: look at a card, pinch and drag it, and it lifts toward you while
 the lane under it lights up.
 
+**All hosts** (the stack button beside ☰'s host switcher) turns home into one list of every agent on every
+host, like Messages: pinned agents up top, host filter chips, then each agent with its host's name and its latest
+chat, newest first. A tap opens that agent's own chat with Back; if it's on another host, the app switches hosts
+first while the list stays up. ☰'s recent chats, All chats and Scheduled tasks then list every host's, each with
+its host's name. Screens that belong to one host (Settings, Agents, Projects, Kanban, Provider usage, the folder,
+New group) ask which host first. The tab bar hides, ☰ › All agents is home, and the button in the list's top bar
+turns it off. Other hosts are read at most once a minute over their own saved sign-ins (`Bighelp/Fleet`); one
+that can't be reached says so and keeps showing what it had last time.
+
 Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Agents opens on the
 **Pinned** agents: each shows its role under the name (one line, trailing off), or what it's doing when it's busy.
 Touch and hold lifts an agent: drag it to reorder (the order is kept per host), or let go to see its actions.

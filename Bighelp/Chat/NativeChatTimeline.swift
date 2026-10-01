@@ -327,7 +327,6 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
             let cameraID: ObjectIdentifier?
             let providerStoreID: ObjectIdentifier?
             let disclosureStoreID: ObjectIdentifier?
-            let hasFormMessaging: Bool
             let cardInteractionScope: ChatCardInteractionScope?
             let hasContentReader: Bool
             let scenePhase: ScenePhase
@@ -349,7 +348,6 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
                 cameraID = environment.reflectiveVisionCamera.map(ObjectIdentifier.init)
                 providerStoreID = environment.providerLogoStore.map(ObjectIdentifier.init)
                 disclosureStoreID = environment.chatActivityDisclosureStore.map(ObjectIdentifier.init)
-                hasFormMessaging = environment.generativeUIFormMessaging != nil
                 cardInteractionScope = environment.chatCardInteractions?.scope
                 hasContentReader = environment.bighelpSessionContentReader != nil
                 scenePhase = environment.scenePhase
@@ -520,7 +518,6 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
             values.openURL = source.openURL
             values.openWiki = source.openWiki
             values.openGitHub = source.openGitHub
-            values.generativeUIFormMessaging = source.generativeUIFormMessaging
             values.chatCardInteractions = source.chatCardInteractions
             values.bighelpCardDataClient = source.bighelpCardDataClient
             values.bighelpSessionContentReader = source.bighelpSessionContentReader

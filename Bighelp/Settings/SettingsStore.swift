@@ -219,6 +219,11 @@ final class SettingsStore {
         didSet { defaults.set(nerdModeEnabled, forKey: Keys.nerdMode) }
     }
 
+    /// The all-hosts view: every agent on every host in one list.
+    var allHostsMode: Bool {
+        didSet { defaults.set(allHostsMode, forKey: Keys.allHostsMode) }
+    }
+
     private let defaults: UserDefaults
 
     init(
@@ -347,6 +352,7 @@ final class SettingsStore {
             default: false
         )
         nerdModeEnabled = defaults.bool(forKey: Keys.nerdMode, default: false)
+        allHostsMode = defaults.bool(forKey: Keys.allHostsMode, default: false)
     }
 
     /// Themes (Nous, Superpilot and your own, with their logos) were replaced by
@@ -603,6 +609,7 @@ private extension SettingsStore {
         static let organizeChatsByProjects = "loopdy.sessions.organizeByProjects"
         static let showCronSessions = "loopdy.sessions.showCronSessions"
         static let nerdMode = "loopdy.settings.nerd-mode"
+        static let allHostsMode = "bighelp.hosts.all-hosts"
         static let sessionSectionPreferences = "loopdy.sessions.section-preferences.v1"
     }
 }

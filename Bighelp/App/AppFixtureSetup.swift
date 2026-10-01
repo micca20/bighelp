@@ -39,6 +39,10 @@ enum AppFixtureSetup {
                 initialSessions[index].activityVisibility.showToolCalls = false
             }
         }
+        if usesFixtures, arguments.contains("-test-card-replies"),
+           let index = initialSessions.firstIndex(where: { $0.id == "demo-finance" }) {
+            initialSessions[index] = ConversationFixtures.cardRepliesPreview
+        }
         if usesFixtures, arguments.contains("-test-completed-turn-context"),
            let index = initialSessions.firstIndex(where: { $0.id == "demo-finance" }) {
             initialSessions[index] = ConversationFixtures.completedTurnContextPreview

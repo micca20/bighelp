@@ -90,6 +90,17 @@ final class BighelpCardInteractionStore {
         defaults.set(Array(bounded), forKey: key(identity, lane: "selection"))
     }
 
+    /// The answer this card already sent to the agent, if any.
+    func reply(for identity: ChatCardInteractionIdentity) -> String? {
+        guard identity.isUsable else { return nil }
+        return defaults.string(forKey: key(identity, lane: "reply"))
+    }
+
+    func setReply(_ reply: String, for identity: ChatCardInteractionIdentity) {
+        guard identity.isUsable, reply.utf8.count <= ChatOutgoingMessage.maximumCardReplyBytes else { return }
+        defaults.set(reply, forKey: key(identity, lane: "reply"))
+    }
+
     static func eraseAll(defaults: UserDefaults = .standard) {
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(defaultsKeyPrefix) {
             defaults.removeObject(forKey: key)
@@ -139,6 +150,7 @@ struct ChatCardAutomationSnapshot: Sendable {
 
 enum ChatCardInteractionError: Error, LocalizedError {
     case unavailable
+    case notReady
     case ownerChanged
     case snapshotChanged
     case taskMissing
@@ -147,6 +159,7 @@ enum ChatCardInteractionError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable: "This action is unavailable on the current connection."
+        case .notReady: "This chat can't send right now. Try again in a moment."
         case .ownerChanged: "This card belongs to a different host, profile, or conversation."
         case .snapshotChanged: "This task changed after the card was created. Refresh before changing it."
         case .taskMissing: "This task is no longer available."
@@ -195,6 +208,9 @@ struct ChatCardInteractionHandler {
     let store: BighelpCardInteractionStore
     let currentDraft: @MainActor () -> String
     let stageComposer: @MainActor (_ text: String, _ strategy: ChatCardComposerMergeStrategy) -> Void
+    /// Sends an answer to the agent as the person's next message. False when
+    /// the chat can't send right now; nothing was sent.
+    let sendReply: @MainActor (_ text: String) -> Bool
     let scheduledTasks: ChatCardScheduledTaskBackend?
     let currentScope: @MainActor () -> ChatCardInteractionScope?
 
@@ -203,6 +219,7 @@ struct ChatCardInteractionHandler {
         store: BighelpCardInteractionStore,
         currentDraft: @escaping @MainActor () -> String,
         stageComposer: @escaping @MainActor (_ text: String, _ strategy: ChatCardComposerMergeStrategy) -> Void,
+        sendReply: @escaping @MainActor (_ text: String) -> Bool = { _ in false },
         scheduledTasks: ChatCardScheduledTaskBackend? = nil,
         currentScope: @escaping @MainActor () -> ChatCardInteractionScope?
     ) {
@@ -210,8 +227,17 @@ struct ChatCardInteractionHandler {
         self.store = store
         self.currentDraft = currentDraft
         self.stageComposer = stageComposer
+        self.sendReply = sendReply
         self.scheduledTasks = scheduledTasks
         self.currentScope = currentScope
+    }
+
+    /// Sends a card's answer straight to the agent and remembers it, so the
+    /// card shows what was sent.
+    func reply(_ text: String, for identity: ChatCardInteractionIdentity) throws {
+        guard isCurrent, identity.scope.exactlyMatches(scope) else { throw ChatCardInteractionError.ownerChanged }
+        guard sendReply(text) else { throw ChatCardInteractionError.notReady }
+        store.setReply(text, for: identity)
     }
 
     var isCurrent: Bool {

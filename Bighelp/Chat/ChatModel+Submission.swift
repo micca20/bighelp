@@ -71,12 +71,61 @@ extension ChatModel {
             await sendMidSession(using: defaultMidSessionBehavior)
             return
         }
+        await send(ChatOutgoingMessage(composerOf: self))
+    }
 
-        let message = draft
-        let slashSelection = activeSlashCommand
+    /// Whether a card's answer can go out now. Unlike Send, it doesn't look at
+    /// the draft: the answer is its own message and leaves the draft alone.
+    var canSendCardReply: Bool {
+        if !isBotMode {
+            if isSending, let native = nativeConversationClient {
+                guard native.hasAuthoritativeEventCoverage, native.preparingAttachmentID == nil,
+                      native.sessionActionsAreRunning else { return false }
+            } else if !isSending {
+                guard directTransportIsReady else { return false }
+            } else {
+                guard supportsMidSessionSending else { return false }
+            }
+        }
+        guard !isAwaitingAuthoritativeSessionAllocation, !isBotMode || botModeExecutionEnabled,
+              botModeRoom?.isRunning != true, botModeRoom?.nativePendingEventID == nil,
+              !hasNativeBotModeRetryActions, botModeRoom?.nativeRetryJournal == nil,
+              botModeRoom?.nativePendingCancelID == nil,
+              !referenceOwnerRetired, referenceSubmission == nil, !referenceSendInFlight,
+              !hasExclusiveMidSessionSubmission, !isPDFDraftSendInFlight else { return false }
+        return !isSending || isMidSessionTurnLive
+    }
+
+    /// Whether `sendCardReply` would send this text now.
+    func acceptsCardReply(_ text: String) -> Bool {
+        let reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !reply.isEmpty && !reply.hasPrefix("/")
+            && reply.utf8.count <= ChatOutgoingMessage.maximumCardReplyBytes && canSendCardReply
+    }
+
+    /// Sends a card's answer (a form's values, a picked option) to the agent as
+    /// the person's next message, steering a running turn like Send does.
+    /// Whatever they were typing stays in the composer. Text that starts with
+    /// "/" would run as a command, so it isn't sent this way.
+    @discardableResult
+    func sendCardReply(_ text: String) async -> Bool {
+        guard acceptsCardReply(text) else { return false }
+        let outgoing = ChatOutgoingMessage(cardReply: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        if isSending {
+            await sendMidSession(outgoing, using: midSessionBehavior())
+        } else {
+            await send(outgoing)
+        }
+        return true
+    }
+
+    private func send(_ outgoing: ChatOutgoingMessage) async {
+        let message = outgoing.message
+        let slashSelection = outgoing.slashSelection
         let nativeAdmissionIDs = Set(nativeConversationClient?.journal.unresolved.map(\.id) ?? [])
-        let attachments = draftAttachments
-        let orderedAttachments = orderedDraftAttachments
+        let attachments = outgoing.attachments
+        let orderedAttachments = outgoing.orderedAttachments
+        let restoresDraft = outgoing.isComposerDraft
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !orderedAttachments.isEmpty else { return }
         if orderedAttachments.contains(where: { $0.pdfSelection != nil }) {
             await sendPDFDraft(
@@ -121,9 +170,11 @@ extension ChatModel {
                 appendProjectedMessage(item)
             }
         }
-        draft = ""
-        draftAttachments = []
-        orderedDraftAttachments = []
+        if restoresDraft {
+            draft = ""
+            draftAttachments = []
+            orderedDraftAttachments = []
+        }
 
         if let roomID = botModeRoomID,
            let botModeRoomStore,
@@ -150,7 +201,8 @@ extension ChatModel {
                 return
             } catch let error as MentionError {
                 guard isCurrentOwner(generation) else { return }
-                presentMentionError(error, restoring: message)
+                if restoresDraft { presentMentionError(error, restoring: message) }
+                else { failureMessage = mentionErrorMessage(error) }
             } catch let error as BotModeRoomError where error == .nativeTurnTimedOut {
                 guard isCurrentOwner(generation) else { return }
                 // A quiet or disconnected poll is not a failed server task.
@@ -171,7 +223,7 @@ extension ChatModel {
                     if currentRoom?.nativePendingEventID != nil {
                         failureMessage = "Delivery is unconfirmed. Recovery will use this same message identity."
                     }
-                    if draft.isEmpty { draft = message }
+                    if restoresDraft, draft.isEmpty { draft = message }
                     retryRequest = .botModeSend(message, roomID)
                 }
                 rememberNativeBotModeSendRecovery(message: message, roomID: roomID)
@@ -189,10 +241,13 @@ extension ChatModel {
                 // No RPC has begun. An external native start may have superseded
                 // the local presentation during the delay: retain unsent intent,
                 // not an invented accepted human row beside that server turn.
-                if draft.isEmpty {
-                    draft = message
-                    draftAttachments = attachments
-                    orderedDraftAttachments = orderedAttachments
+                // A card's answer isn't composer text: drop its row, keep the draft.
+                if !restoresDraft || draft.isEmpty {
+                    if restoresDraft {
+                        draft = message
+                        draftAttachments = attachments
+                        orderedDraftAttachments = orderedAttachments
+                    }
                     if let localHumanID {
                         removeItem(id: localHumanID)
                         removeProjectedMessage(id: localHumanID)
@@ -235,7 +290,7 @@ extension ChatModel {
                 failureMessage = goalCommandFailureMessage(error)
                 retryRequest = nil
             } else if error is DirectHermesConversationClient.RejectedCommand {
-                if draft.isEmpty { draft = message }
+                if restoresDraft, draft.isEmpty { draft = message }
                 if let localHumanID {
                     removeItem(id: localHumanID)
                     removeProjectedMessage(id: localHumanID)
@@ -245,7 +300,8 @@ extension ChatModel {
                 retryRequest = nil
             } else if let refusal = error as? DirectHermesConversationClient.RejectedPrompt {
                 restoreRefusedPrompt(refusal, humanID: localHumanID, message: message,
-                                     attachments: attachments, orderedAttachments: orderedAttachments)
+                                     attachments: attachments, orderedAttachments: orderedAttachments,
+                                     restoresDraft: restoresDraft)
             } else if nativeConversationClient != nil,
                       nativeConversationClient?.needsRecovery == true
                         || (error as? DirectHermesError)?.outcomeIsUnknown == true
@@ -324,14 +380,19 @@ extension ChatModel {
             failureMessage = "Attachments can be queued after this turn. Your draft is unchanged."
             return
         }
+        await sendMidSession(ChatOutgoingMessage(composerOf: self), using: behavior)
+    }
+
+    private func sendMidSession(_ outgoing: ChatOutgoingMessage, using behavior: MidSessionChatBehavior) async {
         guard isMidSessionTurnLive,
               !hasExclusiveMidSessionSubmission,
               let midSessionClient = client as? any MidSessionConversationClient
         else { return }
 
-        let message = draft
-        let attachments = draftAttachments
-        let orderedAttachments = orderedDraftAttachments
+        let message = outgoing.message
+        let attachments = outgoing.attachments
+        let orderedAttachments = outgoing.orderedAttachments
+        let restoresDraft = outgoing.isComposerDraft
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !orderedAttachments.isEmpty else { return }
         if orderedAttachments.contains(where: { $0.pdfSelection != nil }) {
             await sendPDFDraft(
@@ -363,9 +424,11 @@ extension ChatModel {
         failureMessage = nil
         appendItem(human)
         appendProjectedMessage(human)
-        draft = ""
-        draftAttachments = []
-        orderedDraftAttachments = []
+        if restoresDraft {
+            draft = ""
+            draftAttachments = []
+            orderedDraftAttachments = []
+        }
         persistSession()
 
         do {
@@ -391,7 +454,7 @@ extension ChatModel {
             removePendingMidSessionSubmission(id: human.id)
         } catch is ResponseIdentityError {
             guard pendingMidSessionBehavior(for: human.id) == behavior else { return }
-            rollbackMidSessionHuman(human, message: message, attachments: attachments)
+            rollbackMidSessionHuman(human, message: message, attachments: attachments, restoresDraft: restoresDraft)
             failureMessage = "Response identities conflict with this conversation. Try once more."
             if behavior == .interruptAndSend { isSending = false }
             removePendingMidSessionSubmission(id: human.id)
@@ -399,7 +462,8 @@ extension ChatModel {
             guard pendingMidSessionBehavior(for: human.id) == behavior else { return }
             if let refusal = error as? DirectHermesConversationClient.RejectedPrompt {
                 restoreRefusedPrompt(refusal, humanID: human.id, message: message,
-                                     attachments: attachments, orderedAttachments: orderedAttachments)
+                                     attachments: attachments, orderedAttachments: orderedAttachments,
+                                     restoresDraft: restoresDraft)
                 removePendingMidSessionSubmission(id: human.id)
                 return
             }
@@ -414,7 +478,7 @@ extension ChatModel {
                 // a replacement turn after a lost receipt.
                 failureMessage = "Message delivery during the active turn is unconfirmed. It will not be sent again automatically."
             } else {
-                rollbackMidSessionHuman(human, message: message, attachments: attachments)
+                rollbackMidSessionHuman(human, message: message, attachments: attachments, restoresDraft: restoresDraft)
                 if let workspaceError = error as? DirectHermesWorkspaceError,
                    case .midSessionRejected = workspaceError {
                     failureMessage = "Hermes could not steer this turn. Your message is still available to edit or queue."
@@ -637,9 +701,9 @@ extension ChatModel {
     private func restoreRefusedPrompt(
         _ refusal: DirectHermesConversationClient.RejectedPrompt,
         humanID: String?, message: String, attachments: [ChatAttachment],
-        orderedAttachments: [ChatDraftAttachment]
+        orderedAttachments: [ChatDraftAttachment], restoresDraft: Bool = true
     ) {
-        if draft.isEmpty, orderedDraftAttachments.isEmpty {
+        if restoresDraft, draft.isEmpty, orderedDraftAttachments.isEmpty {
             draft = message
             draftAttachments = attachments
             orderedDraftAttachments = orderedAttachments
@@ -661,13 +725,16 @@ extension ChatModel {
     private func rollbackMidSessionHuman(
         _ human: TimelineItem,
         message: String,
-        attachments: [ChatAttachment]
+        attachments: [ChatAttachment],
+        restoresDraft: Bool
     ) {
         removeItem(id: human.id)
         removeProjectedMessage(id: human.id)
-        draft = message
-        draftAttachments = attachments
-        orderedDraftAttachments = attachments.map(ChatDraftAttachment.attachment)
+        if restoresDraft {
+            draft = message
+            draftAttachments = attachments
+            orderedDraftAttachments = attachments.map(ChatDraftAttachment.attachment)
+        }
         persistSession()
     }
 
@@ -697,5 +764,36 @@ extension ChatModel {
             ),
             attachments: attachments
         )
+    }
+}
+
+/// What one send carries: the composer's draft, or a card's answer, which is
+/// sent for the person without touching what they're typing.
+@MainActor
+struct ChatOutgoingMessage {
+    /// A long form's answers still fit comfortably in one message.
+    static let maximumCardReplyBytes = 8_192
+
+    let message: String
+    let attachments: [ChatAttachment]
+    let orderedAttachments: [ChatDraftAttachment]
+    let slashSelection: SlashCommandSelection?
+    /// Only the composer's own text is cleared on send and put back on failure.
+    let isComposerDraft: Bool
+
+    init(composerOf model: ChatModel) {
+        message = model.draft
+        attachments = model.draftAttachments
+        orderedAttachments = model.orderedDraftAttachments
+        slashSelection = model.activeSlashCommand
+        isComposerDraft = true
+    }
+
+    init(cardReply: String) {
+        message = cardReply
+        attachments = []
+        orderedAttachments = []
+        slashSelection = nil
+        isComposerDraft = false
     }
 }

@@ -89,6 +89,8 @@ extension RootShellView {
     }
 
     var opensHomeChat: Bool {
+        // The all-hosts view opens on its list of agents.
+        guard !fleetModeOn else { return false }
         let defaults = UserDefaults.standard
         return defaults.object(forKey: "loopdy.home.opens-chat") == nil || defaults.bool(forKey: "loopdy.home.opens-chat")
     }
@@ -477,9 +479,12 @@ extension RootShellView {
         AgentHomeDrawer(
             chats: Array(sessionCatalog.recentSummaries(includeCronSessions: false).prefix(12)),
             agent: { id in agents.profiles.first { $0.id == id }.map { ($0.name, agents.avatarURL(for: $0)) } },
-            hosts: BighelpMenuHosts.current(registry: hostRegistry, linkDevices: linkDevices),
-            destinations: menuDestinations,
-            onOpen: { summary in afterClosingHomeSheets { openAsHomeChat(summary) } }
+            hosts: fleetMenuHosts,
+            destinations: fleetModeOn ? fleetMenuDestinations : menuDestinations,
+            onOpen: { summary in afterClosingHomeSheets { openAsHomeChat(summary) } },
+            fleetChats: fleetModeOn ? fleet.map { fleet in
+                (fleet, { chat in afterClosingHomeSheets { openFleetChat(chat) } })
+            } : nil
         )
     }
 

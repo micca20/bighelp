@@ -229,8 +229,13 @@ signing-key custody, and an explicit open-source license.
 `loopdy.card` version 1 is a new schema alongside `loopdy.generative_ui`
 versions 1 and 2. Existing generated cards and forms remain on the legacy
 renderer. bighelp Cards do not reinterpret or silently upgrade those envelopes,
-and version 1 remains display-only. Existing `bighelp_render_form` continues to
-own user input and request-bound form submissions.
+and version 1 remains display-only. The version 2 form and selection cards
+take input: when the user sends a form or taps a selection's button, the app
+sends the answer to the agent as the user's next message (`CardReplyText`,
+through `ChatModel.sendCardReply`), steering a running turn like Send. It
+leaves the composer's draft alone, and the card remembers what it sent. A
+selection whose text starts with "/" is a command, so it goes into the
+composer for the user to send.
 
 Version 1 is not:
 

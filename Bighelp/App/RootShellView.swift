@@ -34,6 +34,8 @@ struct RootShellView: View {
     var nativeRuntime: NativeWorkspaceRuntime? = nil
     var nativeWorkspaceError: String? = nil
     var agentIsland: AgentIslandModel? = nil
+    /// Every agent on every host (the all-hosts view), kept across host switches.
+    var fleet: FleetStore? = nil
 
     @Environment(\.bighelpHostRegistry) var hostRegistry
     @Environment(\.managedNotificationService) private var managedNotifications
@@ -71,6 +73,9 @@ struct RootShellView: View {
     @State private var fixtureCanonicalSessions: [String: String] = [:]
     @State var workspaceFixtureGeneration = UUID()
     @State private var cardInteractionStore = BighelpCardInteractionStore()
+    /// The all-hosts view asking which host a one-host screen is for.
+    @State var fleetGateRequest: FleetDestination?
+    @State var isFleetNewChatPresented = false
     @Environment(\.workspaceConnections) var workspaceConnections
     @Environment(\.scenePhase) var scenePhase
     @State var connectionKeeper = WorkspaceConnectionKeeper()
@@ -154,6 +159,11 @@ struct RootShellView: View {
                     model.draft += model.draft.isEmpty || model.draft.hasSuffix("\n") ? text : "\n" + text
                 }
             },
+            sendReply: { text in
+                guard model.acceptsCardReply(text) else { return false }
+                Task { @MainActor in await model.sendCardReply(text) }
+                return true
+            },
             scheduledTasks: model.isBotMode ? nil : featureStore.scheduledTasks.map { ChatCardScheduledTaskBackend(store: $0) },
             currentScope: {
                 guard currentWorkspaceOwner == owner,
@@ -170,6 +180,14 @@ struct RootShellView: View {
             link: readiness.linkState
         )
         agentHomeSheets(rootContent)
+        .modifier(FleetSheets(
+            fleet: fleet, gate: $fleetGateRequest, isNewChatPresented: $isFleetNewChatPresented,
+            onGate: { destination, hostID in openFleet(.destination(destination), on: hostID) },
+            onNewChat: startFleetChat))
+        .modifier(FleetHooks(
+            liveKey: liveFleetKey, readiness: fleetOpenReadiness, hostsKey: fleetHostsKey, scenePhase: scenePhase,
+            recordLive: recordLiveFleet, openPending: openPendingFleetIfReady,
+            syncHosts: { fleet?.syncHosts() }, cancelReads: { fleet?.cancelReads() }))
         .environment(\.agentDeletion, agentDeletionAction)
         .bighelpThemePresentation(theme)
         .onChange(of: hostRegistry?.hosts.isEmpty, initial: true) { _, _ in
@@ -346,6 +364,13 @@ struct RootShellView: View {
                 HostSetupView(registry: registry, allowsDismiss: false)
             } else if nativeWorkspaceStore != nil {
                 if nativeRuntime != nil { workspace }
+                else if fleetModeOn, let fleet {
+                    FleetConnectingView(
+                        fleet: fleet, onOpen: openFleetAgent,
+                        isConnecting: nativeWorkspaceStore?.isConnecting == true || nativeRuntime?.isRefreshing == true
+                            || nativeWorkspaceStore?.isConnected == true,
+                        retry: { Task { await nativeWorkspaceStore?.reconnect() } })
+                }
                 else { nativeWorkspace }
             } else if let registry = hostRegistry, registry.connectionMode == .independent, !usesWorkspaceFixtures {
                 Form {
@@ -562,6 +587,7 @@ struct RootShellView: View {
                 // Ember lives only in chrome: the brand bar on root screens.
                 // Touch and hold it to switch hosts.
                 EmberBrandToolbarItem(linkDevices: linkDevices)
+                if fleetModeOn, [.sessions, .scheduledTasks].contains(appState.selectedTab) { fleetToolbar }
             }
         }
         #if os(visionOS)
@@ -699,12 +725,13 @@ struct RootShellView: View {
     }
 
     private var showsBottomNavigation: Bool {
-        appState.path.isEmpty && !isKeyboardVisible
+        // The all-hosts view is just its list; each agent's chat has the rest.
+        appState.path.isEmpty && !isKeyboardVisible && !fleetModeOn
     }
 
     /// Vision Pro's tab strip on root screens. The agent's own chat draws its
     /// own: a screen covered by a pushed one doesn't show its ornaments.
-    private var visionTabsVisible: Bool { appState.path.isEmpty }
+    private var visionTabsVisible: Bool { appState.path.isEmpty && !fleetModeOn }
 
     @ViewBuilder
     private var rootTabs: some View {
@@ -734,7 +761,7 @@ struct RootShellView: View {
 
     private var rootNavigationTitle: String {
         switch appState.selectedTab {
-        case .sessions: "Chats"
+        case .sessions: fleetModeOn ? "All agents" : "Chats"
         case .agents: "Agents"
         case .scheduledTasks: "Scheduled Tasks"
         case .home, .inbox: "Activity"
@@ -850,7 +877,9 @@ struct RootShellView: View {
 
     @ViewBuilder
     private var sessionsRootTab: some View {
-        if case .sessions(let model)? = featureStore.preparedModel(for: .sessions) {
+        if fleetModeOn, let fleet {
+            FleetHomeView(fleet: fleet, onOpen: openFleetAgent)
+        } else if case .sessions(let model)? = featureStore.preparedModel(for: .sessions) {
             SessionsView(
                 model: model,
                 agents: agents,
@@ -884,7 +913,11 @@ struct RootShellView: View {
 
     @ViewBuilder
     private var scheduledTasksRootTab: some View {
-        if let store = featureStore.scheduledTasks {
+        if fleetModeOn, let fleet {
+            FleetTasksView(fleet: fleet, onOpen: openFleetTask)
+                // This host's own tasks, as its Scheduled tasks screen would load them.
+                .task { if featureStore.scheduledTasks?.loadState == .idle { await featureStore.scheduledTasks?.load() } }
+        } else if let store = featureStore.scheduledTasks {
             ScheduledTasksView(store: store, agents: agents, showsInlineHeading: true, onOpen: openScheduledTask)
         } else {
             ContentUnavailableView("Scheduled Tasks", systemImage: "calendar.badge.clock",

@@ -171,8 +171,8 @@ struct TimelineItemView: View {
                 ApprovalRequestPreview(request: request, onOpen: onApprovalTap)
                     .alignmentGuide(.messageContentBottom) { $0[.bottom] }
             case .generativeUI(let card):
-                GenerativeUICardView(card: card)
-                    .cardImageCopy(GenerativeUICardView(card: card))
+                GenerativeUICardView(card: card, messageID: item.id)
+                    .cardImageCopy(GenerativeUICardView(card: card, messageID: item.id))
                     .alignmentGuide(.messageContentBottom) { $0[.bottom] }
             case .bighelpCard(let card):
                 BighelpCardView(card: card)

@@ -23,6 +23,12 @@ extension RootShellView {
             }
         case (.kanban, _):
             kanbanDestination
+        case (.allHostsChats, _):
+            if let fleet {
+                FleetChatsView(fleet: fleet, onOpen: { openFleetChat($0) })
+            } else {
+                ContentUnavailableView("All chats", systemImage: "bubble.left.and.bubble.right")
+            }
         case (.project(let id), _):
             if let context = projectsContext {
                 ProjectDetailView(projectID: id, context: context)

@@ -10,6 +10,8 @@ struct BighelpApp: App {
     private var applicationDelegate
 
     @State private var hostRegistry: BighelpHostRegistry
+    /// Every agent on every host, for the all-hosts view.
+    @State private var fleet: FleetStore
     @State private var workspaceConnections: WorkspaceConnectionStore
     @State private var nativeWorkspaces: NativeWorkspaceSelectionStore
     @State private var notificationComposition: BighelpManagedNotificationComposition
@@ -128,6 +130,15 @@ struct BighelpApp: App {
             priorAccountClear()
         }
         _hostRegistry = State(initialValue: hostRegistry)
+        var fleet = FleetStore(reader: RegistryFleetReader(registry: hostRegistry))
+        #if DEBUG
+        // Real-host UI tests add real hosts to the demo shell; they read those.
+        if arguments.contains("-use-demo-fixtures"), !arguments.contains("-test-no-configured-hosts") {
+            fleet = FleetStore(reader: FleetFixtureReader(), directory: FileManager.default.temporaryDirectory
+                .appending(path: "bighelp-fleet-demo-\(ProcessInfo.processInfo.processIdentifier)"))
+        }
+        #endif
+        _fleet = State(initialValue: fleet)
         let connections = WorkspaceConnectionStore(hosts: hostRegistry)
         _workspaceConnections = State(initialValue: connections)
         let nativeWorkspaces = composition.makeNativeWorkspaceSelection(connections: connections)
@@ -330,7 +341,8 @@ struct BighelpApp: App {
             clearLocalCache: clearLocalCache,
             nativeRuntime: native,
             nativeWorkspaceError: nativeWorkspaces.errorMessage,
-            agentIsland: agentIsland
+            agentIsland: agentIsland,
+            fleet: fleet
         )
     }
 
@@ -374,21 +386,6 @@ struct BighelpApp: App {
                     }
                 )
             }
-            let formMessaging: GenerativeUIFormSubmissionHandler? = {
-                guard let owner = workspaceConnections.owner,
-                      let workspace = workspaceConnections.workspace else { return nil }
-                let client = DirectHermesFormClient(workspace: workspace, owner: owner)
-                return GenerativeUIFormSubmissionHandler { request in
-                    guard workspaceConnections.owner == owner else {
-                        throw WorkspaceClientError.ownerChanged
-                    }
-                    let result = try await client.submit(request)
-                    guard workspaceConnections.owner == owner else {
-                        throw WorkspaceClientError.ownerChanged
-                    }
-                    return result
-                }
-            }()
             Group {
                 if nativeClarificationFixtureEnabled {
                     #if DEBUG
@@ -468,7 +465,6 @@ struct BighelpApp: App {
                 \.appAppearance,
                 settings.appearanceContext
             )
-            .environment(\.generativeUIFormMessaging, formMessaging)
             .environment(\.reflectiveVisionEnabled, settings.reflectiveVisionEnabled)
             .environment(\.reflectiveVisionCamera, reflectiveVisionCamera)
             .environment(\.subagentStreamAcceptanceFixture, subagentStreamAcceptanceFixture)
