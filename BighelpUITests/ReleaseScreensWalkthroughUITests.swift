@@ -29,10 +29,6 @@ final class ReleaseScreensWalkthroughUITests: BighelpUITestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         address.tap()
         address.typeText(parts[0])
-        app.buttons["Advanced connection"].firstMatch.tap()
-        let http = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(http.waitForExistence(timeout: 3))
-        (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
         // During onboarding the button reports the screen's identifier.
         let connect = app.buttons.matching(NSPredicate(
             format: "identifier IN %@ AND label IN %@",
@@ -53,11 +49,11 @@ final class ReleaseScreensWalkthroughUITests: BighelpUITestCase {
         password.tap()
         password.typeText(parts[2])
         tapConnect()
-        XCTAssertTrue(app.staticTexts["Sign in"].waitForExistence(timeout: 20), "Hermes's own sign-in step")
-        tapConnect()
         let next = app.buttons.matching(NSPredicate(
             format: "identifier IN %@ AND (label == %@ OR label BEGINSWITH %@)",
             ["host-setup.continue", "host-setup.screen"], "Start chatting", "Let")).firstMatch
+        // A Hermes without its own sign-in connects straight away.
+        if !next.waitForExistence(timeout: 20), app.staticTexts["Sign in to Hermes"].exists { tapConnect() }
         XCTAssertTrue(next.waitForExistence(timeout: 30))
         next.tap()
         // The chat header the 16 Pro tester found cramped.

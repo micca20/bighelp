@@ -3,7 +3,7 @@
 Each mode starts `hermes serve` from the given Hermes checkout with a throwaway
 HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
 
-  open      no sign-in (the dashboard's own session), or its session token
+  open      no sign-in: the address alone connects (the dashboard's own session)
   password  Hermes's username/password provider: password, access token, and
             browser sign-in through Hermes's login page
   sso       password plus a self-hosted OpenID Connect provider, using a mock
@@ -58,16 +58,18 @@ from DirectHermesStreamingProbe import SyntheticModel  # noqa: E402
 from DirectHermesAuthenticationProbe import exercise_http  # noqa: E402
 
 TESTS = {
-    "open": ["testOpenHostPrefersNoSignIn", "testOpenHostAcceptsItsSessionToken"],
+    "open": ["testOpenHostConnectsFromTheAddressAlone"],
     "password": ["testPasswordOnlyHostPrefersUsernameAndPasswordAndChats", "testWrongPasswordIsExplained",
                  "testAccessToken", "testBrowserSignInThroughHermesLoginPage"],
     "sso": ["testSingleSignOnThroughIdentityProvider"],
     "tools": ["testSecureInputPopUpSavesTheValue", "testSteerSendsWhileAToolRuns",
               "testWaitingQuestionOpensFocusedWhenReturningToTheApp"],
     "widgets": ["WidgetLinkHostUITests/testRecentChatAndNewChatWidgetLinksOpenChats"],
-    "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost"],
+    "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost",
+                 "ProviderUsageHostUITests/testUsageLoadsFromTheChatTheAppOpensWith"],
     "update": ["PluginReleaseUpdateHostUITests/testUpdatesToTheLatestReleaseOnARealHost"],
-    "fleet": ["AllHostsHostUITests/testAllHostsListsBothHostsAndOpensTheOther"],
+    "fleet": ["AllHostsHostUITests/testAllHostsListsBothHostsAndOpensTheOther",
+              "AllHostsHostUITests/testProviderUsageLoadsInAChatOnTheOtherHost"],
     "media": ["testGeneratedImageStaysAfterTheTurnEnds", "testVaultCodePopUpEntersTheCode",
               "testSaveLoginPopUpSavesTheLogin", "testVaultSavesAndImportsLoginsOnTheHost",
               "testACardStreamsBehindALoader"],

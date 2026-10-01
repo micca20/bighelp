@@ -5,8 +5,11 @@ sees them: Cloudflare Access, a reverse proxy with a password, or a proxy such
 as Pangolin that checks its own headers. bighelp can get past each of these,
 then signs in to Hermes as usual.
 
-Everything here is set per host, under **Advanced connection** when you add a
-host, or later in **Settings › Hosts › (host) › Advanced connection details ›
+When you add a host, bighelp tries the address first and asks only for what it
+finds: a Cloudflare Access login sends you to a **Cloudflare Access** step, and
+a proxy asking for a password sends you to a **Password needed** step. Custom
+headers, and a way to pick either step yourself, are under **More options**.
+Later, change them in **Settings › Hosts › (host) › Advanced connection details ›
 Edit access**.
 
 ## How bighelp handles these values
@@ -19,8 +22,8 @@ Edit access**.
   redirect to another site.
 - Secrets are masked on screen and never written to logs or diagnostics.
 - They go only to `https://` addresses, or to a private network address (home
-  Wi‑Fi, VPN, Tailscale) where you turned on HTTP. They never go over plain HTTP
-  on the open internet.
+  Wi‑Fi, VPN, Tailscale) that answers over plain HTTP. They never go over plain
+  HTTP on the open internet.
 
 ## Cloudflare Access (service token)
 
@@ -38,18 +41,18 @@ it proves itself with a service token instead.
 
    Keep your other policies (for example your email login) for browsers. A
    Service Auth policy lets the token through without a login page.
-3. In bighelp, add the host with its `https://` address. Under **Advanced
-   connection**, turn on **Cloudflare Access** and paste the Client ID and
-   Client Secret.
+3. In bighelp, add the host with its address and tap Continue. bighelp sees
+   the Cloudflare Access login and asks for the Client ID and Client Secret.
+   (If your Access app refuses instead of showing a login, choose **It's behind
+   Cloudflare Access** under **More options**.)
 
 bighelp sends them as `CF-Access-Client-Id` and `CF-Access-Client-Secret`.
 Cloudflare Access needs an `https://` address.
 
-**If Cloudflare Access refuses the token**, bighelp says "Cloudflare Access didn't let
-bighelp through." Check the Client ID and Secret, that the token hasn't
+**If Cloudflare Access refuses the token**, bighelp says "Cloudflare Access didn't accept
+that service token." Check the Client ID and Secret, that the token hasn't
 expired or been revoked, and that the application has the Service Auth policy
-above. If the address sends bighelp to a Cloudflare Access login page
-instead, no token was sent: turn on Cloudflare Access for the host.
+above.
 
 **Browser sign-in:** Hermes's browser sign-in option opens Safari, which
 doesn't carry the service token, so Cloudflare Access shows its own login
@@ -59,9 +62,9 @@ access token or username and password sign-in instead.
 ## Username and password on a proxy (basic auth)
 
 For nginx, Caddy, Traefik and similar proxies set up with a username and
-password (HTTP basic auth). Turn on **Username and password** under Advanced
-connection. If you forget, bighelp notices the proxy asking and opens these
-fields for you.
+password (HTTP basic auth). bighelp notices the proxy asking and shows a
+**Password needed** step. To enter them up front, choose **It asks for a
+username and password** under **More options**.
 
 A host uses either a Cloudflare Access service token or a proxy username
 and password, not both.
@@ -69,8 +72,8 @@ and password, not both.
 ## Custom headers
 
 For a reverse proxy that checks its own headers, such as Pangolin or an nginx
-rule like `if ($http_x_access_secret != "…") { return 403; }`. Under Advanced
-connection, choose **Add header** and enter each name and value, for example
+rule like `if ($http_x_access_secret != "…") { return 403; }`. Under More
+options, choose **Add header** and enter each name and value, for example
 `X-Access-Id` and `X-Access-Secret`. They can be combined with a
 Cloudflare Access service token or a proxy password.
 

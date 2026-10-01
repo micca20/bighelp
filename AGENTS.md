@@ -384,6 +384,8 @@ New code uses Bighelp names. Don't "finish" the rename on this list.
   --plugin <plugin checkout>` option runs scripted tool turns for secure input, steering and questions
   (`HostSignInMatrixUITests`).
 - `Scripts/NativeWorkspaceAcceptanceProbe.py` covers the workspace and chat acceptance flows.
+- `Scripts/AppStoreScreenshots.sh` takes the App Store screenshots from the real app on an isolated host whose
+  agents really run their tools on made-up files. No demo chats in store screenshots.
 - **Never start Hermes with a fresh `HERMES_HOME` against a shared Hermes checkout.** Hermes treats it as an
   unfinished update, rebuilds the checkout and rewrites its launchers to point at your throwaway environment. Instead:
   - Use a separate clone of Hermes.

@@ -325,7 +325,7 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidEndpoint: "Enter a valid HTTPS host address, optionally with a port and deployment path."
-        case .plaintextNotAllowed: "HTTP only works for private addresses (home Wi-Fi, a VPN or Tailscale) with Allow HTTP turned on under Advanced connection. Use HTTPS for other hosts."
+        case .plaintextNotAllowed: "Plain http:// only works on a private network, like home Wi-Fi, a VPN or Tailscale. Use https:// for this address."
         case .invalidCredentials: "The host rejected these credentials. Use a provider-issued access token or check your username and password."
         case .authenticationRequired: "Your host session has expired. Sign in again."
         case .unsupportedAuthentication: "This host does not support the selected sign-in method."
@@ -345,7 +345,7 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
         case .tooManyRequests: "Too many host requests are pending. Wait before trying again."
         case .notConnected: "The host is not connected. Reconnect before continuing."
         case .connectionFailed: "Could not connect to the host. Check its address, your VPN or Tailscale, and that Hermes is running."
-        case .tlsRequired: "The secure connection could not be verified. Check the host's HTTPS certificate. If it serves plain HTTP on your home network, a VPN or Tailscale, turn on Allow HTTP under Advanced connection."
+        case .tlsRequired: "The secure connection could not be verified. Check the computer's HTTPS certificate."
         case .rateLimited: "The host is limiting sign-in attempts. Wait before trying again."
         case .serverUnavailable: "The host authentication service is unavailable. Try again later."
         case .browserAuthenticationUnavailable: "Browser sign-in could not start on this device. Keep bighelp in the foreground, or use a password or provider-issued access token."

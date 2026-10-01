@@ -184,7 +184,7 @@ final class NativeDeviceToolSession {
         if !closing { try check() }
         guard currentOwner() == owner else { throw WorkspaceClientError.ownerChanged }
         guard response.body.count <= 262_144,
-              response.http.value(forHTTPHeaderField: "ETag") == guardValue.etag,
+              DirectHermesNativeRequestGuard.contextTag(response.http.value(forHTTPHeaderField: "ETag")) == guardValue.etag,
               response.http.value(forHTTPHeaderField: "X-Loopdy-Request-ID") == guardValue.requestIDHeader else {
             throw WorkspaceClientError.invalidResponse
         }

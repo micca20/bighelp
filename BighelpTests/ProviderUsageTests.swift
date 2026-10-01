@@ -141,31 +141,81 @@ struct ProviderUsageTests {
 
     /// Opening usage from a chat after the app came back used the connection
     /// from before, which is closed, so it failed every time.
-    @Test func theHostClientFollowsTheCurrentConnectionForTheSameSignIn() async throws {
+    @Test func theHostClientFollowsTheCurrentConnection() async throws {
         let before = try UsagePerformer(sample: sample)
-        let signIn = try #require(before.owner?.signIn)
         var current: UsagePerformer? = before
-        let client = DirectHermesProviderUsageClient(signIn: signIn, currentWorkspace: { current })
+        let client = DirectHermesProviderUsageClient(currentWorkspace: { current })
 
-        let reconnected = try UsagePerformer(sample: sample, signIn: signIn)
+        let reconnected = try UsagePerformer(sample: sample, signIn: before.owner?.signIn)
         current = reconnected
         before.owner = nil
         let report = try await client.usage(agentID: "default", refresh: false)
         #expect(report.providers.count == 3)
         #expect(reconnected.calls == 1 && before.calls == 0)
+    }
 
-        current = try UsagePerformer(sample: sample)
-        await #expect(throws: WorkspaceClientError.ownerChanged) {
-            _ = try await client.usage(agentID: "default", refresh: false)
-        }
+    /// The home screen hands the panel its client, and a chat covering it kept
+    /// the first one after the sign-in changed (at launch, or another host):
+    /// "Usage couldn't be loaded" until the chat closed. The panel follows the
+    /// current sign-in and starts over for it, so one host's numbers never show
+    /// as another's.
+    @Test func anotherSignInLoadsItsOwnUsageInsteadOfFailing() async throws {
+        var current: UsagePerformer? = try UsagePerformer(sample: sample)
+        let store = ProviderUsageStore()
+        let client = DirectHermesProviderUsageClient(currentWorkspace: { current })
+        store.configure(client: client, scope: current?.owner?.signIn)
+        await store.load(refresh: false)
+        #expect(store.state == .loaded)
+
+        current = try UsagePerformer(sample: ["providers": .array([sample["providers"]!.array!.first!])])
+        await store.load(refresh: false)
+        #expect(store.state == .loaded, "The new sign-in's usage loads")
+        #expect(store.report?.providers.count == 1, "Only the new sign-in's numbers show")
+    }
+
+    /// Hermes doesn't know the chat's agent (deleted, or not a Hermes profile):
+    /// the host's usage is the same for every agent, so it asks for the default.
+    @Test func anAgentHermesDoesntKnowFallsBackToTheDefaultAgent() async throws {
+        let performer = try UsagePerformer(sample: sample)
+        performer.unknownAgents = ["sage"]
+        let client = DirectHermesProviderUsageClient(currentWorkspace: { performer })
+        let report = try await client.usage(agentID: "sage", refresh: false)
+        #expect(report.providers.count == 3)
+        #expect(performer.agents == ["sage", "default"])
+    }
+
+    /// A dropped connection or a slow answer gets one more try once the
+    /// connection is back, instead of a dead end.
+    @Test func aConnectionHiccupIsTriedOnceMore() async throws {
+        let performer = try UsagePerformer(sample: sample)
+        performer.failures = [WorkspaceClientError.transportUnavailable]
+        let client = DirectHermesProviderUsageClient(currentWorkspace: { performer }, reconnectWait: .milliseconds(10))
+        let report = try await client.usage(agentID: "default", refresh: false)
+        #expect(report.providers.count == 3 && performer.calls == 2)
+    }
+
+    /// The message says what went wrong, in plain words.
+    @Test(arguments: [
+        (WorkspaceClientError.authenticationRequired as any Error, "turned down bighelp's sign-in"),
+        (DirectHermesError.timedOut(outcomeUnknown: false) as any Error, "took too long"),
+        (WorkspaceClientError.transportUnavailable as any Error, "isn't connected"),
+        (WorkspaceClientError.invalidResponse as any Error, "couldn't be loaded"),
+    ])
+    func failuresSayWhy(error: any Error, words: String) async {
+        let client = ScriptedUsageClient()
+        client.result = .failure(error)
+        let store = ProviderUsageStore()
+        store.configure(client: client)
+        await store.load(refresh: false)
+        guard case .unavailable(let message) = store.state else { Issue.record("Not unavailable"); return }
+        #expect(message.contains(words), "\(message)")
     }
 
     /// Right after the app comes back the connection is still on its way.
     @Test func theHostClientWaitsForTheConnectionToComeBack() async throws {
         let performer = try UsagePerformer(sample: sample)
-        let signIn = try #require(performer.owner?.signIn)
         var current: UsagePerformer?
-        let client = DirectHermesProviderUsageClient(signIn: signIn, currentWorkspace: { current },
+        let client = DirectHermesProviderUsageClient(currentWorkspace: { current },
                                                      reconnectWait: .milliseconds(20), reconnectAttempts: 50)
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(60))
@@ -182,6 +232,9 @@ private final class UsagePerformer: WorkspaceOperationPerforming {
     var capabilities: WorkspaceCapabilities { .init(owner: owner, values: [:]) }
     private let sample: [String: BighelpJSONValue]
     private(set) var calls = 0
+    private(set) var agents: [String] = []
+    var unknownAgents: Set<String> = []
+    var failures: [any Error] = []
 
     init(sample: [String: BighelpJSONValue], signIn: WorkspaceSignIn? = nil) throws {
         self.sample = sample
@@ -194,6 +247,10 @@ private final class UsagePerformer: WorkspaceOperationPerforming {
                  owner: WorkspaceOwner) async throws -> [String: BighelpJSONValue] {
         guard owner == self.owner, operation == .usageList else { throw WorkspaceClientError.ownerChanged }
         calls += 1
+        let agent = payload["agentId"]?.string ?? ""
+        agents.append(agent)
+        if !failures.isEmpty { throw failures.removeFirst() }
+        if unknownAgents.contains(agent) { throw WorkspaceClientError.rejected(code: "profile_not_found") }
         return sample
     }
 }
@@ -202,6 +259,7 @@ private final class UsagePerformer: WorkspaceOperationPerforming {
 private final class ScriptedUsageClient: ProviderUsageClient {
     var result: Result<ProviderUsageReport, any Error> = .failure(WorkspaceClientError.invalidResponse)
     var refreshes: [Bool] = []
+    var currentScope: AnyHashable? { nil }
     func usage(agentID: String, refresh: Bool) async throws -> ProviderUsageReport {
         refreshes.append(refresh)
         return try result.get()

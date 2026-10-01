@@ -19,25 +19,28 @@ enum HostSetupAccessError: LocalizedError {
     case invalidProxyCredentials
     case customHeader(String)
     case customHeadersNeedPrivateOrHTTPS
+    case cloudflareAccessTokenRejected
 
     var errorDescription: String? {
         switch self {
         case .needsHTTPS:
             "Cloudflare Access needs an https:// address."
         case .proxyPasswordRequired:
-            "This address is protected by a username and password, set on a proxy in front of Hermes. Enter them below, then tap Continue."
+            "This address asks for a username and password."
         case .proxyPasswordRejected:
-            "The proxy in front of Hermes didn't accept that username and password. Check them and try again."
+            "That username and password didn't work. Check them and try again."
         case .blockedBeforeSignIn:
-            "Something in front of Hermes, like a proxy or firewall, turned bighelp away before sign-in. Hermes itself never blocks this step. If the proxy uses a username and password, turn on Username and password under Advanced connection."
+            "Something in front of Hermes, like a proxy or firewall, turned bighelp away. If it needs a password or a Cloudflare Access token, add it under More options."
         case .invalidProxyCredentials:
             "Check the username and password. A username can't contain a colon."
         case .customHeader(let message):
             message
         case .customHeadersNeedPrivateOrHTTPS:
-            "Custom headers go only to https:// addresses, or to a private network address with HTTP allowed."
+            "Custom headers only go to https:// addresses or a private network."
+        case .cloudflareAccessTokenRejected:
+            "Cloudflare Access didn't accept that service token. Check the Client ID and secret, and that a Service Auth policy allows it."
         case .loginPage:
-            "This address sends bighelp to a login page it can't use. If it's Cloudflare Access, add a service token under Advanced connection. Otherwise, use an address that reaches Hermes directly."
+            "This address opens a login page bighelp can't use. Try the address that reaches Hermes directly."
         }
     }
 }
@@ -46,7 +49,6 @@ struct HostSetupDraft: Equatable {
     var address = ""
     var port = ""
     var name = ""
-    var allowPrivateHTTP = false
 }
 
 /// The address-first host wizard, used both at first run and by Add Host.
@@ -64,10 +66,11 @@ struct HostSetupView: View {
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var isAddressFocused: Bool
     @State private var showsConnectionOptions = false
+    /// What stands in front of Hermes at this address, found by trying it.
+    @State private var protection: Protection?
     @State private var address = ""
     @State private var port = ""
     @State private var name = ""
-    @State private var allowPrivateHTTP = false
     /// Cloudflare Access service token; never kept in the retained draft.
     @State private var usesCloudflareAccess = false
     @State private var accessClientID = ""
@@ -98,112 +101,44 @@ struct HostSetupView: View {
     @State private var errorMessage: String?
 
     private enum Method: String, Identifiable { case dashboard, token, password, browser; var id: Self { self } }
+    private enum Protection: Equatable { case cloudflareAccess, password }
+    private enum Step { case address, protection(Protection), signIn(HostAuthenticationDiscovery), connected }
+
+    private var step: Step {
+        if connectedHost != nil { return .connected }
+        if let protection { return .protection(protection) }
+        if let discovery { return .signIn(discovery) }
+        return .address
+    }
 
     var body: some View {
         Form {
-            Section {
-                VStack(alignment: .leading, spacing: 16) {
-                    if !firstRunPresentation {
-                        BighelpLogo(presentation: .mark, height: 36)
-                            .accessibilityHidden(true)
-                    }
-                    Text(connectedHost == nil
-                         ? "Connect your computer"
-                         : "Connected")
-                        .bighelpFont(.sectionTitle)
-                        .foregroundStyle(theme.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(connectedHost == nil
-                         ? "Enter the address where Hermes is running."
-                         : "Your agents are ready to chat.")
-                        .bighelpFont(.body)
-                        .foregroundStyle(theme.secondaryText)
-                }
-                .padding(.vertical, firstRunPresentation ? 4 : 24)
+            header
+            switch step {
+            case .connected:
+                connectedStep
+            case .address:
+                addressStep
+            case .protection(let protection):
+                protectionStep(protection)
+            case .signIn(let discovery):
+                authenticationSection(discovery)
+                    .disabled(isWorking)
+                    .listRowBackground(theme.surface)
             }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            if let host = connectedHost, let notifications {
+            if let errorMessage, connectedHost == nil {
                 Section {
-                    Label(host.name, systemImage: "checkmark.circle.fill")
-                        .bighelpFont(.label, weight: .semibold)
-                        .foregroundStyle(theme.primaryText)
-                        .padding(.vertical, 8)
+                    Label(errorMessage, systemImage: "exclamationmark.circle")
+                        .bighelpFont(.body).foregroundStyle(theme.primaryText)
+                        .accessibilityIdentifier("host-setup.error")
                 }
                 .listRowBackground(theme.surface)
-                if !firstRunPresentation {
-                    Section {
-                        primaryAction(completionActionTitle, identifier: "host-setup.continue", disabled: false) { finish() }
-                    }
+            }
+            if connectedHost == nil, !firstRunPresentation {
+                Section { connectionAction }
                     .listRowBackground(Color.clear)
-                }
-                HostNotificationSetupSection(
-                    model: notifications,
-                    hostName: host.name,
-                    hostEndpoint: host.endpoint.identity
-                )
-                    .listRowBackground(theme.surface)
-            } else {
-                Section {
-                    TextField("Hermes address", text: $address)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .accessibilityLabel("Host URL or IP address")
-                        .accessibilityIdentifier("host-setup.address")
-                        .focused($isAddressFocused)
-                        .disabled(hostToAuthenticate != nil)
-                        .padding(.vertical, 6)
-                    TextField("Computer name (optional)", text: $name)
-                        .accessibilityIdentifier("host-setup.name")
-                        .disabled(hostToAuthenticate != nil)
-                    DisclosureGroup(isExpanded: $showsConnectionOptions) {
-                        TextField("Port (optional)", text: $port)
-                            .keyboardType(.numberPad)
-                            .accessibilityIdentifier("host-setup.port")
-                            .disabled(hostToAuthenticate != nil)
-                        Toggle("Allow HTTP on a private network", isOn: $allowPrivateHTTP)
-                            .accessibilityIdentifier("direct-hermes.private-http")
-                            .disabled(hostToAuthenticate != nil)
-                        Text("For home Wi-Fi, a VPN or Tailscale, such as 192.168.1.20, 10.0.0.5 or hermes.local. Connect this device to that network first.")
-                            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
-                        if hostToAuthenticate == nil {
-                            proxyPasswordFields
-                            cloudflareAccessFields
-                            Text("Custom headers").bighelpFont(.label, weight: .semibold)
-                                .padding(.top, BighelpTokens.space8)
-                            HostCustomHeaderFields(rows: $customHeaderRows)
-                        }
-                    } label: {
-                        Label("Advanced connection", systemImage: "slider.horizontal.3")
-                            .bighelpFont(.label, weight: .regular)
-                            .frame(minHeight: 44)
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("host-setup.options")
-                } header: { Text("Computer") }
-                .listRowBackground(theme.surface)
-                if let discovery {
-                    authenticationSection(discovery)
-                        .disabled(isWorking)
-                        .listRowBackground(theme.surface)
-                }
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle")
-                            .bighelpFont(.body).foregroundStyle(theme.primaryText)
-                            .accessibilityIdentifier("host-setup.error")
-                    }
-                    .listRowBackground(theme.surface)
-                }
-                Section {
-                    if !firstRunPresentation {
-                        connectionAction
-                    }
-                    Text("Your authenticated session or token is saved securely in Keychain. Passwords you enter aren’t retained.")
-                        .bighelpFont(.metadata)
-                        .foregroundStyle(theme.secondaryText)
-                }
-                .listRowBackground(Color.clear)
+            }
+            if case .address = step {
                 Section {
                     Link("Need help connecting?", destination: URL(string: "https://hermes-agent.nousresearch.com/docs/user-guide/desktop#connecting-to-a-remote-backend")!)
                         .bighelpFont(.label, weight: .regular)
@@ -256,19 +191,17 @@ struct HostSetupView: View {
                 address = draft.address
                 port = draft.port
                 name = draft.name
-                allowPrivateHTTP = draft.allowPrivateHTTP
             }
             guard let host = hostToAuthenticate else { return }
             address = host.endpoint.identity
             name = host.name
-            allowPrivateHTTP = host.endpoint.allowPrivateHTTP
             pendingID = host.id
             workspace = registry.workspace(for: host)
+            discover()
         }
         .onChange(of: address) { _, _ in needsProxyPassword = false; invalidateDiscovery(); saveRetainedDraft() }
         .onChange(of: port) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
         .onChange(of: name) { _, _ in saveRetainedDraft() }
-        .onChange(of: allowPrivateHTTP) { _, _ in invalidateDiscovery(); saveRetainedDraft() }
         .modifier(HostSetupAccessChanges(values: [usesCloudflareAccess ? "on" : "off", accessClientID, accessClientSecret,
                                                   usesProxyPassword ? "on" : "off", proxyUsername, proxyPassword]
                                                   + customHeaderRows.flatMap { [$0.name, $0.value] },
@@ -298,6 +231,182 @@ struct HostSetupView: View {
     }
 
     @BighelpThemeReader private var theme
+
+    /// One question per step, with a way back.
+    private var header: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                if canGoBack {
+                    Button { goBack() } label: {
+                        HStack(spacing: 4) { Image(systemName: "chevron.left"); Text("Back") }
+                    }
+                        .bighelpFont(.label, weight: .regular)
+                        .disabled(isWorking)
+                        .accessibilityIdentifier("host-setup.back")
+                } else if !firstRunPresentation {
+                    BighelpLogo(presentation: .mark, height: 36).accessibilityHidden(true)
+                }
+                Text(headerTitle)
+                    .bighelpFont(.sectionTitle)
+                    .foregroundStyle(theme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(headerDetail)
+                    .bighelpFont(.body)
+                    .foregroundStyle(theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(isSigningIn ? "host-setup.method-detail" : "host-setup.detail")
+            }
+            .padding(.vertical, firstRunPresentation ? 4 : 16)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var headerTitle: String {
+        switch step {
+        case .address: hostToAuthenticate == nil ? "Connect your computer" : "Sign in again"
+        case .protection(.cloudflareAccess): "Cloudflare Access"
+        case .protection(.password): "Password needed"
+        case .signIn: hostToAuthenticate == nil ? "Sign in to Hermes" : "Sign in again"
+        case .connected: "Connected"
+        }
+    }
+
+    private var headerDetail: String {
+        switch step {
+        case .address: hostToAuthenticate?.name ?? "Where is Hermes running?"
+        case .protection(.cloudflareAccess): "This address is protected by Cloudflare Access. Enter its service token."
+        case .protection(.password): "This address asks for a username and password before Hermes."
+        case .signIn(let discovery): signInDetail(discovery)
+        case .connected: "Your agents are ready to chat."
+        }
+    }
+
+    private var isSigningIn: Bool {
+        if case .signIn = step { true } else { false }
+    }
+
+    private var canGoBack: Bool {
+        switch step {
+        case .protection: true
+        case .signIn: hostToAuthenticate == nil
+        case .address, .connected: false
+        }
+    }
+
+    private func goBack() {
+        BighelpKeyboard.dismiss()
+        cancel()
+        if isSigningIn, usesCloudflareAccess || usesProxyPassword || needsProxyPassword {
+            // Back from sign-in to the protection step it came through.
+            protection = usesCloudflareAccess ? .cloudflareAccess : .password
+            invalidateDiscovery()
+            return
+        }
+        protection = nil
+        usesCloudflareAccess = false
+        usesProxyPassword = false
+        needsProxyPassword = false
+        accessClientSecret = ""
+        proxyPassword = ""
+        invalidateDiscovery()
+    }
+
+    private var addressStep: some View {
+        Section {
+            TextField("hermes.example.com or 192.168.1.20", text: $address)
+                .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .submitLabel(.continue)
+                .onSubmit { if !isWorking { discover() } }
+                .accessibilityLabel("Host URL or IP address")
+                .accessibilityIdentifier("host-setup.address")
+                .focused($isAddressFocused)
+                .disabled(hostToAuthenticate != nil)
+                .padding(.vertical, 6)
+            DisclosureGroup(isExpanded: $showsConnectionOptions) {
+                TextField("Name (optional)", text: $name)
+                    .accessibilityIdentifier("host-setup.name")
+                TextField("Port (optional)", text: $port)
+                    .keyboardType(.numberPad)
+                    .accessibilityIdentifier("host-setup.port")
+                Button("It's behind Cloudflare Access") {
+                    BighelpKeyboard.dismiss()
+                    protection = .cloudflareAccess; usesCloudflareAccess = true
+                }
+                    .accessibilityIdentifier("host-setup.choose-cloudflare-access")
+                Button("It asks for a username and password") {
+                    BighelpKeyboard.dismiss()
+                    protection = .password; usesProxyPassword = true
+                }
+                    .accessibilityIdentifier("host-setup.choose-password")
+                Text("Custom headers").bighelpFont(.label, weight: .semibold)
+                    .padding(.top, BighelpTokens.space8)
+                HostCustomHeaderFields(rows: $customHeaderRows)
+            } label: {
+                Text("More options")
+                    .bighelpFont(.label, weight: .regular)
+                    .frame(minHeight: 44)
+            }
+            .disabled(hostToAuthenticate != nil)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("host-setup.options")
+        }
+        .listRowBackground(theme.surface)
+    }
+
+    @ViewBuilder
+    private func protectionStep(_ protection: Protection) -> some View {
+        Section {
+            switch protection {
+            case .cloudflareAccess:
+                TextField("Client ID", text: $accessClientID)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .textContentType(.username)
+                    .accessibilityIdentifier("host-setup.cloudflare-client-id")
+                SecureField("Client secret", text: $accessClientSecret)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .privacySensitive()
+                    .accessibilityIdentifier("host-setup.cloudflare-client-secret")
+                Link("How to make a service token", destination: URL(string:
+                    "https://github.com/promptclickrun/bighelp/blob/main/docs/HOST_ACCESS.md#cloudflare-access-service-token")!)
+                    .bighelpFont(.label, weight: .regular)
+            case .password:
+                TextField("Username", text: $proxyUsername)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .textContentType(.username)
+                    .accessibilityIdentifier("host-setup.proxy-username")
+                SecureField("Password", text: $proxyPassword)
+                    .textContentType(.password)
+                    .privacySensitive()
+                    .accessibilityIdentifier("host-setup.proxy-password-field")
+            }
+        }
+        .disabled(isWorking)
+        .listRowBackground(theme.surface)
+    }
+
+    @ViewBuilder
+    private var connectedStep: some View {
+        if let host = connectedHost, let notifications {
+            Section {
+                Label(host.name, systemImage: "checkmark.circle.fill")
+                    .bighelpFont(.label, weight: .semibold)
+                    .foregroundStyle(theme.primaryText)
+                    .padding(.vertical, 8)
+                if host.endpoint.baseURL.scheme == "http" { plainHTTPNote }
+            }
+            .listRowBackground(theme.surface)
+            if !firstRunPresentation {
+                Section {
+                    primaryAction(completionActionTitle, identifier: "host-setup.continue", disabled: false) { finish() }
+                }
+                .listRowBackground(Color.clear)
+            }
+            HostNotificationSetupSection(model: notifications)
+                .listRowBackground(theme.surface)
+        }
+    }
 
     @ViewBuilder
     private func primaryAction(_ title: String, identifier: String, disabled: Bool,
@@ -331,7 +440,7 @@ struct HostSetupView: View {
             isWorking ? (discovery == nil ? "Finding your agents…" : "Connecting…")
                       : (discovery == nil ? "Continue" : "Connect"),
             identifier: "host-setup.connect-host",
-            disabled: isWorking || (discovery.map { !canConnect($0) } ?? false)
+            disabled: isWorking || !stepIsFilledIn
         ) {
             if let discovery { connect(discovery) }
             else if address.isEmpty { isAddressFocused = true }
@@ -339,11 +448,26 @@ struct HostSetupView: View {
         }
     }
 
+    private var stepIsFilledIn: Bool {
+        switch step {
+        case .protection(.cloudflareAccess): !accessClientID.isEmpty && !accessClientSecret.isEmpty
+        case .protection(.password): !proxyUsername.isEmpty && !proxyPassword.isEmpty
+        case .signIn(let discovery): canConnect(discovery)
+        case .address, .connected: true
+        }
+    }
+
+    private var plainHTTPNote: some View {
+        Label("Not encrypted. Use plain HTTP only on a network you trust.", systemImage: "lock.open")
+            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
+            .accessibilityIdentifier("host-setup.plain-http")
+    }
+
     @ViewBuilder
     private func authenticationSection(_ discovery: HostAuthenticationDiscovery) -> some View {
         Section {
-            if discovery.supportsToken || discovery.supportsPassword || discovery.nativePKCE {
-                Picker("Connection method", selection: $method) {
+            if offeredMethods(discovery) > 1 {
+                Picker("Sign in with", selection: $method) {
                     if discovery.supportsDashboard { Text("No sign-in").tag(Method.dashboard) }
                     if discovery.supportsToken { Text(discovery.requiresAuthentication ? "Access token" : "Session token").tag(Method.token) }
                     if discovery.supportsPassword { Text("Username & password").tag(Method.password) }
@@ -379,28 +503,30 @@ struct HostSetupView: View {
                 SecureField("Password", text: $password).textContentType(.password)
                     .accessibilityIdentifier("direct-hermes.password")
             }
-            Text(methodDetail(discovery))
-                .bighelpFont(.metadata).foregroundStyle(.secondary)
-                .accessibilityIdentifier("host-setup.method-detail")
-
-        } header: { Text("Sign in") }
+            if discovery.endpoint.baseURL.scheme == "http" { plainHTTPNote }
+        }
     }
 
-    private func methodDetail(_ discovery: HostAuthenticationDiscovery) -> String {
+    private func offeredMethods(_ discovery: HostAuthenticationDiscovery) -> Int {
+        [discovery.supportsDashboard, discovery.supportsToken, discovery.supportsPassword, discovery.nativePKCE]
+            .filter { $0 }.count
+    }
+
+    private func signInDetail(_ discovery: HostAuthenticationDiscovery) -> String {
         switch method {
         case .dashboard:
-            "Connect using your dashboard’s existing access. No sign-in is required by this host."
+            "This computer doesn't need a sign-in."
         case .token where discovery.requiresAuthentication:
-            "An access token issued by this host’s sign-in provider."
+            "Paste an access token from your sign-in provider."
         case .token:
-            "The dashboard’s session token, set on your computer as HERMES_DASHBOARD_SESSION_TOKEN."
+            "Paste the dashboard's session token (HERMES_DASHBOARD_SESSION_TOKEN)."
         case .password:
-            "The username and password for your Hermes dashboard."
+            "Use your Hermes username and password."
         case .browser:
             if discovery.providers.count == 1, let only = discovery.providers.first {
-                "Opens \(only.name) sign-in in Safari, then brings you back here."
+                "Sign in with \(only.name) in Safari, then come back here."
             } else {
-                "Opens your Hermes sign-in page in Safari, for single sign-on like Authentik, Keycloak or Nous Portal, then brings you back here."
+                "Sign in on your Hermes sign-in page in Safari, then come back here."
             }
         }
     }
@@ -418,6 +544,9 @@ struct HostSetupView: View {
         }
     }
     private func discover() {
+        // Each step swaps the form's rows. A field still holding the keyboard when its
+        // row goes, while the keyboard closes, trips a UICollectionView assertion.
+        BighelpKeyboard.dismiss()
         cancel()
         discovery = nil
         let owner = UUID(); requestID = owner
@@ -428,37 +557,86 @@ struct HostSetupView: View {
         task = Task { @MainActor in
             defer { if requestID == owner { isWorking = false } }
             do {
-                let endpoint = try HostAddressInput.endpoint(address: address, port: port, allowPrivateHTTP: allowPrivateHTTP)
-                let sentProxyPassword = try stageAccess(for: endpoint)
-                let result: HostAuthenticationDiscovery
-                do {
-                    result = try await HostAuthenticationDiscovery.discover(endpoint: endpoint)
-                } catch let gate as HostAuthenticationDiscovery.Gate {
-                    switch gate {
-                    case .passwordProxy:
-                        guard requestID == owner else { return }
-                        needsProxyPassword = true
-                        showsConnectionOptions = true
-                        throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
-                                                : HostSetupAccessError.proxyPasswordRequired
-                    case .blocked:
-                        throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
-                                                : HostSetupAccessError.blockedBeforeSignIn
-                    case .loginPage:
-                        throw HostSetupAccessError.loginPage
-                    }
-                }
+                let result = try await discoverFirstReachable(try endpointCandidates(), owner: owner)
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration, !Task.isCancelled else { return }
+                protection = nil
                 discovery = result
                 method = Method(rawValue: HostAuthenticationDiscovery.preferredMethod(for: result).rawValue) ?? .token
                 provider = defaultProvider
+                // A computer that needs no sign-in connects straight away.
+                if method == .dashboard { connect(result) }
             } catch {
                 guard requestID == owner, registry.accountScope == account, registry.generation == accountGeneration else { return }
+                if let next = nextProtection(after: error) {
+                    protection = next
+                    return
+                }
                 errorMessage = (error as? HostSetupAccessError)?.localizedDescription
                     ?? DirectHermesConversationClient.safeMessage(error)
             }
         }
     }
+
+    /// A bare private address (home Wi-Fi, a VPN or Tailscale) tries HTTPS, then
+    /// plain HTTP. Internet addresses only ever use HTTPS; a typed http:// is
+    /// accepted for private addresses alone.
+    private func endpointCandidates() throws -> [DirectHermesEndpoint] {
+        if let host = hostToAuthenticate { return [host.endpoint] }
+        let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        if typed.contains("://") {
+            let plain = typed.lowercased().hasPrefix("http://")
+            return [try HostAddressInput.endpoint(address: typed, port: port, allowPrivateHTTP: plain)]
+        }
+        let secure = try HostAddressInput.endpoint(address: typed, port: port, allowPrivateHTTP: false)
+        guard DirectHermesEndpoint.isPrivateNetworkHost(secure.host), !usesCloudflareAccess else { return [secure] }
+        return [secure, try HostAddressInput.endpoint(address: typed, port: port, allowPrivateHTTP: true)]
+    }
+
+    private func discoverFirstReachable(_ candidates: [DirectHermesEndpoint], owner: UUID) async throws -> HostAuthenticationDiscovery {
+        var firstError: (any Error)?
+        for (index, endpoint) in candidates.enumerated() {
+            let sentProxyPassword = try stageAccess(for: endpoint)
+            do {
+                return try await HostAuthenticationDiscovery.discover(endpoint: endpoint)
+            } catch let error as DirectHermesError where Self.mayBePlainHTTP(error) {
+                unstage(endpoint)
+                guard index < candidates.count - 1 else { throw firstError ?? error }
+                firstError = firstError ?? error
+            } catch let gate as HostAuthenticationDiscovery.Gate {
+                guard requestID == owner else { throw CancellationError() }
+                switch gate {
+                case .passwordProxy:
+                    needsProxyPassword = true
+                    throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
+                                            : HostSetupAccessError.proxyPasswordRequired
+                case .blocked:
+                    throw sentProxyPassword ? HostSetupAccessError.proxyPasswordRejected
+                                            : HostSetupAccessError.blockedBeforeSignIn
+                case .loginPage:
+                    throw HostSetupAccessError.loginPage
+                }
+            } catch DirectHermesError.cloudflareAccessDenied where usesCloudflareAccess {
+                throw HostSetupAccessError.cloudflareAccessTokenRejected
+            }
+        }
+        throw firstError ?? DirectHermesError.connectionFailed
+    }
+
+    /// TLS failing or nothing answering on HTTPS can mean the computer serves plain HTTP.
+    private static func mayBePlainHTTP(_ error: DirectHermesError) -> Bool {
+        error == .tlsRequired || error == .connectionFailed
+    }
+
+    /// A gate seen for the first time becomes the next step instead of an error.
+    private func nextProtection(after error: any Error) -> Protection? {
+        if case DirectHermesError.cloudflareAccessDenied = error, !usesCloudflareAccess {
+            usesCloudflareAccess = true
+            return .cloudflareAccess
+        }
+        if case HostSetupAccessError.proxyPasswordRequired = error { return .password }
+        return nil
+    }
+
     private func connect(_ discovery: HostAuthenticationDiscovery) {
         guard canConnect(discovery), registry.canConfigureHosts else { return }
         BighelpKeyboard.dismiss()
@@ -528,47 +706,6 @@ struct HostSetupView: View {
         dismiss()
     }
 
-    @ViewBuilder
-    private var cloudflareAccessFields: some View {
-        Toggle("Cloudflare Access", isOn: $usesCloudflareAccess)
-            .accessibilityIdentifier("host-setup.cloudflare-access")
-        if usesCloudflareAccess {
-            TextField("Client ID", text: $accessClientID)
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .textContentType(.username)
-                .accessibilityIdentifier("host-setup.cloudflare-client-id")
-            SecureField("Client secret", text: $accessClientSecret)
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .privacySensitive()
-                .accessibilityIdentifier("host-setup.cloudflare-client-secret")
-        }
-        Text("For a host behind Cloudflare Access, such as a Cloudflare Tunnel. Create a service token in Cloudflare Zero Trust and allow it with a Service Auth policy. bighelp sends it only to this address and keeps it in Keychain.")
-            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
-    }
-
-    @ViewBuilder
-    private var proxyPasswordFields: some View {
-        Toggle("Username and password", isOn: Binding(
-            get: { usesProxyPassword || needsProxyPassword },
-            set: { on in
-                usesProxyPassword = on
-                if !on { needsProxyPassword = false }
-            }))
-            .accessibilityIdentifier("host-setup.proxy-password")
-        if usesProxyPassword || needsProxyPassword {
-            TextField("Username", text: $proxyUsername)
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .textContentType(.username)
-                .accessibilityIdentifier("host-setup.proxy-username")
-            SecureField("Password", text: $proxyPassword)
-                .textContentType(.password)
-                .privacySensitive()
-                .accessibilityIdentifier("host-setup.proxy-password-field")
-        }
-        Text("For a Hermes address behind a proxy that asks for a username and password, like basic auth on nginx, Caddy or Traefik. bighelp sends them only to this address and keeps them in Keychain.")
-            .bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
-    }
-
     /// Requests during setup use the entered credentials; they're saved once the
     /// connection works. Returns whether a proxy password is being sent.
     @discardableResult
@@ -607,6 +744,10 @@ struct HostSetupView: View {
     /// An abandoned setup never leaves a token in use; a connected host already saved it.
     private func unstageAccess() {
         guard connectedHost == nil, let endpoint = discovery?.endpoint else { return }
+        unstage(endpoint)
+    }
+
+    private func unstage(_ endpoint: DirectHermesEndpoint) {
         DirectHermesAccessCredentialStore.shared.stage(nil, for: endpoint)
         DirectHermesAccessCredentialStore.shared.stageCustomHeaders(nil, for: endpoint)
     }
@@ -615,8 +756,7 @@ struct HostSetupView: View {
         retainedDraft?.wrappedValue = HostSetupDraft(
             address: address,
             port: port,
-            name: name,
-            allowPrivateHTTP: allowPrivateHTTP
+            name: name
         )
     }
 }

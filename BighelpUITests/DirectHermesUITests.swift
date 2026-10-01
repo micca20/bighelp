@@ -16,10 +16,6 @@ final class DirectHermesUITests: BighelpUITestCase {
         let address=app.textFields["host-setup.address"]
         XCTAssertTrue(address.waitForExistence(timeout:8))
         address.tap(); address.typeText(try XCTUnwrap(config["address"]))
-        app.buttons["Connection options"].tap()
-        let consent=app.switches["direct-hermes.private-http"]
-        (consent.switches.firstMatch.exists ? consent.switches.firstMatch : consent).tap()
-        app.buttons["Connection options"].tap()
         app.buttons["host-setup.connect-host"].tap()
         let picker=app.buttons["direct-hermes.auth-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout:20)); picker.tap()
@@ -69,11 +65,6 @@ final class DirectHermesUITests: BighelpUITestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 8))
         address.tap()
         address.typeText(try XCTUnwrap(config["address"]))
-        app.buttons["Connection options"].tap()
-        let consent = app.switches["direct-hermes.private-http"]
-        let inner = consent.switches.firstMatch
-        if inner.exists { inner.tap() } else { consent.tap() }
-        app.buttons["Connection options"].tap()
         app.buttons["host-setup.connect-host"].tap()
         let picker = app.buttons["direct-hermes.auth-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 20))

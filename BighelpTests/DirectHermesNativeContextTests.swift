@@ -75,6 +75,31 @@ struct DirectHermesNativeContextTests {
         #expect(http.calls[1].request.timeout <= DirectHermesHTTP.longestRequestSeconds)
     }
 
+    /// A Cloudflare Tunnel compresses replies for iPhones (which always accept
+    /// compression) and marks their ETag weak: `W/"sha256:…"`. The app refused
+    /// that, so every plugin feature behind a Cloudflare tunnel failed
+    /// ("Usage couldn't be loaded", Device access "couldn't reach"). The tag
+    /// inside is the same plugin context; the plugin gets it back unchanged.
+    @Test func aProxysWeakETagStillMatchesThePluginContext() async throws {
+        let owner = try owner()
+        let http = HTTP()
+        let weak = "W/" + etag
+        http.handler = { request, guardValue in
+            if let guardValue {
+                return try self.response(request, body: ["providers": .array([])],
+                    headers: ["ETag": "W/" + guardValue.etag, "X-Loopdy-Request-ID": guardValue.requestIDHeader,
+                              "Cache-Control": "no-store"])
+            }
+            return try self.response(request, body: self.context(features: [
+                "native-context-v1", "serving-profile-v1", "native-provider-usage-v1"
+            ]), headers: ["ETag": weak, "Cache-Control": "no-store"])
+        }
+        let client = DirectHermesNativePluginClient(http: http, owner: owner, currentOwner: { owner })
+        let result = try await client.perform(.usageList, payload: ["agentId": .string("default"), "refresh": .boolean(false)])
+        #expect(result["providers"] == .array([]))
+        #expect(http.calls.last?.guardValue?.etag == etag, "If-Match carries the plugin's own tag")
+    }
+
     @Test func verifiedContextBindsPrincipalAndDiscardsUnrecognizedFields() async throws {
         let owner = try owner()
         let http = HTTP()
@@ -237,7 +262,8 @@ struct DirectHermesNativeContextTests {
     }
 
     @Test func contextGuardRejectsUnboundedOrMalformedHeaders() {
-        for value in ["sha256:" + String(repeating: "a", count: 64), "\"sha256:bad\"", etag + "\r\nx: y"] {
+        for value in ["sha256:" + String(repeating: "a", count: 64), "\"sha256:bad\"", etag + "\r\nx: y",
+                      "W/W/" + etag, "w/" + etag] {
             #expect(throws: WorkspaceClientError.invalidResponse) { try DirectHermesNativeRequestGuard(etag: value) }
         }
     }

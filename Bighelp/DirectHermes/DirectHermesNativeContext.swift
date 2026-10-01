@@ -11,6 +11,15 @@ struct DirectHermesNativeRequestGuard: Equatable, Sendable {
         self.requestID = requestID
     }
 
+    /// The plugin context a reply's ETag names. A proxy that compresses the
+    /// reply marks it weak (`W/`; a Cloudflare Tunnel does for every iPhone, which always
+    /// accepts compression); the tag inside is the same context.
+    static func contextTag(_ header: String?) -> String? {
+        guard var value = header else { return nil }
+        if value.hasPrefix("W/") { value.removeFirst(2) }
+        return validETag(value) ? value : nil
+    }
+
     static func validETag(_ value: String) -> Bool {
         guard value.utf8.count == 73, value.hasPrefix("\"sha256:"), value.hasSuffix("\"") else { return false }
         return value.dropFirst(8).dropLast().utf8.allSatisfy {
@@ -33,8 +42,7 @@ struct DirectHermesNativeContext: Equatable, Sendable {
     init(response: DirectHermesHTTP.Response, owner: WorkspaceOwner) throws {
         guard response.http.statusCode == 200, response.body.count <= 16_384,
               owner.authority.kind == .direct,
-              let etag = response.http.value(forHTTPHeaderField: "ETag"),
-              DirectHermesNativeRequestGuard.validETag(etag),
+              let etag = DirectHermesNativeRequestGuard.contextTag(response.http.value(forHTTPHeaderField: "ETag")),
               response.http.value(forHTTPHeaderField: "Cache-Control")?.lowercased().contains("no-store") == true else {
             throw WorkspaceClientError.invalidResponse
         }
@@ -211,7 +219,7 @@ final class DirectHermesNativePluginClient {
             throw responseError(response, mutation: route.isMutation)
         }
         guard echoedID == requestGuard.requestIDHeader,
-              response.http.value(forHTTPHeaderField: "ETag") == requestGuard.etag else {
+              DirectHermesNativeRequestGuard.contextTag(response.http.value(forHTTPHeaderField: "ETag")) == requestGuard.etag else {
             self.context = nil
             throw route.isMutation ? WorkspaceClientError.outcomeUnknown : WorkspaceClientError.invalidResponse
         }

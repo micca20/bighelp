@@ -74,7 +74,7 @@ final class DirectHermesVoiceCloseCleanup {
             }
             guard (200...299).contains(response.http.statusCode),
                   response.http.value(forHTTPHeaderField: "X-Loopdy-Request-ID") == requestGuard.requestIDHeader,
-                  response.http.value(forHTTPHeaderField: "ETag") == requestGuard.etag else { return }
+                  DirectHermesNativeRequestGuard.contextTag(response.http.value(forHTTPHeaderField: "ETag")) == requestGuard.etag else { return }
         } catch {
             // Retirement must not re-open or retarget an owner to report a
             // best-effort cleanup failure.

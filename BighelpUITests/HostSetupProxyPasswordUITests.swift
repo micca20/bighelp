@@ -25,17 +25,13 @@ final class HostSetupProxyPasswordUITests: BighelpUITestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 8))
         address.tap()
         address.typeText(parts[0])
-        app.buttons["Advanced connection"].firstMatch.tap()
-        let http = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(http.waitForExistence(timeout: 3))
-        (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
 
-        // No password yet: the app explains and opens the fields, instead of
-        // claiming a password was rejected.
+        // No password yet: the next step asks for one, instead of claiming a
+        // password was rejected.
         let connect = app.buttons["host-setup.connect-host"]
         tap(connect, in: app)
-        let asks = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "protected by a username and password")).firstMatch
-        XCTAssertTrue(asks.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Password needed"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.descendants(matching: .any)["host-setup.error"].exists)
         let username = app.textFields["host-setup.proxy-username"]
         XCTAssertTrue(username.waitForExistence(timeout: 3))
         save("proxy-1-asks", app)
@@ -46,19 +42,19 @@ final class HostSetupProxyPasswordUITests: BighelpUITestCase {
         password.tap()
         password.typeText("wrong password")
         tap(connect, in: app)
-        let rejected = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "didn't accept that username and password")).firstMatch
+        let rejected = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "username and password didn't work")).firstMatch
         XCTAssertTrue(rejected.waitForExistence(timeout: 15))
         save("proxy-2-rejected", app)
 
         password.tap()
         password.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + parts[2])
         tap(connect, in: app)
-        let picker = app.buttons["direct-hermes.auth-picker"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 20), "With the password, Hermes's own sign-in options appear")
-        save("proxy-3-sign-in", app)
-
-        tap(connect, in: app)
         let next = app.buttons["host-setup.continue"]
+        // With the password, Hermes's own sign-in comes next, unless it needs none.
+        if !next.waitForExistence(timeout: 20), app.buttons["direct-hermes.auth-picker"].exists {
+            save("proxy-3-sign-in", app)
+            tap(connect, in: app)
+        }
         XCTAssertTrue(next.waitForExistence(timeout: 30), "Connects through the proxy, sockets included")
         save("proxy-4-connected", app)
     }
@@ -82,10 +78,6 @@ final class HostSetupProxyPasswordUITests: BighelpUITestCase {
             XCTAssertTrue(address.waitForExistence(timeout: 8))
             address.tap()
             address.typeText(addresses[index])
-            app.buttons["Advanced connection"].firstMatch.tap()
-            let http = app.switches["direct-hermes.private-http"]
-            XCTAssertTrue(http.waitForExistence(timeout: 3))
-            (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
             tap(app.buttons["host-setup.connect-host"], in: app)
             let message = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected)).firstMatch
             XCTAssertTrue(message.waitForExistence(timeout: 15), expected)

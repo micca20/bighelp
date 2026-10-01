@@ -9,21 +9,13 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
 
     // MARK: No sign-in
 
-    @MainActor func testOpenHostPrefersNoSignIn() throws {
+    /// An open host needs no sign-in: the address alone connects, over plain
+    /// HTTP once HTTPS finds nothing on this private address.
+    @MainActor func testOpenHostConnectsFromTheAddressAlone() throws {
         let app = try beginSetup(mode: "open")
-        XCTAssertTrue(methodDetail(app).contains("No sign-in is required"), "An open host needs no sign-in")
-        save("open-1-no-sign-in", app)
-        try connect(app)
-    }
-
-    @MainActor func testOpenHostAcceptsItsSessionToken() throws {
-        let app = try beginSetup(mode: "open")
-        choose("Session token", in: app)
-        let token = app.secureTextFields["direct-hermes.token"]
-        XCTAssertTrue(token.waitForExistence(timeout: 3))
-        token.tap()
-        token.typeText(try XCTUnwrap(probe["session_token"]))
-        try connect(app)
+        XCTAssertFalse(methodPicker(app).exists, "No sign-in step")
+        XCTAssertTrue(app.descendants(matching: .any)["host-setup.plain-http"].exists, "Says the link isn't encrypted")
+        try expectConnected(app)
     }
 
     // MARK: Hermes's username/password provider
@@ -352,12 +344,11 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         address.tap()
         address.typeText(try XCTUnwrap(probe["address"]))
-        app.buttons["Advanced connection"].firstMatch.tap()
-        let http = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(http.waitForExistence(timeout: 3))
-        (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
         tapConnect(app)
-        XCTAssertTrue(methodPicker(app).waitForExistence(timeout: 30), "Discovery finds the host's sign-in methods")
+        // An open host connects straight away; a gated one shows its sign-in methods.
+        let connected = app.buttons["host-setup.continue"]
+        let found = NSPredicate { _, _ in connected.exists || self.methodPicker(app).exists }
+        wait(for: [expectation(for: found, evaluatedWith: nil)], timeout: 45)
         return app
     }
 
@@ -398,7 +389,7 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
     }
 
     @MainActor private func connect(_ app: XCUIApplication) throws {
-        tapConnect(app)
+        if !app.buttons["host-setup.continue"].exists { tapConnect(app) }
         try expectConnected(app)
     }
 

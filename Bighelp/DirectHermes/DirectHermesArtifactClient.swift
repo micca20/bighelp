@@ -126,7 +126,7 @@ final class DirectHermesArtifactClient: WorkspaceOperationPerforming {
             throw responseError(response)
         }
         guard response.http.value(forHTTPHeaderField: "X-Loopdy-Request-ID") == guardValue.requestIDHeader,
-              response.http.value(forHTTPHeaderField: "ETag") == guardValue.etag,
+              DirectHermesNativeRequestGuard.contextTag(response.http.value(forHTTPHeaderField: "ETag")) == guardValue.etag,
               response.http.value(forHTTPHeaderField: "Cache-Control")?.lowercased().contains("no-store") == true else {
             throw WorkspaceClientError.invalidResponse
         }

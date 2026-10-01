@@ -284,7 +284,7 @@ extension RootShellView {
             return
         }
         providerUsage.configure(client: DirectHermesProviderUsageClient(
-            signIn: signIn, currentWorkspace: { [weak connections] in connections?.workspace }
+            currentWorkspace: { [weak connections] in connections?.workspace }
         ), scope: signIn)
     }
 

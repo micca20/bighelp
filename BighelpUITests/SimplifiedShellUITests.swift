@@ -378,13 +378,13 @@ final class SimplifiedShellUITests: BighelpUITestCase {
         before.lifetime = .keepAlways
         add(before)
         // The disclosure is an accessibility container so field IDs remain distinct.
-        let options = app.buttons["Connection options"]
+        let options = app.buttons["More options"].firstMatch
         XCTAssertTrue(options.exists)
         guard options.exists else { return }
         options.tap()
         XCTAssertTrue(app.textFields["host-setup.port"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textFields["host-setup.name"].exists)
-        XCTAssertTrue(app.switches["direct-hermes.private-http"].exists)
+        XCTAssertFalse(app.switches["direct-hermes.private-http"].exists, "HTTP on a private network is found, not switched on")
         let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         after.name = "connect-options"
         after.lifetime = .keepAlways

@@ -1081,16 +1081,6 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         guard address.exists else { capture("native-production-entry", app); return }
         address.tap()
         address.typeText(try XCTUnwrap(ProcessInfo.processInfo.environment["NATIVE_PROBE_ADDRESS_OVERRIDE"] ?? config["address"]))
-        let options = app.otherElements["host-setup.options"].buttons.firstMatch
-        XCTAssertTrue(options.waitForExistence(timeout: 5))
-        options.tap()
-        let consent = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(consent.waitForExistence(timeout: 5))
-        let form = app.collectionViews["host-setup.screen"]
-        for _ in 0..<4 where !consent.isHittable { form.swipeUp() }
-        (consent.switches.firstMatch.exists ? consent.switches.firstMatch : consent).tap()
-        for _ in 0..<4 where !options.isHittable { form.swipeDown() }
-        options.tap()
         // The first-run safe-area footer inherits its containing screen's AX ID.
         let connect = app.buttons.matching(identifier: "host-setup.screen").matching(
             NSPredicate(format: "label == %@ OR label == %@", "Continue", "Connect")

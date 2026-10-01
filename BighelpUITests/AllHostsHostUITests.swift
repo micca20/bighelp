@@ -79,6 +79,52 @@ final class AllHostsHostUITests: BighelpUITestCase {
         save("fleet-3-desk-selected", app)
     }
 
+    /// Provider usage opened from a chat on the host the all-hosts list just
+    /// switched to. The usage panel used to keep the first host's connection and
+    /// said "Usage couldn't be loaded" until the chat closed.
+    @MainActor func testProviderUsageLoadsInAChatOnTheOtherHost() throws {
+        guard let path = ProcessInfo.processInfo.environment["BIGHELP_SIGNIN_PROBE"] else {
+            throw XCTSkip("Run through Scripts/HostSignInMatrixProbe.py --modes fleet")
+        }
+        probe = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        guard probe["mode"] == "fleet" else { throw XCTSkip("This host runs the \(probe["mode"] ?? "?") mode") }
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-no-configured-hosts",
+                               "-bighelp.hosts.all-hosts", "NO"]
+        app.launch()
+        try addHost(app, address: try XCTUnwrap(probe["address_a"]), name: "Desk Hermes")
+        let menu = app.buttons["home.drawer.open"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        menu.tap()
+        app.buttons["menu.hosts"].tap()
+        app.buttons["menu.host.add"].tap()
+        try addHost(app, address: try XCTUnwrap(probe["address_b"]), name: "Lab Hermes")
+        XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        menu.tap()
+        app.buttons["menu.all-hosts"].tap()
+        let desk = agent(on: "Desk Hermes", in: app)
+        XCTAssertTrue(desk.waitForExistence(timeout: 45))
+        desk.tap()
+        XCTAssertTrue(app.textViews["chat.composer.text"].waitForExistence(timeout: 45), "Desk Hermes' chat opens")
+        let options = app.buttons["chat.options"].firstMatch
+        XCTAssertTrue(options.waitForExistence(timeout: 10))
+        options.tap()
+        let usage = app.buttons["chat.provider-usage"].firstMatch
+        XCTAssertTrue(usage.waitForExistence(timeout: 10), "Provider usage is in the chat's ⋯ menu")
+        usage.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["provider-usage"].waitForExistence(timeout: 10))
+        let failed = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "couldn't be loaded")).firstMatch
+        let loaded = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "provider-usage.")).matching(
+            NSPredicate(format: "NOT identifier IN %@", ["provider-usage.message", "provider-usage.close",
+                                                         "provider-usage.refresh"])).firstMatch
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline, !failed.exists, !loaded.exists { Thread.sleep(forTimeInterval: 0.5) }
+        save("fleet-4-usage-in-other-host-chat", app)
+        XCTAssertFalse(failed.exists, "Usage loads in the other host's chat")
+    }
+
     /// Seconds from tapping an agent to its chat, with the given message, on screen.
     @MainActor private func timeToOpen(_ agent: XCUIElement, showing message: String,
                                        in app: XCUIApplication) throws -> Double {
@@ -130,17 +176,13 @@ final class AllHostsHostUITests: BighelpUITestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 15))
         field.tap()
         field.typeText(address)
+        app.buttons["More options"].firstMatch.tap()
         let nameField = app.textFields["host-setup.name"]
         if nameField.waitForExistence(timeout: 3) {
             nameField.tap()
             nameField.typeText(name)
         }
-        app.buttons["Advanced connection"].firstMatch.tap()
-        let http = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(http.waitForExistence(timeout: 3))
-        (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
-        tapConnect(app)
-        XCTAssertTrue(app.buttons["direct-hermes.auth-picker"].waitForExistence(timeout: 30), "The host answers")
+        // An open host connects straight from the address.
         tapConnect(app)
         let next = app.buttons["host-setup.continue"]
         XCTAssertTrue(next.waitForExistence(timeout: 45), "Connected to \(name)")

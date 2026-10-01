@@ -9,12 +9,6 @@ extension BighelpUITestCase {
         start.tap()
         let field = app.textFields["host-setup.address"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
-        // Before typing: with the keyboard up, the floating Continue button covers
-        // Advanced connection and the tap connects over HTTPS instead.
-        app.buttons["Advanced connection"].firstMatch.tap()
-        let http = app.switches["direct-hermes.private-http"]
-        XCTAssertTrue(http.waitForExistence(timeout: 3))
-        (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
         field.tap()
         field.typeText(address)
         // During onboarding the button reports the screen's identifier.
@@ -24,13 +18,10 @@ extension BighelpUITestCase {
         let next = app.buttons.matching(NSPredicate(
             format: "identifier IN %@ AND (label == %@ OR label BEGINSWITH %@)",
             ["host-setup.continue", "host-setup.screen"], "Start chatting", "Let")).firstMatch
-        // An open host needs no sign-in: Connect, then possibly Connect again on the method step.
-        for _ in 0..<3 where !next.exists {
-            for _ in 0..<5 where !(connect.exists && connect.isHittable) { app.swipeUp() }
-            if connect.exists { connect.tap() }
-            _ = next.waitForExistence(timeout: 20)
-        }
-        XCTAssertTrue(next.waitForExistence(timeout: 10), "Connected")
+        // An open host needs no sign-in: one Continue connects, over plain HTTP on a private address.
+        for _ in 0..<5 where !(connect.exists && connect.isHittable) { app.swipeUp() }
+        connect.tap()
+        XCTAssertTrue(next.waitForExistence(timeout: 45), "Connected")
         next.tap()
     }
 }

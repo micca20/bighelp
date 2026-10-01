@@ -11,7 +11,7 @@ Connect your bighelp account to a reachable `hermes serve` backend without bighe
 
 Your host must already be running a current Hermes backend and be reachable from the phone. For Tailscale, both devices must be connected to the appropriate tailnet. bighelp does not install Tailscale, start the host, expose a listener, or modify tailnet access rules.
 
-Use HTTPS where possible. For an explicitly entered `http://` address, **Allow HTTP over Tailscale** permits only literal Tailscale or loopback IP ranges. It does not bypass HTTPS certificate checks or allow public plaintext hosts. The app relies on your Tailscale/VPN configuration for encryption of an HTTP connection.
+Use HTTPS where possible. A private address (home Wi‑Fi, a VPN or Tailscale) is tried over HTTPS first, then plain HTTP if nothing answers securely; the connected screen says when the link isn't encrypted. Plain HTTP never bypasses HTTPS certificate checks and is never used for public addresses. The app relies on your Tailscale/VPN configuration for encryption of an HTTP connection.
 
 See the [official Hermes remote-backend guide](https://hermes-agent.nousresearch.com/docs/user-guide/desktop#connecting-to-a-remote-backend) for host setup.
 

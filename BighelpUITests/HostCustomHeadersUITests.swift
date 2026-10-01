@@ -1,7 +1,7 @@
 import XCTest
 
 /// Custom headers for a reverse proxy in front of Hermes (issue #1), in the
-/// host setup's Advanced connection.
+/// host setup's More options.
 final class HostCustomHeadersUITests: BighelpUITestCase {
     @MainActor
     func testCustomHeadersAreEnteredMaskedAndReservedNamesExplained() throws {
@@ -12,7 +12,7 @@ final class HostCustomHeadersUITests: BighelpUITestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 10))
         address.tap()
         address.typeText("https://hermes.example.com")
-        app.buttons["Advanced connection"].firstMatch.tap()
+        app.buttons["More options"].firstMatch.tap()
         let add = app.buttons["host-access.add-header"]
         for _ in 0..<6 where !(add.exists && add.isHittable) { app.swipeUp() }
         add.tap()

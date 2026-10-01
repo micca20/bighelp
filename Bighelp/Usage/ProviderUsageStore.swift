@@ -2,49 +2,66 @@ import SwiftUI
 
 @MainActor
 protocol ProviderUsageClient: AnyObject {
+    /// The computer and sign-in a read would go to right now.
+    var currentScope: AnyHashable? { get }
     func usage(agentID: String, refresh: Bool) async throws -> ProviderUsageReport
 }
 
 /// The bighelp plugin's `native-provider-usage-v1` route. The host does every
 /// provider call; the app only reads the result.
 ///
-/// bighelp reconnects each time it comes back, and a chat covering the home
-/// screen keeps the home from handing over the new connection. So this asks
-/// for the current connection on every call, for the same computer and sign-in only.
+/// bighelp reconnects each time it comes back, and the home screen that hands
+/// out clients can't while a chat covers it (a launch straight into a chat, or
+/// another host's agent). So this always reads through the current connection,
+/// and the store starts over when that connection is another sign-in.
 @MainActor
 final class DirectHermesProviderUsageClient: ProviderUsageClient {
-    private let signIn: WorkspaceSignIn
     private let currentWorkspace: @MainActor () -> (any WorkspaceOperationPerforming)?
     private let reconnectWait: Duration
     private let reconnectAttempts: Int
 
-    init(signIn: WorkspaceSignIn,
-         currentWorkspace: @escaping @MainActor () -> (any WorkspaceOperationPerforming)?,
+    init(currentWorkspace: @escaping @MainActor () -> (any WorkspaceOperationPerforming)?,
          reconnectWait: Duration = .milliseconds(500), reconnectAttempts: Int = 20) {
-        self.signIn = signIn
         self.currentWorkspace = currentWorkspace
         self.reconnectWait = reconnectWait
         self.reconnectAttempts = reconnectAttempts
     }
 
+    var currentScope: AnyHashable? { currentWorkspace()?.owner?.signIn }
+
     func usage(agentID: String, refresh: Bool) async throws -> ProviderUsageReport {
-        let payload: [String: BighelpJSONValue] = ["agentId": .string(agentID), "refresh": .boolean(refresh)]
-        let (workspace, owner) = try await connection()
         do {
-            return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
-        } catch WorkspaceClientError.conflict {
-            // The plugin's context changed (412): the next call loads it again. Once.
-            return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
+            return try await read(agentID: agentID, refresh: refresh)
+        } catch let error where ProviderUsageStore.isConnectionHiccup(error) {
+            // A dropped connection or a slow answer: once more, once it's back.
+            return try await read(agentID: agentID, refresh: refresh)
+        }
+    }
+
+    private func read(agentID: String, refresh: Bool) async throws -> ProviderUsageReport {
+        let (workspace, owner) = try await connection()
+        func ask(_ agent: String) async throws -> ProviderUsageReport {
+            let payload: [String: BighelpJSONValue] = ["agentId": .string(agent), "refresh": .boolean(refresh)]
+            do {
+                return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
+            } catch WorkspaceClientError.conflict {
+                // The plugin's context changed (412): the next call loads it again. Once.
+                return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
+            }
+        }
+        do {
+            return try await ask(agentID)
+        } catch WorkspaceClientError.rejected(let code)
+                    where agentID != "default" && (code == "profile_not_found" || code == "invalid_request") {
+            // Usage is the host's, the same for every agent; Hermes just doesn't know this one.
+            return try await ask("default")
         }
     }
 
     /// Waits a few seconds for a connection that's on its way back.
     private func connection() async throws -> (any WorkspaceOperationPerforming, WorkspaceOwner) {
         for attempt in 0...reconnectAttempts {
-            if let workspace = currentWorkspace(), let owner = workspace.owner {
-                guard owner.signIn == signIn else { throw WorkspaceClientError.ownerChanged }
-                return (workspace, owner)
-            }
+            if let workspace = currentWorkspace(), let owner = workspace.owner { return (workspace, owner) }
             if attempt < reconnectAttempts { try await Task.sleep(for: reconnectWait) }
         }
         throw WorkspaceClientError.transportUnavailable
@@ -54,6 +71,7 @@ final class DirectHermesProviderUsageClient: ProviderUsageClient {
 /// Made-up numbers for the demo and UI tests, covering every status.
 @MainActor
 final class DemoProviderUsageClient: ProviderUsageClient {
+    var currentScope: AnyHashable? { "fixtures" }
     func usage(agentID: String, refresh: Bool) async throws -> ProviderUsageReport {
         let now = Date.now
         func window(_ label: String, _ used: Double, hours: Double?, _ detail: String?) -> ProviderUsage.Window {
@@ -149,12 +167,23 @@ final class ProviderUsageStore {
         }
         generation += 1
         let current = generation
+        // Another computer or sign-in than the one on screen: start over.
+        let readScope = client.currentScope
+        if let readScope, readScope != scope {
+            scope = readScope
+            report = nil
+        }
         if report == nil { state = .loading }
         isRefreshing = refresh
         defer { if current == generation { isRefreshing = false } }
         do {
             let value = try await client.usage(agentID: agentID, refresh: refresh)
             guard current == generation else { return }
+            if client.currentScope != readScope {
+                // The sign-in changed while this was read: read for the new one.
+                await load(refresh: refresh)
+                return
+            }
             report = value
             state = .loaded
         } catch {
@@ -164,10 +193,34 @@ final class ProviderUsageStore {
                 state = .needsPluginUpdate
             default:
                 // Keep the last result on screen; say why it didn't refresh.
-                state = .unavailable(report == nil
-                    ? "Usage couldn't be loaded from your computer. Check the connection and try again."
-                    : "Couldn't refresh. Showing the last result.")
+                state = .unavailable(report == nil ? Self.reason(error) : "Couldn't refresh. Showing the last result.")
             }
+        }
+    }
+}
+
+extension ProviderUsageStore {
+    static func isConnectionHiccup(_ error: any Error) -> Bool {
+        switch error {
+        case WorkspaceClientError.transportUnavailable, WorkspaceClientError.ownerChanged,
+             DirectHermesError.timedOut, DirectHermesError.connectionFailed, DirectHermesError.notConnected,
+             DirectHermesError.disconnected, DirectHermesError.serverUnavailable:
+            true
+        default:
+            false
+        }
+    }
+
+    static func reason(_ error: any Error) -> String {
+        switch error {
+        case WorkspaceClientError.authenticationRequired, DirectHermesError.authenticationRequired:
+            "Your computer turned down bighelp's sign-in. Sign in to it again in Hosts."
+        case DirectHermesError.timedOut:
+            "Your computer took too long to answer. Try again in a moment."
+        case _ where isConnectionHiccup(error):
+            "bighelp isn't connected to your computer right now. Try again in a moment."
+        default:
+            "Usage couldn't be loaded from your computer. Try again in a moment."
         }
     }
 }
