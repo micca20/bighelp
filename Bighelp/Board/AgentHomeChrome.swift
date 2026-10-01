@@ -134,6 +134,74 @@ extension AgentHomeChatHeader {
     }
 }
 
+/// Feed, Ideas, Goals and Apps: the Chat tab's ☰, New chat and ⋯, floating
+/// over the board so they stay in reach while it scrolls.
+struct AgentBoardHeaderButtons: View {
+    let context: AgentBoardContext
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Button(action: context.onMenu) { glyph("line.3.horizontal") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Chats and menu")
+                .accessibilityIdentifier("home.drawer.open")
+            Spacer()
+            HStack(spacing: 0) {
+                newChatButton
+                Menu {
+                    Button("Agent profile", systemImage: "person.crop.circle", action: context.onProfile)
+                    Divider()
+                    ForEach(Array(context.tools.enumerated()), id: \.offset) { _, tool in
+                        Button(tool.title, systemImage: tool.systemImage, action: tool.action)
+                    }
+                } label: {
+                    // Glass goes around the menu, not in its label, or it takes the tap.
+                    Image(systemName: "ellipsis")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(theme.primaryText)
+                        .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
+                        .contentShape(.rect)
+                }
+                .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
+                .bighelpNavigationGlass(in: Circle(), isInteractive: true)
+                .padding(HeaderButtonMetrics.slop)
+                .contentShape(.rect)
+                .accessibilityLabel("More for \(context.agentName)")
+                .accessibilityIdentifier("board.more")
+            }
+        }
+    }
+
+    /// Tap: a new chat with this agent. Touch and hold: the picker, for another agent or a group.
+    private var newChatButton: some View {
+        glyph("square.and.pencil")
+            .onTapGesture(perform: context.onNewChat)
+            .onLongPressGesture(minimumDuration: 0.4) {
+                BighelpHaptics.tap()
+                context.onPickAgents()
+            }
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("New chat with \(context.agentName)")
+            .accessibilityHint("Touch and hold to pick other agents or start a group.")
+            .accessibilityAction { context.onNewChat() }
+            .accessibilityAction(named: "Pick agents") { context.onPickAgents() }
+            .accessibilityIdentifier("board.new-chat")
+    }
+
+    private func glyph(_ systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(theme.primaryText)
+            .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
+            .bighelpNavigationGlass(in: Circle(), isInteractive: true)
+            .padding(HeaderButtonMetrics.slop)
+            .contentShape(.rect)
+    }
+
+    @BighelpThemeReader private var theme
+}
+
 /// The chat header's round buttons: the glass circle people see, and a
 /// larger square around it that still takes the tap. Taps near a circle's
 /// edge used to miss and needed a second try.

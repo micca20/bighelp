@@ -45,10 +45,13 @@ struct ConfiguredWorkspaceArtifactsView: View {
         case .unavailable(.unsupportedOperation)?, .unavailable(.pluginRequired)?:
             "This host's bighelp plugin doesn't share workspace files yet. Update it in Settings, under this "
                 + "computer's Plugin version, then try again."
+        case .rejected(let code)? where WorkspaceClientError.workspaceFilesMessage(code) != nil:
+            WorkspaceClientError.workspaceFilesMessage(code) ?? ""
         case let known?:
             known.localizedDescription + " No other folder was opened."
         case nil:
-            "The host could not confirm access to its configured workspace. No other folder was opened."
+            (error as? DirectHermesManagedFilesError)?.localizedDescription
+                ?? "The host could not confirm access to its configured workspace. No other folder was opened."
         }
     }
 

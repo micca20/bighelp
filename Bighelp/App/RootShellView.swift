@@ -599,7 +599,7 @@ struct RootShellView: View {
         .ornament(visibility: visionTabsVisible ? .visible : .hidden,
                   attachmentAnchor: .scene(.leading), contentAlignment: .trailing) {
             VisionTabOrnament(selection: tabSelection, unread: boardUnreadTabs,
-                              onNewChat: appState.selectedTab == .sessions && appState.path.isEmpty ? {
+                              onNewChat: appState.selectedTab == .sessions && appState.path.isEmpty && !fleetModeOn ? {
                                   appState.chatOpenedFromList = true
                                   startNewChat(explicitAgentID: nil)
                               } : nil)
@@ -607,8 +607,9 @@ struct RootShellView: View {
         #endif
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if showsBottomNavigation && !BighelpPlatform.usesTabOrnament {
+                // All agents has its own New chat, bottom right.
                 FloatingTabBar(selection: tabSelection,
-                               onNewChat: appState.selectedTab == .sessions ? {
+                               onNewChat: appState.selectedTab == .sessions && !fleetModeOn ? {
                                    appState.chatOpenedFromList = true
                                    startNewChat(explicitAgentID: nil)
                                } : nil,
@@ -815,6 +816,8 @@ struct RootShellView: View {
         Color.clear
             .frame(width: WorkspaceEdgeSwipeResolver.activationEdgeWidth)
             .contentShape(Rectangle())
+            // Below the header row, so ☰ and ⋯ in the corners (Feed, Ideas, Goals, Apps) keep their taps.
+            .padding(.top, HeaderButtonMetrics.glass + 2 * HeaderButtonMetrics.slop + BighelpTokens.space8)
             .allowsHitTesting(action != .none && !isHomeDrawerPresented)
             .highPriorityGesture(
                 DragGesture(minimumDistance: 12, coordinateSpace: .local)
@@ -882,7 +885,7 @@ struct RootShellView: View {
     @ViewBuilder
     private var sessionsRootTab: some View {
         if fleetModeOn, let fleet {
-            FleetHomeView(fleet: fleet, onOpen: openFleetAgent)
+            FleetHomeView(fleet: fleet, onOpen: openFleetAgent, onNewChat: { isFleetNewChatPresented = true })
         } else if case .sessions(let model)? = featureStore.preparedModel(for: .sessions) {
             SessionsView(
                 model: model,

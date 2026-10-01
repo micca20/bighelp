@@ -22,6 +22,11 @@ struct BighelpHostNotificationBinding: Codable, Equatable, Sendable {
 
 /// Non-secret, device-local metadata. Credentials remain in a separate exact
 /// account/host Keychain item. A configured host need not currently be online.
+enum HostRenameError: LocalizedError {
+    case invalidName
+    var errorDescription: String? { "Use a name up to 60 characters." }
+}
+
 struct BighelpConfiguredHost: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let accountScope: String
@@ -362,6 +367,21 @@ final class BighelpHostRegistry {
             selectedWorkspace = selectedHost.map { workspace(for: $0) }
             errorMessage = nil
         } catch { errorMessage = "The host selection could not be saved on this device." }
+    }
+
+    /// The name people see for a computer. Its address, sign-in and chats don't change.
+    func rename(_ id: UUID, to newName: String) throws {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 60,
+              !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              let index = hosts.firstIndex(where: { $0.id == id }) else {
+            throw HostRenameError.invalidName
+        }
+        guard hosts[index].name != name else { return }
+        var renamed = hosts
+        renamed[index].name = name
+        try persist(hosts: renamed, selected: selectedHostID)
+        hosts = renamed
     }
 
     func remove(_ host: BighelpConfiguredHost) throws {

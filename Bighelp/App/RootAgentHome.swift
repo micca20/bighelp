@@ -197,7 +197,11 @@ extension RootShellView {
             activity: homeActivity, store: agentBoard,
             onProfile: { profileAgentID = agent.id },
             onSwitchAgent: { isAgentSwitcherPresented = true },
-            onAsk: askAgent
+            onAsk: askAgent,
+            onMenu: { isHomeDrawerPresented = true },
+            onNewChat: { startHomeChat(with: agent.id) },
+            onPickAgents: { presentNewChatPicker(seed: agent.id) },
+            tools: appsTools(for: agent)
         )
     }
 
@@ -209,7 +213,7 @@ extension RootShellView {
             case .feed: AgentFeedView(context: context)
             case .ideas: AgentIdeasView(context: context)
             case .goals: AgentGoalsView(context: context)
-            default: AgentAppsView(context: context, media: agentMedia, tools: appsTools(for: agent)) { appsArtifacts }
+            default: AgentAppsView(context: context, media: agentMedia) { appsArtifacts }
             }
         } else {
             ContentUnavailableView("No agent yet", systemImage: "person.crop.circle.badge.questionmark",

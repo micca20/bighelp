@@ -275,8 +275,6 @@ struct HostPluginFeatureSection: View {
 @MainActor
 struct HostPluginInstallationSection: View {
     let model: HostNotificationSetupModel
-    let hostName: String
-    let hostEndpoint: String
     @State private var showsReview = false
     @State private var restartOffered = false
     @State private var confirmsRestart = false
@@ -286,14 +284,6 @@ struct HostPluginInstallationSection: View {
 
     var body: some View {
         Section {
-            LabeledContent("Computer", value: hostName)
-                .accessibilityIdentifier("hosts.plugin-install.host")
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Address").bighelpFont(.metadata).foregroundStyle(.secondary)
-                Text(hostEndpoint).bighelpFont(.code).textSelection(.enabled)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("hosts.plugin-install.host-address")
             Text(model.message)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("hosts.plugin-install.status")

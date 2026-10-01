@@ -163,7 +163,7 @@ enum DirectHermesManagedFilesError: Error, Equatable, LocalizedError {
         case .invalidResponse:
             "Hermes returned an invalid managed-file response. Refresh before trying again."
         case .scopeUnavailable:
-            "The bighelp host plugin did not prove an explicit configured workspace. Files are unavailable for this host."
+            "This computer didn't confirm which folder your agent works in, so bighelp opened no files."
         case .scopeChanged:
             "Hermes’ managed-files policy changed after this workspace was opened. Reopen Files to establish the current boundary."
         case .fileTooLarge(let limit):
@@ -629,6 +629,10 @@ final class DirectHermesManagedFilesClient {
         let listing: [String: BighelpJSONValue]
         do {
             listing = try await workspaceFilesClient().scope(owner: capturedOwner)
+        } catch let error as WorkspaceClientError {
+            // The host's own reason (no working folder, old plugin…) says what to fix.
+            try checkOwner()
+            throw error
         } catch {
             try checkOwner()
             throw DirectHermesManagedFilesError.scopeUnavailable

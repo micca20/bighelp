@@ -88,6 +88,24 @@ struct IndependentHostScopeTests {
         #expect(fixture.registry.hosts == [first.host])
     }
 
+    /// Renaming changes only the name people see; it's saved, and the address,
+    /// sign-in and selection stay as they were.
+    @Test func renamingAHostKeepsItsConnection() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        fixture.registry.restoreConnectionSelection(deviceID: nil, authorizationEpoch: nil)
+        let saved = try fixture.seedHost(userID: "person", mode: .independent)
+        try fixture.registry.rename(saved.host.id, to: "  Studio Mac  ")
+        #expect(fixture.registry.hosts.first?.name == "Studio Mac")
+        #expect(fixture.registry.hosts.first?.endpoint == saved.host.endpoint)
+        #expect(fixture.registry.hosts.first?.principalIdentity == saved.host.principalIdentity)
+        #expect(fixture.registry.selectedHostID == saved.host.id)
+        fixture.registry.retryLoading()
+        #expect(fixture.registry.hosts.first?.name == "Studio Mac", "The name survives a relaunch")
+        #expect(throws: (any Error).self) { try fixture.registry.rename(saved.host.id, to: "   ") }
+        #expect(fixture.registry.hosts.first?.name == "Studio Mac")
+    }
+
     @Test func nativeMetadataCannotClaimACloudAccountIdentity() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

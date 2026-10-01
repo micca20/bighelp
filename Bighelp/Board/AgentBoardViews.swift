@@ -13,6 +13,12 @@ struct AgentBoardContext {
     let onSwitchAgent: () -> Void
     /// Opens a chat with this agent with the text ready to send.
     let onAsk: (String) -> Void
+    /// The Chat tab's header controls, so every board has ☰, New chat and ⋯ too.
+    let onMenu: () -> Void
+    let onNewChat: () -> Void
+    let onPickAgents: () -> Void
+    /// This agent's places on the host, for ⋯ (Files, Memory, Skills & tools…).
+    let tools: [(title: String, systemImage: String, action: () -> Void)]
 }
 
 // MARK: - Shared pieces
@@ -47,6 +53,7 @@ private struct BoardScroll<Content: View>: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
+        .overlay(alignment: .top) { AgentBoardHeaderButtons(context: context) }
         .refreshable { await context.store.load(agentID: context.agentID) }
         .task(id: context.agentID) {
             if context.store.agentID != context.agentID || context.store.state == .idle {
@@ -68,6 +75,7 @@ private struct BoardScroll<Content: View>: View {
         }
         .animation(.snappy, value: context.store.recentlyHidden?.id)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
     }
 
@@ -888,35 +896,18 @@ struct AgentAppsView<Artifacts: View>: View {
 
     let context: AgentBoardContext
     let media: AgentMediaStore
-    let tools: [(title: String, systemImage: String, action: () -> Void)]
     @ViewBuilder let artifacts: () -> Artifacts
     @State private var segment: Segment = .artifacts
     @State private var preview: ChatAttachment?
 
     var body: some View {
         VStack(spacing: BighelpTokens.space12) {
-            ZStack(alignment: .topTrailing) {
-                AgentHeroHeader(agentID: context.agentID, displayName: context.agentName,
-                                imageURL: context.imageURL, activity: context.activity,
-                                onAvatarTap: context.onProfile, onNameTap: context.onSwitchAgent)
-                    .frame(maxWidth: .infinity)
-                Menu {
-                    ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
-                        Button(tool.title, systemImage: tool.systemImage, action: tool.action)
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(theme.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(.circle)
-                        .bighelpNavigationGlass(in: Circle(), isInteractive: true)
-                }
-                .accessibilityLabel("More tools")
-                .accessibilityIdentifier("board.apps.more")
-            }
-            .padding(.horizontal, BighelpTokens.space20)
-            .padding(.top, BighelpTokens.space8)
+            AgentHeroHeader(agentID: context.agentID, displayName: context.agentName,
+                            imageURL: context.imageURL, activity: context.activity,
+                            onAvatarTap: context.onProfile, onNameTap: context.onSwitchAgent)
+                .frame(maxWidth: .infinity)
+                .padding(.top, BighelpTokens.space8)
+                .overlay(alignment: .top) { AgentBoardHeaderButtons(context: context) }
             Picker("Show", selection: $segment) {
                 ForEach(Segment.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -935,6 +926,7 @@ struct AgentAppsView<Artifacts: View>: View {
         .task(id: context.agentID) {
             if context.store.agentID != context.agentID { await context.store.load(agentID: context.agentID) }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.apps")
     }
 

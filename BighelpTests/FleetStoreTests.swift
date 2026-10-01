@@ -82,6 +82,35 @@ struct FleetStoreTests {
         #expect(reader.reads == [studio], "The selected host is live; it is never read")
     }
 
+    /// Pinned agents from every host stay in the order the person dragged them
+    /// into, after a relaunch too; a newly pinned agent joins at the end.
+    @Test func pinnedAgentsKeepTheArrangedOrderAcrossHosts() async {
+        let folder = directory()
+        let reader = reader()
+        reader.snapshots[studio] = FleetSnapshot(
+            agents: [agent(studio, "default", "Rio", pinned: true)],
+            chats: [chat(studio, "default", "s1", minutesAgo: 1)], refreshedAt: Date())
+        let live = FleetSnapshot(
+            agents: [agent(home, "default", "Avery", pinned: true), agent(home, "travel", "Mina", pinned: true)],
+            chats: [chat(home, "default", "h1", minutesAgo: 30), chat(home, "travel", "h2", minutesAgo: 5)],
+            refreshedAt: Date())
+        let fleet = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        fleet.recordLive(live, hostID: home)
+        fleet.refresh()
+        await fleet.waitForReads()
+        #expect(fleet.pinnedAgents().map(\.name) == ["Rio", "Mina", "Avery"], "Unarranged: latest chat first")
+
+        let avery = FleetID.make(home, "default"), rio = FleetID.make(studio, "default")
+        fleet.reorderPinned([avery, rio])
+        #expect(fleet.pinnedAgents().map(\.name) == ["Avery", "Rio", "Mina"])
+
+        let reopened = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        reopened.recordLive(live, hostID: home)
+        reopened.refresh()
+        await reopened.waitForReads()
+        #expect(reopened.pinnedAgents().map(\.name) == ["Avery", "Rio", "Mina"], "The order survives a relaunch")
+    }
+
     @Test func aHostIsReadAtMostOnceAMinuteUnlessAsked() async {
         let reader = reader()
         let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)

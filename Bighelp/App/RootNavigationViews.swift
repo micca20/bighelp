@@ -69,6 +69,8 @@ enum ConversationRootNavigationPresentation {
 struct RootComposeButton: View {
     static let diameter: CGFloat = 60
     var identifier = ConversationRootNavigationPresentation.composeAccessibilityIdentifier
+    /// Bigger where it's the screen's one main action (All agents).
+    var size: CGFloat = RootComposeButton.diameter
     let action: () -> Void
 
     @BighelpThemeReader private var theme
@@ -83,9 +85,9 @@ struct RootComposeButton: View {
             action()
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.system(size: glyph, weight: .semibold))
+                .font(.system(size: glyph * size / Self.diameter, weight: .semibold))
                 .foregroundStyle(theme.actionForeground)
-                .frame(width: Self.diameter, height: Self.diameter)
+                .frame(width: size, height: size)
                 .contentShape(.circle)
                 .modifier(ComposeSurface(tint: theme.action, reduceTransparency: reduceTransparency))
         }

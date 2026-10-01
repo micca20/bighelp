@@ -280,12 +280,13 @@ struct SettingsView: View {
                 PluginUpdateSection(store: pluginUpdates, theme: theme)
                 connectivity
             }
-            BighelpPluginCapabilitiesSection(
-                connections: workspaceConnections,
-                permissionCenter: permissionCenter,
-                showsPluginSummary: pluginUpdate == nil
-            )
+            // Which plugin features each part of the app found: technical, so Nerd Mode only.
             if settings.nerdModeEnabled {
+                BighelpPluginCapabilitiesSection(
+                    connections: workspaceConnections,
+                    permissionCenter: permissionCenter,
+                    showsPluginSummary: pluginUpdate == nil
+                )
                 localCache
             }
         }

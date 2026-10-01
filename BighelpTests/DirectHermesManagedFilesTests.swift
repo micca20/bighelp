@@ -81,6 +81,39 @@ struct DirectHermesManagedFilesTests {
         #expect(http.requests.last?.path == "/api/plugins/loopdy/native/workspace-files/scope")
     }
 
+    /// The host says why it can't share files (here: no working folder set);
+    /// people see that reason, not "did not prove a workspace".
+    @Test func hostsReasonForNoWorkspaceReachesPeople() async throws {
+        let owner = try makeOwner()
+        let http = ManagedFilesTestHTTP()
+        http.refusal = (409, "workspace_not_configured",
+                        "Set an absolute terminal.cwd for this profile before opening workspace files.")
+        let client = DirectHermesManagedFilesClient(http: http, owner: owner, currentOwner: { owner })
+        do {
+            _ = try await client.workspaceScope()
+            Issue.record("The host refused, so there is no scope")
+        } catch {
+            #expect(error as? WorkspaceClientError == .rejected(code: "workspace_not_configured"))
+            #expect(error.localizedDescription.contains("no working folder"))
+            #expect(ConfiguredWorkspaceArtifactsView.message(for: error).contains("no working folder"))
+        }
+    }
+
+    /// An older plugin without workspace files reads as "update the plugin".
+    @Test func pluginWithoutWorkspaceFilesSaysToUpdate() async throws {
+        let owner = try makeOwner()
+        let http = ManagedFilesTestHTTP()
+        http.sharesWorkspaceFiles = false
+        let client = DirectHermesManagedFilesClient(http: http, owner: owner, currentOwner: { owner })
+        do {
+            _ = try await client.workspaceScope()
+            Issue.record("The plugin can't share files, so there is no scope")
+        } catch {
+            #expect(error as? WorkspaceClientError == .unavailable(.unsupportedOperation))
+            #expect(ConfiguredWorkspaceArtifactsView.message(for: error).contains("Update it"))
+        }
+    }
+
     @Test func driveRootAndLockedBroaderRootKeepWorkspaceBoundary() throws {
         let owner = try makeOwner()
         let windows = try DirectHermesWorkspaceFileScope.fixture(root: "C:\\", owner: owner)
@@ -112,6 +145,8 @@ private final class ManagedFilesTestHTTP: DirectHermesAuthenticatedHTTP, DirectH
     var requests: [DirectHermesHTTPRequest] = []
     var result: BighelpJSONValue = .object([:])
     var cwdResponse: BighelpJSONValue?
+    var refusal: (status: Int, code: String, message: String)?
+    var sharesWorkspaceFiles = true
     var onRequest: (@MainActor () -> Void)?
     func request(_ request: DirectHermesHTTPRequest) async throws -> BighelpJSONValue {
         requests.append(request)
@@ -128,7 +163,16 @@ private final class ManagedFilesTestHTTP: DirectHermesAuthenticatedHTTP, DirectH
             object = ["schemaVersion": .integer(1), "pluginVersion": .string("test"),
                 "runtimeId": .string("fixture-runtime"), "servingProfileId": .string("default"),
                 "principal": .object(["provider": .string("test"), "userId": .string("files"), "displayName": .null]),
-                "features": .array([.string("native-context-v1"), .string("serving-profile-v1"), .string("native-workspace-files-v1")])]
+                "features": .array([.string("native-context-v1"), .string("serving-profile-v1")]
+                    + (sharesWorkspaceFiles ? [.string("native-workspace-files-v1")] : []))]
+        } else if let refusal {
+            // The plugin's own error reply, as Hermes sends it.
+            object = ["error": .object(["code": .string(refusal.code), "message": .string(refusal.message),
+                                        "retryable": .boolean(false), "details": .object([:])])]
+            let url = try #require(URL(string: "https://fixture.example.test" + request.path))
+            let response = try #require(HTTPURLResponse(url: url, statusCode: refusal.status, httpVersion: "HTTP/1.1",
+                                                        headerFields: ["Cache-Control": "no-store"]))
+            return .init(http: response, body: try JSONEncoder().encode(BighelpJSONValue.object(object)))
         } else {
             let guardValue = try #require(requestGuard)
             headers["X-Loopdy-Request-ID"] = guardValue.requestIDHeader

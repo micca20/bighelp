@@ -71,6 +71,8 @@ final class FleetStore {
     private(set) var statuses: [UUID: FleetHostStatus] = [:]
     /// A tap waiting for its host to become the selected one.
     var pendingOpen: FleetPendingOpen?
+    /// The order the person dragged pinned agents into, across hosts.
+    private(set) var pinnedOrder: [String] = []
 
     @ObservationIgnored let avatars: FleetAvatarFolder
     @ObservationIgnored private let reader: any FleetHostReading
@@ -95,6 +97,10 @@ final class FleetStore {
         self.saveDelay = saveDelay
         avatars = FleetAvatarFolder(directory: directory.appending(path: "avatars", directoryHint: .isDirectory))
         hosts = reader.hosts
+        if let saved = try? Data(contentsOf: pinnedOrderURL),
+           let order = try? JSONDecoder().decode([String].self, from: saved) {
+            pinnedOrder = Array(order.prefix(64))
+        }
         for host in hosts {
             if let saved = try? Data(contentsOf: snapshotURL(host.id)),
                let snapshot = try? JSONDecoder().decode(FleetSnapshot.self, from: saved) {
@@ -259,7 +265,39 @@ final class FleetStore {
             }
     }
 
+    // MARK: Pinned
+
+    /// Pinned agents in the person's order; ones not arranged yet follow, latest chat first.
+    func pinnedAgents(limit: Int = 8) -> [FleetAgent] {
+        let rank = Dictionary(pinnedOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let pinned = agents().filter(\.isPinned).enumerated().sorted { lhs, rhs in
+            switch (rank[lhs.element.id], rank[rhs.element.id]) {
+            case let (left?, right?): left < right
+            case (.some, nil): true
+            case (nil, .some): false
+            case (nil, nil): lhs.offset < rhs.offset
+            }
+        }
+        return Array(pinned.map(\.element).prefix(limit))
+    }
+
+    /// Saves a dragged order; agents it doesn't name keep their places after it.
+    func reorderPinned(_ ids: [String]) {
+        let order = Array((ids + pinnedOrder.filter { !ids.contains($0) }).prefix(64))
+        guard order != pinnedOrder else { return }
+        pinnedOrder = order
+        let protector = BighelpLocalFileProtector()
+        try? protector.prepareDirectory(directory, protection: .privateVisual, fileManager: .default)
+        if let data = try? JSONEncoder().encode(order) {
+            try? data.write(to: pinnedOrderURL, options: [.atomic, .completeFileProtection])
+        }
+    }
+
     // MARK: Saving
+
+    private var pinnedOrderURL: URL {
+        directory.appending(path: "pinned-order.json", directoryHint: .notDirectory)
+    }
 
     private func snapshotURL(_ id: UUID) -> URL {
         directory.appending(path: id.uuidString.lowercased() + ".json", directoryHint: .notDirectory)

@@ -3,9 +3,6 @@ import SwiftUI
 /// The Pinned grid on Agents. Tap opens an agent's chat. Touch and hold lifts
 /// the agent: drag it to a new place and the others make room (pinned agents
 /// only), or let go without moving to see that agent's actions.
-///
-/// Long-press menus can't be used here: the grid is one List row, and a List
-/// row shows the first menu in it whichever agent was pressed.
 struct AgentPinnedGrid: View {
     let agents: [AgentProfile]
     let canReorder: Bool
@@ -18,9 +15,49 @@ struct AgentPinnedGrid: View {
     let create: (() -> Void)?
     @Binding var isArranging: Bool
 
+    var body: some View {
+        PinnedArrangeGrid(
+            items: agents,
+            columns: Array(repeating: GridItem(.flexible(), spacing: BighelpTokens.space8, alignment: .top), count: 3),
+            canReorder: canReorder, space: "agents.pinned", open: open, manage: manage, reorder: reorder,
+            isArranging: $isArranging, identifier: { "agents.featured.\($0.id)" },
+            tile: { agent, lifted in
+                AgentFeaturedTile(agent: agent, imageURL: imageURL(agent), liveState: liveState(agent),
+                                  isPrimary: isPrimary(agent), isLifted: lifted)
+            },
+            trailing: {
+                if let create {
+                    AgentNewTile(action: create)
+                        .accessibilityIdentifier("agents.featured.create")
+                }
+            }
+        )
+    }
+}
+
+/// A grid of pinned things. Tap opens one. Touch and hold lifts it: drag it to
+/// a new place and the others make room, or let go without moving to see its
+/// actions (when it has any).
+///
+/// Long-press menus can't be used here: the grid is one List row, and a List
+/// row shows the first menu in it whichever tile was pressed.
+struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View where Item.ID == String {
+    let items: [Item]
+    let columns: [GridItem]
+    let canReorder: Bool
+    /// The grid's coordinate space; unique per screen.
+    let space: String
+    let open: (Item) -> Void
+    let manage: ((Item) -> Void)?
+    let reorder: ([String]) -> Void
+    @Binding var isArranging: Bool
+    let identifier: (Item) -> String
+    @ViewBuilder let tile: (Item, _ isLifted: Bool) -> Tile
+    @ViewBuilder let trailing: () -> Trailing
+
     private struct Lift: Equatable {
         let id: String
-        /// Where each place in the grid was when the agent was lifted.
+        /// Where each place in the grid was when the tile was lifted.
         let slots: [CGRect]
         /// The finger's spot within the lifted tile.
         let grab: CGSize
@@ -28,75 +65,78 @@ struct AgentPinnedGrid: View {
         var moved = false
     }
 
-    private static let space = "agents.pinned"
     @State private var frames: [String: CGRect] = [:]
-    @State private var arrangement: [AgentProfile]?
+    @State private var arrangement: [Item]?
     @State private var lift: Lift?
     @GestureState private var isPressing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var shown: [AgentProfile] { arrangement ?? agents }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: BighelpTokens.space8, alignment: .top), count: 3)
+    private var shown: [Item] { arrangement ?? items }
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: BighelpTokens.space12) {
-            ForEach(shown) { agent in tile(agent) }
-            if let create {
-                AgentNewTile(action: create)
-                    .accessibilityIdentifier("agents.featured.create")
-            }
+            ForEach(shown) { item in cell(item) }
+            trailing()
         }
-        .coordinateSpace(.named(Self.space))
+        .coordinateSpace(.named(space))
         .onChange(of: isPressing) { _, pressing in
             // Ends a lift however the touch ended, including a cancelled one.
             if !pressing { finish() }
         }
     }
 
-    private func tile(_ agent: AgentProfile) -> some View {
-        let lifted = lift?.id == agent.id
-        return AgentFeaturedTile(
-            agent: agent, imageURL: imageURL(agent), liveState: liveState(agent),
-            isPrimary: isPrimary(agent), isLifted: lifted
-        )
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[agent.id] = $0 }
-        .offset(lifted ? offset(for: agent) : .zero)
-        .zIndex(lifted ? 1 : 0)
-        .onTapGesture { open(agent) }
-        .gesture(press(agent))
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(canReorder ? "Opens this agent's chat. Touch and hold to move it or for more actions."
-                                      : "Opens this agent's chat. Touch and hold for more actions.")
-        .accessibilityAction { open(agent) }
-        .accessibilityAction(named: "Manage agent") { manage(agent) }
-        .accessibilityAction(named: "Move earlier") { move(agent, by: -1) }
-        .accessibilityAction(named: "Move later") { move(agent, by: 1) }
-        .accessibilityIdentifier("agents.featured.\(agent.id)")
+    private func cell(_ item: Item) -> some View {
+        let lifted = lift?.id == item.id
+        return tile(item, lifted)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: { frames[item.id] = $0 }
+            .offset(lifted ? offset(for: item) : .zero)
+            .zIndex(lifted ? 1 : 0)
+            .onTapGesture { open(item) }
+            .gesture(press(item))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(hint)
+            .accessibilityAction { open(item) }
+            .accessibilityActions {
+                if let manage { Button("Manage agent") { manage(item) } }
+                if canReorder {
+                    Button("Move earlier") { move(item, by: -1) }
+                    Button("Move later") { move(item, by: 1) }
+                }
+            }
+            .accessibilityIdentifier(identifier(item))
     }
 
-    private func press(_ agent: AgentProfile) -> some Gesture {
+    private var hint: String {
+        switch (canReorder, manage != nil) {
+        case (true, true): "Opens this agent's chat. Touch and hold to move it or for more actions."
+        case (true, false): "Opens this agent's chat. Touch and hold to move it."
+        case (false, _): "Opens this agent's chat. Touch and hold for more actions."
+        }
+    }
+
+    private func press(_ item: Item) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space)))
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(space)))
             .updating($isPressing) { value, pressing, _ in
                 if case .second(true, _) = value { pressing = true }
             }
             .onChanged { value in
                 guard case .second(true, let drag) = value else { return }
-                if lift == nil { begin(agent, at: drag?.startLocation) }
+                if lift == nil { begin(item, at: drag?.startLocation) }
                 if let drag { follow(to: drag.location, translation: drag.translation) }
             }
     }
 
-    private func begin(_ agent: AgentProfile, at start: CGPoint?) {
-        let slots = agents.map { frames[$0.id] ?? .zero }
-        guard let index = agents.firstIndex(where: { $0.id == agent.id }) else { return }
+    private func begin(_ item: Item, at start: CGPoint?) {
+        let slots = items.map { frames[$0.id] ?? .zero }
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         let slot = slots[index]
         let point = start ?? CGPoint(x: slot.midX, y: slot.midY)
         BighelpHaptics.tap(rigid: true)
         isArranging = true
-        arrangement = agents
+        arrangement = items
         withAnimation(.snappy(duration: 0.2)) {
-            lift = Lift(id: agent.id, slots: slots,
+            lift = Lift(id: item.id, slots: slots,
                         grab: CGSize(width: point.x - slot.minX, height: point.y - slot.minY), location: point)
         }
     }
@@ -109,8 +149,8 @@ struct AgentPinnedGrid: View {
         guard canReorder, current.moved, var order = arrangement,
               let from = order.firstIndex(where: { $0.id == current.id }),
               let to = nearestSlot(to: location, in: current.slots), to != from else { return }
-        let agent = order.remove(at: from)
-        order.insert(agent, at: to)
+        let item = order.remove(at: from)
+        order.insert(item, at: to)
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { arrangement = order }
     }
 
@@ -122,16 +162,16 @@ struct AgentPinnedGrid: View {
             arrangement = nil
         }
         isArranging = false
-        if !finished.moved, let agent = agents.first(where: { $0.id == finished.id }) {
-            manage(agent)
-        } else if canReorder, let order, order != agents.map(\.id) {
+        if !finished.moved, let item = items.first(where: { $0.id == finished.id }) {
+            manage?(item)
+        } else if canReorder, let order, order != items.map(\.id) {
             reorder(order)
         }
     }
 
     /// Keeps the lifted tile under the finger while the grid reflows around it.
-    private func offset(for agent: AgentProfile) -> CGSize {
-        guard let lift, let index = shown.firstIndex(where: { $0.id == agent.id }),
+    private func offset(for item: Item) -> CGSize {
+        guard let lift, let index = shown.firstIndex(where: { $0.id == item.id }),
               lift.slots.indices.contains(index) else { return .zero }
         let slot = lift.slots[index]
         return CGSize(width: lift.location.x - lift.grab.width - slot.minX,
@@ -146,10 +186,10 @@ struct AgentPinnedGrid: View {
         }
     }
 
-    private func move(_ agent: AgentProfile, by step: Int) {
-        guard canReorder, let index = agents.firstIndex(where: { $0.id == agent.id }),
-              agents.indices.contains(index + step) else { return }
-        var order = agents.map(\.id)
+    private func move(_ item: Item, by step: Int) {
+        guard canReorder, let index = items.firstIndex(where: { $0.id == item.id }),
+              items.indices.contains(index + step) else { return }
+        var order = items.map(\.id)
         order.swapAt(index, index + step)
         reorder(order)
     }

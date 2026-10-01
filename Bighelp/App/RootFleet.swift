@@ -314,18 +314,13 @@ extension RootShellView {
                 .accessibilityHint("Shows one host again.")
                 .accessibilityIdentifier("fleet.toggle")
         }
-        if appState.selectedTab == .sessions {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { isFleetNewChatPresented = true } label: { Image(systemName: "square.and.pencil") }
-                    .accessibilityLabel("New chat")
-                    .accessibilityIdentifier("fleet.new-chat")
-            }
-        }
     }
 
-    var fleetHostsKey: [UUID] {
+    /// Hosts, their names (a rename shows at once) and which is selected.
+    var fleetHostsKey: [String] {
         guard let fleet else { return [] }
-        return (hostRegistry?.hosts.map(\.id) ?? []) + [hostRegistry?.selectedHostID ?? fleet.selectedHostID].compactMap { $0 }
+        return (hostRegistry?.hosts.map { $0.id.uuidString + "\u{1f}" + $0.name } ?? [])
+            + [hostRegistry?.selectedHostID ?? fleet.selectedHostID].compactMap { $0?.uuidString }
     }
 }
 
@@ -334,7 +329,7 @@ extension RootShellView {
 struct FleetHooks: ViewModifier {
     let liveKey: RootShellView.LiveFleetKey?
     let readiness: RootShellView.FleetOpenReadiness
-    let hostsKey: [UUID]
+    let hostsKey: [String]
     let scenePhase: ScenePhase
     let keepsConnected: Bool
     let recordLive: () -> Void

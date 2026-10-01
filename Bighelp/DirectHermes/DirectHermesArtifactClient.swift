@@ -152,6 +152,11 @@ final class DirectHermesArtifactClient: WorkspaceOperationPerforming {
     }
 
     private func responseError(_ response: DirectHermesHTTP.Response) -> WorkspaceClientError {
+        // The plugin names why it can't share workspace files; keep that over the status.
+        if let code = (try? response.object())?["error"]?.object?["code"]?.string,
+           WorkspaceClientError.workspaceFilesMessage(code) != nil {
+            return .rejected(code: code)
+        }
         switch response.http.statusCode {
         case 401, 403: return .authenticationRequired
         case 409, 412: return .conflict

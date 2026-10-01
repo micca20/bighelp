@@ -100,10 +100,16 @@ struct FleetAgentRow: View {
                             .layoutPriority(1)
                     }
                 }
+                if !agent.role.isEmpty {
+                    Text(agent.role)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
+                }
                 Text(subtitle(latest))
                     .font(.subheadline)
                     .foregroundStyle(theme.secondaryText)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
@@ -117,7 +123,7 @@ struct FleetAgentRow: View {
             let preview = SessionPreviewText.plain(latest.preview)
             return preview.isEmpty ? latest.title : preview
         }
-        return agent.role.isEmpty ? "Start a chat" : agent.role
+        return "Start a chat"
     }
 
     @BighelpThemeReader private var theme
@@ -127,8 +133,11 @@ struct FleetAgentRow: View {
 struct FleetHomeView: View {
     let fleet: FleetStore
     let onOpen: (FleetAgent) -> Void
+    /// None while the selected host is still connecting.
+    var onNewChat: (() -> Void)? = nil
     @State private var hostFilter: UUID?
     @State private var search = ""
+    @State private var isArrangingPinned = false
 
     var body: some View {
         let pinned = pinnedAgents
@@ -162,6 +171,15 @@ struct FleetHomeView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .scrollDisabled(isArrangingPinned)
+        // The one main action, where a thumb rests: above the search bar, on the right.
+        .overlay(alignment: .bottomTrailing) {
+            if let onNewChat {
+                RootComposeButton(identifier: "fleet.new-chat", size: 72, action: onNewChat)
+                    .padding(.trailing, BighelpTokens.space20)
+                    .padding(.bottom, BighelpTokens.space12)
+            }
+        }
         .searchable(text: $search, prompt: "Search agents")
         .refreshable {
             fleet.refresh(force: true)
@@ -174,13 +192,14 @@ struct FleetHomeView: View {
             }
         }
         .task { fleet.refresh() }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fleet.home")
     }
 
     /// Pinned agents up top, like favorites, when nothing is filtered.
     private var pinnedAgents: [FleetAgent] {
         guard search.isEmpty, hostFilter == nil else { return [] }
-        return Array(fleet.agents().filter(\.isPinned).prefix(8))
+        return fleet.pinnedAgents()
     }
 
     private func listedAgents(excluding pinned: Set<String>) -> [FleetAgent] {
@@ -194,37 +213,43 @@ struct FleetHomeView: View {
         }
     }
 
+    /// Big pictures with the name and role, simple like a contact grid. Touch
+    /// and hold one to drag it into a new place.
     private func pinnedRow(_ agents: [FleetAgent]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: BighelpTokens.space16) {
-                ForEach(agents) { agent in
-                    Button { onOpen(agent) } label: {
-                        VStack(spacing: 6) {
-                            AvatarView(stableID: agent.profileID, displayName: agent.name,
-                                       imageURL: fleet.avatars.url(for: agent.avatarFile), size: 68,
-                                       state: agent.activity?.liveState)
-                            Text(agent.name)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(theme.primaryText)
-                                .lineLimit(1)
-                            if fleet.showsHostNames {
-                                Text(fleet.hostName(agent.hostID))
-                                    .font(.caption2)
-                                    .foregroundStyle(theme.secondaryText)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .frame(width: 84)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("fleet.pinned.\(agent.name)")
-                }
+        PinnedArrangeGrid(
+            items: agents,
+            columns: [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: BighelpTokens.space8, alignment: .top)],
+            canReorder: true, space: "fleet.pinned", open: onOpen, manage: nil,
+            reorder: { fleet.reorderPinned($0) }, isArranging: $isArrangingPinned,
+            identifier: { "fleet.pinned.\($0.name)" },
+            tile: { agent, lifted in pinnedTile(agent, lifted: lifted) },
+            trailing: { EmptyView() }
+        )
+        .padding(.horizontal, BighelpTokens.space16)
+        .padding(.vertical, BighelpTokens.space8)
+    }
+
+    private func pinnedTile(_ agent: FleetAgent, lifted: Bool) -> some View {
+        VStack(spacing: 6) {
+            AvatarView(stableID: agent.profileID, displayName: agent.name,
+                       imageURL: fleet.avatars.url(for: agent.avatarFile), size: 88,
+                       state: agent.activity?.liveState)
+                .scaleEffect(lifted ? 1.08 : 1)
+                .shadow(color: .black.opacity(lifted ? 0.22 : 0), radius: 12, y: 6)
+            Text(agent.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.primaryText)
+                .lineLimit(1)
+            if !agent.role.isEmpty {
+                Text(agent.role)
+                    .font(.caption)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, BighelpTokens.space16)
-            .padding(.vertical, BighelpTokens.space8)
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
     }
 
     @BighelpThemeReader private var theme

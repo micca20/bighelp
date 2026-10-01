@@ -59,7 +59,9 @@ sit under More at the bottom.
 Keep it that short: a new destination goes where people already look, not on the first screen. A tap on the
 header's compose button starts a new chat with this agent right away; touch and hold picks agents: one is a 1:1
 chat, two or more a group. On the chat list, New chat floats centered above the bottom bar, which keeps the
-same width as on every other screen. The avatar reacts to what the agent is doing (thinking, writing code, browsing, making
+same width as on every other screen. Feed, Ideas, Goals and Apps keep the Chat tab's header: ☰, the avatar, New
+chat and ⋯ (the agent's profile, then Files, Memory, Skills & tools and Scheduled tasks). The root's edge-swipe zones
+start below that row, so its corner buttons always get the tap. The avatar reacts to what the agent is doing (thinking, writing code, browsing, making
 images…), driven by the running tool (`AgentActivityKind`, shared with the island as `BighelpActivityPose`). On
 phones with a Dynamic Island, the island names the work. In the app it grows into a stage
 (`AgentActivityIsland` + `IslandStage`): the name and the work beside the camera, and underneath, the pet acting
@@ -147,8 +149,10 @@ the board in its own glass window beside bighelp: look at a card, pinch and drag
 the lane under it lights up.
 
 **All hosts** (the stack button beside ☰'s host switcher) turns home into one list of every agent on every
-host, like Messages: pinned agents up top, host filter chips, then each agent with its host's name and its latest
-chat, newest first. A tap opens that agent's own chat with Back; if it's on another host, the app switches hosts
+host, like Messages: pinned agents up top as big pictures with their name and role (no host name; touch and hold
+to drag them into a new order, kept on this device across hosts), host filter chips, then each agent with its host's
+name, its role and its latest chat, newest first. One big round New chat sits bottom right, above the search bar,
+where a thumb rests. A tap opens that agent's own chat with Back; if it's on another host, the app switches hosts
 first while the list stays up. ☰'s recent chats, All chats and Scheduled tasks then list every host's, each with
 its host's name. Screens that belong to one host (Settings, Agents, Projects, Kanban, Provider usage, the credential
 vault, the folder, New group) ask which host first. The tab bar hides, ☰ › All agents is home, and the button in the list's top bar
@@ -168,7 +172,9 @@ Host administration — files, gateways/messaging, plugins, MCP, memory, logs, a
 Mode** is on, which adds a Hermes section at the bottom: **System** (Update Hermes with how many commits behind,
 Restart Hermes Gateway, the plugin's Update button, then everything else folded away) and **Hermes tools** (the
 searchable list of the host's tools). There's no separate Hermes Tools entry in ☰. Pages lead with the action
-people come for (`BighelpActionRow`) and keep explanations to one line.
+people come for (`BighelpActionRow`) and keep explanations to one line. **Hosts** lists your computers (the one in
+use checked) and Add a computer; a computer's page leads with Use this computer, Rename and Sign in again, then its
+plugin and notifications, with its address and access folded away and Remove at the bottom.
 
 Nerd Mode (`settings.nerdModeEnabled`, also the `nerdModeEnabled` environment value) also gates technical detail
 inside everyday screens: the chat ⋯ Advanced submenu, the chat Info sheet's visibility toggles and host details,

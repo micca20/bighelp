@@ -30,6 +30,18 @@ final class AllHostsUITests: BighelpUITestCase {
         XCTAssertTrue(sage.label.contains("Studio Mac"), sage.label)
         XCTAssertTrue(app.descendants(matching: .any)["fleet.host-note.Office Linux"].exists,
                       "A host out of reach says so")
+        XCTAssertTrue(mina.label.contains("Travel agent"), "Each agent's role shows under its name: \(mina.label)")
+        XCTAssertTrue(app.buttons["fleet.new-chat"].isHittable, "One big New chat, bottom right")
+
+        // Touch and hold a pinned agent and drag it: the new order stays.
+        let pinned = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fleet.pinned.'"))
+        XCTAssertGreaterThanOrEqual(pinned.count, 2)
+        let before = pinned.allElementsBoundByIndex.map(\.identifier)
+        pinned.element(boundBy: 0).press(forDuration: 0.8, thenDragTo: pinned.element(boundBy: 1),
+                                          withVelocity: .slow, thenHoldForDuration: 0.6)
+        let after = pinned.allElementsBoundByIndex.map(\.identifier)
+        XCTAssertEqual(after, [before[1], before[0]] + before.dropFirst(2), "Dragged into a new place")
+        XCTAssertFalse(pinned.element(boundBy: 0).label.contains("Home Hermes"), "Pinned agents skip the host name")
         save("list", app)
 
         // A tap opens that agent's own chat, with Back to the list.

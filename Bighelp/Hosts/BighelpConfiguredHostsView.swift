@@ -1,39 +1,130 @@
 import SwiftUI
 
+/// Your computers: the one in use first-class, each one a tap from its page.
 @MainActor
 struct BighelpConfiguredHostsSection: View {
     let registry: BighelpHostRegistry
+    @State private var renaming: BighelpConfiguredHost?
+
     var body: some View {
         Section("Computers") {
             ForEach(registry.hosts) { host in
                 NavigationLink {
                     BighelpConfiguredHostView(hostID: host.id, registry: registry)
                 } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(host.name)
-                            if host.id == registry.selectedHostID {
-                                Text(registry.selectedWorkspace?.isConnected == true ? "In use · connected" : "In use · not connected")
-                                    .bighelpFont(.metadata).foregroundStyle(.secondary)
-                            }
-                            if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
-                                Text(attention)
-                                    .bighelpFont(.metadata).foregroundStyle(.tint)
-                                    .accessibilityIdentifier("hosts.host.plugin-update")
-                            }
-                        }
-                    } icon: { Image(systemName: host.id == registry.selectedHostID ? "checkmark.circle" : "server.rack") }
-                }.accessibilityIdentifier("hosts.host.\(host.id.uuidString)")
+                    HostRowLabel(host: host, registry: registry)
+                }
+                .contextMenu {
+                    if host.id != registry.selectedHostID {
+                        Button("Use this computer", systemImage: "checkmark.circle") { registry.select(host.id) }
+                    }
+                    Button("Rename", systemImage: "pencil") { renaming = host }
+                }
+                .accessibilityIdentifier("hosts.host.\(host.id.uuidString)")
             }
-            Button("Add Host", systemImage: "plus") { registry.beginSetup() }
+            Button("Add a computer", systemImage: "plus") { registry.beginSetup() }
                 .disabled(!registry.canConfigureHosts)
                 .accessibilityIdentifier("hosts.add-host")
             if let error = registry.errorMessage { Text(error).bighelpFont(.metadata).foregroundStyle(.secondary) }
-
         }
+        .modifier(HostRenamePrompt(host: $renaming, registry: registry))
     }
 }
 
+/// A computer's icon, name, and whether it's the one in use.
+private struct HostRowLabel: View {
+    let host: BighelpConfiguredHost
+    let registry: BighelpHostRegistry
+
+    var body: some View {
+        let inUse = host.id == registry.selectedHostID
+        HStack(spacing: BighelpTokens.space12) {
+            HostIcon(inUse: inUse, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(host.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                Text(HostStatus.line(for: host, registry: registry))
+                    .font(.footnote)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+                if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
+                    Text(attention)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .accessibilityIdentifier("hosts.host.plugin-update")
+                }
+            }
+            Spacer(minLength: 0)
+            if inUse {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.action)
+                    .accessibilityLabel("In use")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    @BighelpThemeReader private var theme
+}
+
+private struct HostIcon: View {
+    let inUse: Bool
+    let size: CGFloat
+
+    var body: some View {
+        let tint = inUse ? theme.action : theme.secondaryText
+        Image(systemName: "desktopcomputer")
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.12), in: .circle)
+            .accessibilityHidden(true)
+    }
+
+    @BighelpThemeReader private var theme
+}
+
+enum HostStatus {
+    /// "In use · Connected" for the computer in use; otherwise where it is.
+    @MainActor static func line(for host: BighelpConfiguredHost, registry: BighelpHostRegistry) -> String {
+        guard host.id == registry.selectedHostID else { return host.endpoint.host }
+        return registry.selectedWorkspace?.isConnected == true ? "In use · Connected" : "In use · Not connected"
+    }
+}
+
+/// Rename a computer: only the name people see changes.
+private struct HostRenamePrompt: ViewModifier {
+    @Binding var host: BighelpConfiguredHost?
+    let registry: BighelpHostRegistry
+    @State private var draft = ""
+    @State private var error: String?
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Rename computer", isPresented: Binding(get: { host != nil }, set: { if !$0 { host = nil } })) {
+                TextField("Name", text: $draft)
+                    .textInputAutocapitalization(.words)
+                    .accessibilityIdentifier("hosts.rename.field")
+                Button("Save") {
+                    guard let host else { return }
+                    do { try registry.rename(host.id, to: draft) }
+                    catch { self.error = error.localizedDescription }
+                }
+                .accessibilityIdentifier("hosts.rename.save")
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert("Couldn't rename", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(error ?? "") }
+            .onChange(of: host?.id) { _, _ in draft = host?.name ?? "" }
+    }
+}
+
+/// One computer: use it, rename it, sign in again, its plugin and alerts, and
+/// (folded away) its address and access. Removing it keeps its chats and files.
 @MainActor
 struct BighelpConfiguredHostView: View {
     let hostID: UUID
@@ -44,6 +135,7 @@ struct BighelpConfiguredHostView: View {
     @State private var pluginModel: HostNotificationSetupModel?
     @State private var updateModel: HostPluginUpdateModel?
     @State private var showsRemove = false
+    @State private var renaming: BighelpConfiguredHost?
     @State private var isAccessEditorPresented = false
     /// Bumped after editing access so the summary rereads Keychain.
     @State private var accessRevision = 0
@@ -71,63 +163,76 @@ struct BighelpConfiguredHostView: View {
         }
     }
 
+    /// The plugin is there: its version and updates. Not yet: the install step.
+    private var pluginIsInstalled: Bool {
+        if let updateModel, updateModel.state != .notInstalled, updateModel.state != .idle { return true }
+        return pluginModel.map { $0.state == .installed || $0.state == .enabled } ?? false
+    }
+
     var body: some View {
         Form {
             if let host {
                 Section {
-                    LabeledContent("Computer", value: host.name)
-                    DisclosureGroup("Advanced connection details") {
+                    VStack(spacing: BighelpTokens.space8) {
+                        HostIcon(inUse: host.id == registry.selectedHostID, size: 64)
+                        Text(host.name)
+                            .font(.title2.weight(.bold))
+                            .multilineTextAlignment(.center)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(HostStatus.line(for: host, registry: registry))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, BighelpTokens.space8)
+                }
+                .listRowBackground(Color.clear)
+                Section {
+                    if host.id != registry.selectedHostID {
+                        Button("Use this computer", systemImage: "checkmark.circle") {
+                            registry.select(host.id)
+                            dismiss()
+                        }
+                        .accessibilityIdentifier("hosts.select")
+                    }
+                    Button("Rename", systemImage: "pencil") { renaming = host }
+                        .accessibilityIdentifier("hosts.rename")
+                    Button("Sign in again", systemImage: "person.badge.key") { registry.beginAuthentication(for: host) }
+                        .accessibilityIdentifier("hosts.sign-in")
+                }
+                if pluginIsInstalled, let updateModel {
+                    HostPluginUpdateSection(model: updateModel)
+                } else if let pluginModel {
+                    HostPluginInstallationSection(model: pluginModel)
+                }
+                if let notificationModel {
+                    HostNotificationSetupSection(model: notificationModel)
+                }
+                Section {
+                    DisclosureGroup("Address and access") {
                         Text(host.endpoint.identity).bighelpFont(.code).textSelection(.enabled)
                         accessSummary(host.endpoint)
                             .id(accessRevision)
                         Button("Edit access", systemImage: "lock.shield") { isAccessEditorPresented = true }
                             .accessibilityIdentifier("hosts.edit-access")
-                        Text(host.isIndependent
-                             ? "Credentials are saved on this device for this Hermes principal."
-                             : "These legacy credentials remain private to this account until explicitly migrated.")
-                            .bighelpFont(.metadata).foregroundStyle(.secondary)
                     }
-                    Button(host.id == registry.selectedHostID ? "Selected host" : "Use this host") {
-                        registry.select(host.id)
-                        dismiss()
-                    }.disabled(host.id == registry.selectedHostID)
-                    .accessibilityIdentifier("hosts.select")
-                    Button("Sign in and use this host") { registry.beginAuthentication(for: host) }
-                        .accessibilityIdentifier("hosts.sign-in")
-                } header: {
-                    Text("Connection")
-                }
-                if let pluginModel {
-                    HostPluginInstallationSection(
-                        model: pluginModel,
-                        hostName: host.name,
-                        hostEndpoint: host.endpoint.identity
-                    )
-                }
-                if let updateModel, updateModel.state != .notInstalled {
-                    HostPluginUpdateSection(model: updateModel)
-                }
-                if let notificationModel {
-                    HostNotificationSetupSection(
-                        model: notificationModel,
-                        hostName: host.name,
-                        hostEndpoint: host.endpoint.identity
-                    )
+                    .accessibilityIdentifier("hosts.connection")
                 }
                 Section {
-                    Button("Remove Host", role: .destructive) { showsRemove = true }
+                    Button("Remove this computer", role: .destructive) { showsRemove = true }
                         .accessibilityIdentifier("hosts.remove")
-                } header: { Text("Remove from this device") } footer: {
-                    Text("Removes this device's credentials, local drafts and setup metadata. Hermes sessions and host files are not deleted. This does not claim server-side token revocation.")
+                } footer: {
+                    Text("Your chats and files stay on the computer.")
                 }
                 if let error { Text(error).foregroundStyle(.secondary) }
             } else {
-                Text("This host is no longer configured.")
+                Text("This computer is no longer set up on this device.")
             }
         }
         .bighelpFormSurface()
-        .navigationTitle(host?.name ?? "Computer")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(HostRenamePrompt(host: $renaming, registry: registry))
         .sheet(isPresented: $isAccessEditorPresented) {
             if let host {
                 HostAccessEditorView(endpoint: host.endpoint) {
@@ -138,13 +243,15 @@ struct BighelpConfiguredHostView: View {
                 }
             }
         }
-        .alert("Remove this host from this device?", isPresented: $showsRemove) {
-            Button("Remove Host", role: .destructive) {
+        .alert("Remove this computer from bighelp?", isPresented: $showsRemove) {
+            Button("Remove", role: .destructive) {
                 guard let host else { return }
                 do { try registry.remove(host); dismiss() }
-                catch { self.error = "The host could not be completely removed. Unlock the device and try again." }
+                catch { self.error = "The computer could not be completely removed. Unlock the device and try again." }
             }
             Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Its sign-in and drafts leave this device. Chats and files on the computer aren't touched.")
         }
         .task(id: hostID) {
             if let host {
