@@ -533,6 +533,34 @@ extension AgentDirectoryStore {
     static func savedPinnedAgentIDs(in defaults: UserDefaults, hostBucket: String) -> [String]? {
         (defaults.dictionary(forKey: Keys.pinnedAgentIDsByHost) as? [String: [String]])?[hostBucket]
     }
+
+    static func savedUnpinnedAgentIDs(in defaults: UserDefaults, hostBucket: String) -> [String]? {
+        (defaults.dictionary(forKey: Keys.unpinnedAgentIDsByHost) as? [String: [String]])?[hostBucket]
+    }
+
+    /// Pins or unpins an agent of a host that isn't selected (from the all-hosts
+    /// view), saved just as the Agents screen saves it while that host is selected.
+    /// An unpinned agent is remembered as unpinned, so a default agent stays off.
+    @discardableResult
+    static func savePin(_ pinned: Bool, agentID: String, in defaults: UserDefaults, hostBucket: String) -> Bool {
+        var pins = defaults.dictionary(forKey: Keys.pinnedAgentIDsByHost) as? [String: [String]] ?? [:]
+        var unpins = defaults.dictionary(forKey: Keys.unpinnedAgentIDsByHost) as? [String: [String]] ?? [:]
+        var list = pins[hostBucket] ?? []
+        var removed = Set(unpins[hostBucket] ?? [])
+        if pinned {
+            guard !list.contains(agentID), list.count < pinnedAgentLimit else { return false }
+            list.append(agentID)
+            removed.remove(agentID)
+        } else {
+            list.removeAll { $0 == agentID }
+            removed.insert(agentID)
+        }
+        pins[hostBucket] = list
+        unpins[hostBucket] = removed.sorted()
+        defaults.set(pins, forKey: Keys.pinnedAgentIDsByHost)
+        defaults.set(unpins, forKey: Keys.unpinnedAgentIDsByHost)
+        return true
+    }
 }
 
 private extension AgentDirectoryStore {

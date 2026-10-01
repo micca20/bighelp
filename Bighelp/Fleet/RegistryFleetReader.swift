@@ -27,6 +27,14 @@ final class RegistryFleetReader: FleetHostReading {
     }
     func canOpen(_ hostID: UUID) -> Bool { registry.hosts.contains { $0.id == hostID } }
 
+    /// Saved where that host's Agents screen keeps its pins (its own settings suite).
+    func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool {
+        guard let host = registry.hosts.first(where: { $0.id == hostID }),
+              let scope = registry.workspace(for: host).savedConnection?.workspaceAuthority?.cacheScopeID,
+              let defaults = UserDefaults(suiteName: "app.loopdy.native-workspace." + scope) else { return false }
+        return AgentDirectoryStore.savePin(pinned, agentID: profileID, in: defaults, hostBucket: scope)
+    }
+
     func read(_ hostID: UUID, avatars: FleetAvatarFolder) async throws -> FleetSnapshot {
         do {
             return try await readNow(hostID, avatars: avatars)

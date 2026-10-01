@@ -20,6 +20,7 @@ struct FleetStoreTests {
         private(set) var reads: [UUID] = []
         private(set) var selected: [UUID] = []
         private(set) var keptConnected: [UUID] = []
+        private(set) var pinChanges: [String] = []
 
         init(hosts: [FleetHost]) { self.hosts = hosts }
 
@@ -37,6 +38,11 @@ struct FleetStoreTests {
         func canOpen(_ hostID: UUID) -> Bool { true }
 
         func keepConnected(_ hostID: UUID) async { keptConnected.append(hostID) }
+
+        func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool {
+            pinChanges.append((pinned ? "pin " : "unpin ") + profileID)
+            return true
+        }
     }
 
     private func directory() -> URL {
@@ -109,6 +115,50 @@ struct FleetStoreTests {
         reopened.refresh()
         await reopened.waitForReads()
         #expect(reopened.pinnedAgents().map(\.name) == ["Avery", "Rio", "Mina"], "The order survives a relaunch")
+    }
+
+    /// Pinning or unpinning another host's agent here saves it for that host
+    /// and shows at once; an unpinned agent leaves the arranged order too.
+    @Test func pinningFromAllAgentsSavesForThatHost() async {
+        let reader = reader()
+        reader.snapshots[studio] = FleetSnapshot(
+            agents: [agent(studio, "default", "Rio", pinned: true), agent(studio, "music", "Lena")],
+            refreshedAt: Date())
+        let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)
+        fleet.recordLive(FleetSnapshot(agents: [agent(home, "default", "Avery", pinned: true)], refreshedAt: Date()),
+                         hostID: home)
+        fleet.refresh()
+        await fleet.waitForReads()
+        let rio = FleetID.make(studio, "default")
+        fleet.reorderPinned([rio, FleetID.make(home, "default")])
+
+        fleet.setPinned(try! #require(fleet.agent(hostID: studio, profileID: "default")), false)
+        #expect(fleet.pinnedAgents().map(\.name) == ["Avery"])
+        #expect(!fleet.pinnedOrder.contains(rio))
+        fleet.setPinned(try! #require(fleet.agent(hostID: studio, profileID: "music")), true)
+        #expect(fleet.pinnedAgents().map(\.name) == ["Avery", "Lena"])
+        #expect(reader.pinChanges == ["unpin default", "pin music"])
+
+        // The selected host's own agent list saves its pins; the store only shows them.
+        fleet.setPinned(try! #require(fleet.agent(hostID: home, profileID: "default")), false)
+        #expect(fleet.pinnedAgents().map(\.name) == ["Lena"])
+        #expect(reader.pinChanges.count == 2)
+    }
+
+    /// Another host's pins are saved where its Agents screen reads them, and an
+    /// unpinned default agent stays unpinned (it's remembered as unpinned).
+    @Test func anotherHostsPinsAreSavedWhereItsAgentsScreenReadsThem() throws {
+        let suite = "bighelp.tests.fleet-pins.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(AgentDirectoryStore.savePin(true, agentID: "music", in: defaults, hostBucket: "scope"))
+        #expect(AgentDirectoryStore.savedPinnedAgentIDs(in: defaults, hostBucket: "scope") == ["music"])
+        #expect(!AgentDirectoryStore.savePin(true, agentID: "music", in: defaults, hostBucket: "scope"), "Already pinned")
+        #expect(AgentDirectoryStore.savePin(false, agentID: "music", in: defaults, hostBucket: "scope"))
+        #expect(AgentDirectoryStore.savedPinnedAgentIDs(in: defaults, hostBucket: "scope") == [])
+        #expect(AgentDirectoryStore.savePin(false, agentID: "default", in: defaults, hostBucket: "fresh"))
+        #expect(AgentDirectoryStore.savedPinnedAgentIDs(in: defaults, hostBucket: "fresh") == [])
+        #expect(AgentDirectoryStore.savedUnpinnedAgentIDs(in: defaults, hostBucket: "fresh") == ["default"])
     }
 
     @Test func aHostIsReadAtMostOnceAMinuteUnlessAsked() async {

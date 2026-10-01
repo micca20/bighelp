@@ -18,6 +18,8 @@ final class FleetFixtureReader: FleetHostReading {
 
     func select(_ hostID: UUID) {}
     func canOpen(_ hostID: UUID) -> Bool { hostID == Self.homeID }
+    /// Demo hosts keep pins on screen only.
+    func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool { true }
 
     func read(_ hostID: UUID, avatars: FleetAvatarFolder) async throws -> FleetSnapshot {
         guard hostID == Self.studioID else { throw FleetReadError(message: "Couldn't reach this host.") }

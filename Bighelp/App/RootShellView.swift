@@ -885,7 +885,8 @@ struct RootShellView: View {
     @ViewBuilder
     private var sessionsRootTab: some View {
         if fleetModeOn, let fleet {
-            FleetHomeView(fleet: fleet, onOpen: openFleetAgent, onNewChat: { isFleetNewChatPresented = true })
+            FleetHomeView(fleet: fleet, onOpen: openFleetAgent, onNewChat: { isFleetNewChatPresented = true },
+                          onSetPinned: setFleetPin)
         } else if case .sessions(let model)? = featureStore.preparedModel(for: .sessions) {
             SessionsView(
                 model: model,

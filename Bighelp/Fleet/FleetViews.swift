@@ -135,7 +135,11 @@ struct FleetHomeView: View {
     let onOpen: (FleetAgent) -> Void
     /// None while the selected host is still connecting.
     var onNewChat: (() -> Void)? = nil
+    /// Pins or unpins an agent on its own host.
+    var onSetPinned: ((FleetAgent, Bool) -> Void)? = nil
     @State private var hostFilter: UUID?
+    /// A pinned agent held and let go: its actions.
+    @State private var managing: FleetAgent?
     @State private var search = ""
     @State private var isArrangingPinned = false
 
@@ -164,6 +168,15 @@ struct FleetHomeView: View {
                     Button { onOpen(agent) } label: { FleetAgentRow(agent: agent, fleet: fleet) }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear)
+                        .contextMenu {
+                            if let onSetPinned {
+                                Button(agent.isPinned ? "Unpin" : "Pin",
+                                       systemImage: agent.isPinned ? "pin.slash" : "pin") {
+                                    onSetPinned(agent, !agent.isPinned)
+                                }
+                                .accessibilityIdentifier("fleet.agent.\(agent.isPinned ? "unpin" : "pin")")
+                            }
+                        }
                         .accessibilityIdentifier("fleet.agent.\(agent.name)")
                 }
                 FleetHostNotes(fleet: fleet, hostFilter: hostFilter)
@@ -192,6 +205,17 @@ struct FleetHomeView: View {
             }
         }
         .task { fleet.refresh() }
+        .confirmationDialog(managing?.name ?? "", isPresented: Binding(
+            get: { managing != nil }, set: { if !$0 { managing = nil } }), titleVisibility: .visible) {
+            if let agent = managing {
+                Button("Open chat") { onOpen(agent) }
+                if let onSetPinned {
+                    Button("Unpin") { onSetPinned(agent, false) }
+                        .accessibilityIdentifier("fleet.pinned.unpin")
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fleet.home")
     }
@@ -219,7 +243,7 @@ struct FleetHomeView: View {
         PinnedArrangeGrid(
             items: agents,
             columns: [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: BighelpTokens.space8, alignment: .top)],
-            canReorder: true, space: "fleet.pinned", open: onOpen, manage: nil,
+            canReorder: true, space: "fleet.pinned", open: onOpen, manage: { managing = $0 },
             reorder: { fleet.reorderPinned($0) }, isArranging: $isArrangingPinned,
             identifier: { "fleet.pinned.\($0.name)" },
             tile: { agent, lifted in pinnedTile(agent, lifted: lifted) },

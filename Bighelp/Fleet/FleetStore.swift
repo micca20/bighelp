@@ -16,6 +16,8 @@ protocol FleetHostReading: AnyObject {
     func canOpen(_ hostID: UUID) -> Bool
     /// Opens the host's connection ahead of a switch, when the app keeps them.
     func keepConnected(_ hostID: UUID) async
+    /// Saves a pin for a host that isn't selected. False when it can't be saved.
+    func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool
 }
 
 extension FleetHostReading {
@@ -281,14 +283,37 @@ final class FleetStore {
         return Array(pinned.map(\.element).prefix(limit))
     }
 
+    /// Pins or unpins an agent from the all-hosts view and shows it at once. The
+    /// selected host's agent list saves its own pins (the app does that first);
+    /// another host's are saved for it by the reader.
+    func setPinned(_ agent: FleetAgent, _ pinned: Bool) {
+        guard var snapshot = snapshots[agent.hostID],
+              let index = snapshot.agents.firstIndex(where: { $0.id == agent.id }),
+              snapshot.agents[index].isPinned != pinned else { return }
+        if agent.hostID != selectedHostID {
+            guard reader.setPinned(pinned, hostID: agent.hostID, profileID: agent.profileID) else { return }
+        }
+        snapshot.agents[index].isPinned = pinned
+        snapshots[agent.hostID] = snapshot
+        scheduleSave(agent.hostID)
+        if !pinned, pinnedOrder.contains(agent.id) {
+            pinnedOrder.removeAll { $0 == agent.id }
+            savePinnedOrder()
+        }
+    }
+
     /// Saves a dragged order; agents it doesn't name keep their places after it.
     func reorderPinned(_ ids: [String]) {
         let order = Array((ids + pinnedOrder.filter { !ids.contains($0) }).prefix(64))
         guard order != pinnedOrder else { return }
         pinnedOrder = order
+        savePinnedOrder()
+    }
+
+    private func savePinnedOrder() {
         let protector = BighelpLocalFileProtector()
         try? protector.prepareDirectory(directory, protection: .privateVisual, fileManager: .default)
-        if let data = try? JSONEncoder().encode(order) {
+        if let data = try? JSONEncoder().encode(pinnedOrder) {
             try? data.write(to: pinnedOrderURL, options: [.atomic, .completeFileProtection])
         }
     }

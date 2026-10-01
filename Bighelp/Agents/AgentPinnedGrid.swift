@@ -61,6 +61,8 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
         let slots: [CGRect]
         /// The finger's spot within the lifted tile.
         let grab: CGSize
+        /// Where the finger was when the tile lifted.
+        let start: CGPoint
         var location: CGPoint
         var moved = false
     }
@@ -68,7 +70,7 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
     @State private var frames: [String: CGRect] = [:]
     @State private var arrangement: [Item]?
     @State private var lift: Lift?
-    @GestureState private var isPressing = false
+    @GestureState private var isTouching = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var shown: [Item] { arrangement ?? items }
@@ -79,9 +81,9 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
             trailing()
         }
         .coordinateSpace(.named(space))
-        .onChange(of: isPressing) { _, pressing in
+        .onChange(of: isTouching) { _, touching in
             // Ends a lift however the touch ended, including a cancelled one.
-            if !pressing { finish() }
+            if !touching { finish() }
         }
     }
 
@@ -92,7 +94,9 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
             .offset(lifted ? offset(for: item) : .zero)
             .zIndex(lifted ? 1 : 0)
             .onTapGesture { open(item) }
-            .gesture(press(item))
+            .modifier(HoldToArrange(
+                space: space, legacy: press(item),
+                began: { begin(item, at: $0) }, moved: { follow(to: $0) }, ended: { finish() }))
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(hint)
             .accessibilityAction { open(item) }
@@ -114,16 +118,18 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
         }
     }
 
+    /// iOS 17's hold-then-drag. SwiftUI's drag holds back the list's scroll
+    /// even beside it, so iOS 18 and later use UIKit's long press instead.
     private func press(_ item: Item) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.35)
+        LongPressGesture(minimumDuration: 0.35, maximumDistance: 10)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(space)))
-            .updating($isPressing) { value, pressing, _ in
-                if case .second(true, _) = value { pressing = true }
+            .updating($isTouching) { value, touching, _ in
+                if case .second(true, _) = value { touching = true }
             }
             .onChanged { value in
                 guard case .second(true, let drag) = value else { return }
                 if lift == nil { begin(item, at: drag?.startLocation) }
-                if let drag { follow(to: drag.location, translation: drag.translation) }
+                if let drag { follow(to: drag.location) }
             }
     }
 
@@ -137,14 +143,15 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
         arrangement = items
         withAnimation(.snappy(duration: 0.2)) {
             lift = Lift(id: item.id, slots: slots,
-                        grab: CGSize(width: point.x - slot.minX, height: point.y - slot.minY), location: point)
+                        grab: CGSize(width: point.x - slot.minX, height: point.y - slot.minY),
+                        start: point, location: point)
         }
     }
 
-    private func follow(to location: CGPoint, translation: CGSize) {
+    private func follow(to location: CGPoint) {
         guard var current = lift else { return }
         current.location = location
-        if hypot(translation.width, translation.height) > 8 { current.moved = true }
+        if hypot(location.x - current.start.x, location.y - current.start.y) > 8 { current.moved = true }
         lift = current
         guard canReorder, current.moved, var order = arrangement,
               let from = order.firstIndex(where: { $0.id == current.id }),
@@ -194,3 +201,53 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
         reorder(order)
     }
 }
+
+/// Touch and hold lifts a tile; moving then drags it. UIKit's long press
+/// fails as soon as the finger moves first, so a swipe that starts on a tile
+/// still scrolls the list around it.
+private struct HoldToArrange<Legacy: Gesture>: ViewModifier {
+    let space: String
+    let legacy: Legacy
+    let began: (CGPoint) -> Void
+    let moved: (CGPoint) -> Void
+    let ended: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(visionOS) // No UIKit recognizers in SwiftUI there.
+        content.simultaneousGesture(legacy)
+        #else
+        if #available(iOS 18.0, *) {
+            content.gesture(HoldToDrag(space: space, began: began, moved: moved, ended: ended))
+        } else {
+            content.simultaneousGesture(legacy)
+        }
+        #endif
+    }
+}
+
+#if !os(visionOS)
+@available(iOS 18.0, *)
+private struct HoldToDrag: UIGestureRecognizerRepresentable {
+    let space: String
+    let began: (CGPoint) -> Void
+    let moved: (CGPoint) -> Void
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.35
+        recognizer.allowableMovement = 10
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        let point = context.converter.location(in: .named(space))
+        switch recognizer.state {
+        case .began: began(point)
+        case .changed: moved(point)
+        case .ended, .cancelled, .failed: ended()
+        default: break
+        }
+    }
+}
+#endif

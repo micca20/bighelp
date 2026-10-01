@@ -75,6 +75,83 @@ final class AllHostsUITests: BighelpUITestCase {
         XCTAssertFalse(app.descendants(matching: .any)["fleet.home"].exists)
     }
 
+    /// Hold a pinned agent and let go to unpin it; long-press any agent's row to pin it.
+    @MainActor
+    func testPinnedAgentsCanBeUnpinnedAndPinnedAgain() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-bighelp.hosts.all-hosts", "NO"]
+        app.launch()
+        let menu = app.buttons["home.drawer.open"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        app.buttons["menu.all-hosts"].tap()
+        for name in ["Rio Tanaka", "Avery Park"] { // another host's agent, then the selected host's
+            let tile = app.descendants(matching: .any)["fleet.pinned.\(name)"]
+            XCTAssertTrue(tile.waitForExistence(timeout: 5), "\(name) is pinned")
+            tile.press(forDuration: 1.0)
+            let unpin = app.buttons["Unpin"].firstMatch
+            XCTAssertTrue(unpin.waitForExistence(timeout: 3), "Holding a pinned agent offers Unpin")
+            unpin.tap()
+            XCTAssertFalse(tile.waitForExistence(timeout: 2), "\(name) left the pinned agents")
+            let row = app.buttons["fleet.agent.\(name)"]
+            XCTAssertTrue(row.waitForExistence(timeout: 3), "\(name) is in the list now")
+        }
+        let row = app.buttons["fleet.agent.Rio Tanaka"]
+        row.press(forDuration: 1.0)
+        let pin = app.buttons["Pin"].firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: 3), "A row's menu offers Pin")
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["fleet.pinned.Rio Tanaka"].waitForExistence(timeout: 3),
+                      "Pinned again")
+    }
+
+    /// A swipe that starts on the pinned agents scrolls the list like anywhere
+    /// else; only touch and hold picks an agent up.
+    @MainActor
+    func testSwipingOnPinnedAgentsScrollsTheList() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-bighelp.hosts.all-hosts", "NO",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        let menu = app.buttons["home.drawer.open"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        app.buttons["menu.all-hosts"].tap()
+        let pinned = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'fleet.pinned.'"))
+        XCTAssertTrue(pinned.firstMatch.waitForExistence(timeout: 5))
+        let order = pinned.allElementsBoundByIndex.map(\.identifier)
+        let tile = pinned.firstMatch
+
+        // Control: a swipe on an agent row scrolls.
+        let row = app.buttons["fleet.agent.Mina Shah"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let rowTop = row.frame.minY
+        swipeUp(from: row, in: app)
+        XCTAssertLessThan(row.frame.minY, rowTop - 40, "The list scrolls (control)")
+        swipeDown(in: app)
+        let tileTop = tile.frame.minY
+
+        swipeUp(from: tile, in: app)
+        XCTAssertLessThan(tile.frame.minY, tileTop - 40, "A swipe that starts on a pinned agent scrolls the list")
+        XCTAssertEqual(pinned.allElementsBoundByIndex.map(\.identifier), order, "A swipe doesn't rearrange them")
+    }
+
+    @MainActor
+    private func swipeUp(from element: XCUIElement, in app: XCUIApplication) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -260)),
+                    withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(1)
+    }
+
+    @MainActor
+    private func swipeDown(in app: XCUIApplication) {
+        let start = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        start.press(forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 500)),
+                    withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(1)
+    }
+
     @MainActor
     private func save(_ name: String, _ app: XCUIApplication) {
         guard ProcessInfo.processInfo.environment["BIGHELP_FLEET_EVIDENCE"] != nil else { return }

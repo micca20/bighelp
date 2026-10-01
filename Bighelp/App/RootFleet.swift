@@ -235,6 +235,15 @@ extension RootShellView {
         )
     }
 
+    /// Pin or unpin from All agents: the selected host's agent list saves its
+    /// own pins (and its limit); the fleet saves another host's.
+    func setFleetPin(_ agent: FleetAgent, _ pinned: Bool) {
+        if agent.hostID == fleet?.selectedHostID {
+            guard pinned ? agents.pinAgent(agent.profileID) : agents.unpinAgent(agent.profileID) else { return }
+        }
+        fleet?.setPinned(agent, pinned)
+    }
+
     func recordLiveFleet() {
         guard let fleet, let key = liveFleetKey else { return }
         let chats = key.chats.compactMap { summary -> FleetChat? in
