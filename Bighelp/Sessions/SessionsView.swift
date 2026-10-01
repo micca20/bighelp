@@ -551,7 +551,12 @@ struct SessionsView: View {
         ) {
             ForEach(sessions) { session in
                 let state: AgentLiveState = session.isActive ? .thinking : .idle
-                Button { onSelect(session) } label: {
+                // A Menu with a primary action, not .contextMenu: the grid is one
+                // List row, and a row shows the first context menu in it for
+                // every tile, so holding one chat offered another chat's Delete.
+                Menu {
+                    sessionActions(session, model: model)
+                } label: {
                     VStack(spacing: 5) {
                         SessionIdentityView(session: session, agents: agents, size: 64, state: state)
                         Text(session.title)
@@ -565,10 +570,13 @@ struct SessionsView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 96, alignment: .top)
                     .contentShape(.rect)
+                } primaryAction: {
+                    onSelect(session)
                 }
+                .menuStyle(.button)
                 .buttonStyle(.bighelpTilePress)
+                .menuIndicator(.hidden)
                 .disabled(mutatingSessionIDs.contains(session.id))
-                .contextMenu { sessionActions(session, model: model) }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Pinned chat, \(session.title)")
                 .accessibilityValue(state == .idle ? "" : state.label)

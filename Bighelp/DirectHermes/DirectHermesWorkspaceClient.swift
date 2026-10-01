@@ -9,6 +9,8 @@ struct DirectHermesHTTPRequest: Equatable, Sendable {
     var query: [URLQueryItem] = []
     var body: [String: BighelpJSONValue]?
     var maximumResponseBytes = DirectHermesWire.maximumMessageBytes
+    /// Seconds to wait for the host to start answering.
+    var timeout: TimeInterval = 20
 }
 
 @MainActor
@@ -83,10 +85,7 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
             try check(expectedOwner)
         } catch {
             try check(expectedOwner)
-            if operation == .projectsGet, (error as? DirectHermesError) == .rpcRejected(code: 5062) {
-                throw WorkspaceClientError.rejected(code: "project_not_found")
-            }
-            throw Self.safeError(error)
+            throw Self.workspaceError(error, for: operation)
         }
         if operation == .skillsToolsList, let rows = result.array { return ["skills": .array(rows)] }
         if operation == .toolsetsList, let rows = result.array { return ["toolsets": .array(rows)] }
@@ -317,8 +316,8 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
             return .rpc("profiles.create", payload)
         case .sessionCreate:
             return try rpc(operation, payload,
-                           allowed: ["profile", "source", "close_on_disconnect", "cwd", "omit_messages",
-                                     "title", "hidden", "follow_profile_config"],
+                           allowed: ["profile", "source", "close_on_disconnect", "cwd", "cwd_explicit",
+                                     "omit_messages", "title", "hidden", "follow_profile_config"],
                            required: ["profile"])
         case .nativeSessionList:
             return try rpc(operation, payload,
@@ -331,7 +330,8 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
             return try rpc(operation, payload, allowed: ["session_id", "title"], required: ["session_id", "title"])
         case .sessionResume:
             return try rpc(operation, payload,
-                           allowed: ["profile", "session_id", "defer_history", "omit_messages", "close_on_disconnect"],
+                           allowed: ["profile", "session_id", "defer_history", "omit_messages", "close_on_disconnect",
+                                     "source"],
                            required: ["profile", "session_id"])
         case .sessionActivate:
             return try rpc(operation, payload, allowed: ["session_id", "profile", "omit_messages"], required: ["session_id"])
@@ -741,6 +741,19 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
             result[namespace] = .object(projected)
         }
         return result
+    }
+
+    /// What callers see when Hermes or the transport fails an operation.
+    static func workspaceError(_ error: any Error, for operation: WorkspaceOperation) -> any Error {
+        if operation == .projectsGet, (error as? DirectHermesError) == .rpcRejected(code: 5062) {
+            return WorkspaceClientError.rejected(code: "project_not_found")
+        }
+        // Hermes refuses parameters it doesn't know with 4000, so a caller can
+        // retry without a field an older release lacks.
+        if operation == .sessionCreate, (error as? DirectHermesError) == .rpcRejected(code: 4000) {
+            return WorkspaceClientError.rejected(code: "invalid_params")
+        }
+        return safeError(error)
     }
 
     private static func safeError(_ error: any Error) -> any Error {

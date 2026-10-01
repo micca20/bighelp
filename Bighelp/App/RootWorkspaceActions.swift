@@ -6,7 +6,7 @@ extension RootShellView {
     @ViewBuilder
     func nativeCapabilitiesDestination(_ kind: CapabilitiesManagementKind, destination: WorkspaceDestination) -> some View {
         if let presentation = capabilitiesPresentation,
-           presentation.kind == kind, currentWorkspaceOwner == presentation.owner,
+           presentation.kind == kind, isCurrentSignIn(presentation.owner),
            workspaceAgentID == presentation.profileID {
             CapabilitiesManagementView(kind: kind, hostName: workspaceHostName,
                 profileName: workspaceProfileName, dependencies: presentation.dependencies)
@@ -24,18 +24,33 @@ extension RootShellView {
         }
     }
     func openWorkspaceDestination(_ destination: WorkspaceDestination) {
+        _ = presentWorkspaceDestination(destination, reattaching: false)
+    }
+
+    /// After a reconnect to the same computer, the Nerd Mode screen on top gets
+    /// the new connection in place, instead of asking to be opened again.
+    /// False: the host isn't all the way back yet, so try again later.
+    func reattachWorkspacePresentations() -> Bool {
+        guard administrationPresentation != nil || capabilitiesPresentation != nil
+                || managementStore != nil || lifecycleCoordinator != nil,
+              let destination = appState.path.reversed().compactMap({ route -> WorkspaceDestination? in
+                  if case .workspaceManagement(let destination) = route { return destination }
+                  return nil
+              }).first else { return true }
+        return presentWorkspaceDestination(destination, reattaching: true)
+    }
+
+    /// Opens a workspace screen, or (`reattaching`) gives the one already open
+    /// a new connection, quietly and without navigating.
+    private func presentWorkspaceDestination(_ destination: WorkspaceDestination, reattaching: Bool) -> Bool {
         if destination == .sessionMaintenance || destination == .profileLifecycle {
-            openLifecycleDestination(destination)
-            return
+            return openLifecycleDestination(destination, reattaching: reattaching)
         }
         lifecycleCoordinator = nil
         lifecycleProfileID = nil
         lifecyclePresentationID = nil
         if NativeAdministrationPresentation.supports(destination), !usesWorkspaceFixtures {
-            managementStore?.retire()
-            managementStore = nil
-            administrationPresentation?.retire()
-            administrationPresentation = nil
+            var presentation: NativeAdministrationPresentation?
             if let owner = currentWorkspaceOwner,
                let connections = workspaceConnections,
                let direct = connections.hosts.selectedWorkspace?.nativeClient,
@@ -46,34 +61,42 @@ extension RootShellView {
                       Data(invalidationSource.profileID.utf8) == Data(profileID.utf8),
                       invalidationSource.servingProfileID.map({ Data($0.utf8) })
                         == servingProfileID.map({ Data($0.utf8) }) else {
-                    actionErrorMessage = "Management updates could not be connected. Reopen this feature after refreshing the selected host."
-                    return
+                    if !reattaching {
+                        actionErrorMessage = "Management updates could not be connected. Reopen this feature after refreshing the selected host."
+                    }
+                    return false
                 }
                 let stockGit: NativeStockGitProjectPresentation?
                 if destination == .projects, let runtime = nativeRuntime {
                     do { stockGit = try runtime.stockGitPresentation(profileID: profileID) }
                     catch {
-                        actionErrorMessage = "Project changes could not be connected. Reopen Projects after refreshing this host."
-                        return
+                        if !reattaching {
+                            actionErrorMessage = "Project changes could not be connected. Reopen Projects after refreshing this host."
+                        }
+                        return false
                     }
                 } else {
                     stockGit = nil
                 }
-                administrationPresentation = NativeAdministrationPresentation(
+                presentation = NativeAdministrationPresentation(
                     destination: destination, hostName: workspaceHostName, profileID: profileID,
                     servingProfileID: servingProfileID,
                     rpc: direct, http: direct, owner: owner, currentOwner: {
                         guard Data(workspaceAgentID.utf8) == Data(profileID.utf8) else { return nil }
                         return currentWorkspaceOwner
                     }, connections: connections, invalidationSource: invalidationSource, stockGit: stockGit)
+            } else if reattaching {
+                return false
             }
-            appState.open(.workspaceManagement(destination))
-            return
-        }
-        if let kind = CapabilitiesManagementKind(destination: destination), !usesWorkspaceFixtures {
             managementStore?.retire()
             managementStore = nil
-            capabilitiesPresentation = nil
+            administrationPresentation?.retire()
+            administrationPresentation = presentation
+            if !reattaching { appState.open(.workspaceManagement(destination)) }
+            return true
+        }
+        if let kind = CapabilitiesManagementKind(destination: destination), !usesWorkspaceFixtures {
+            var presentation: NativeCapabilitiesPresentation?
             if let owner = currentWorkspaceOwner,
                let direct = workspaceConnections?.hosts.selectedWorkspace?.nativeClient {
                 let profileID = workspaceAgentID
@@ -83,7 +106,7 @@ extension RootShellView {
                 }
                 let actionStatusClient = DirectHermesHostOperationsClient(rpc: direct, http: direct,
                     owner: owner, currentOwner: current)
-                capabilitiesPresentation = NativeCapabilitiesPresentation(
+                presentation = NativeCapabilitiesPresentation(
                     kind: kind, owner: owner, profileID: profileID,
                     dependencies: CapabilitiesManagementDependencies(
                         skills: DirectHermesSkillsHubClient(http: direct, owner: owner, profileID: profileID, currentOwner: current, actionStatusClient: actionStatusClient),
@@ -92,9 +115,22 @@ extension RootShellView {
                         toolsets: DirectHermesToolsetClient(http: direct, owner: owner, profileID: profileID, currentOwner: current, actionStatusClient: actionStatusClient)
                     )
                 )
+            } else if reattaching {
+                return false
             }
-            appState.open(.workspaceManagement(destination))
-            return
+            managementStore?.retire()
+            managementStore = nil
+            capabilitiesPresentation = presentation
+            if !reattaching { appState.open(.workspaceManagement(destination)) }
+            return true
+        }
+        if reattaching {
+            // Of the rest, only the management list keeps a connection of its own.
+            guard managementStore != nil else { return true }
+            guard let store = makeWorkspaceManagementStore() else { return false }
+            managementStore?.retire()
+            managementStore = store
+            return true
         }
         switch destination {
         case .activity:
@@ -118,10 +154,11 @@ extension RootShellView {
                   let profile = agents.resolvedAgent(explicitID: nil),
                   currentWorkspaceCapabilities.supports(.profilesEdit, owner: owner, profileID: profile.id) else {
                 actionErrorMessage = "Connect to this host before editing its agent profile."
-                return
+                return false
             }
+            // A reconnect to the same computer keeps the editor usable.
             workspaceProfileEditor = .editing(profile, store: agents, processor: AvatarImageProcessor(),
-                                               isCurrent: { currentWorkspaceOwner == owner })
+                                               isCurrent: { currentWorkspaceOwner?.signIn == owner.signIn })
         case .instances:
             appState.open(.workspaceConnections)
         case .security, .appearance, .tabBar, .caching, .contact, .watch:
@@ -132,26 +169,31 @@ extension RootShellView {
             appState.open(.workspaceManagement(destination))
         default:
             managementStore?.retire()
-            managementStore = nil
-            let profileID = workspaceAgentID
-            if usesWorkspaceFixtures, let owner = currentWorkspaceOwner {
-                managementStore = WorkspaceManagementStore(
-                    hostName: workspaceHostName, profileName: workspaceProfileName,
-                    client: FixtureWorkspaceManagementClient(),
-                    isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
-                )
-            } else if let owner = currentWorkspaceOwner, let performer = workspaceConnections?.workspace {
-                managementStore = WorkspaceManagementStore(
-                    hostName: workspaceHostName, profileName: workspaceProfileName,
-                    client: NativeWorkspaceManagementClient(
-                        owner: owner, profileID: profileID, performer: performer,
-                        isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
-                    ),
-                    isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
-                )
-            }
+            managementStore = makeWorkspaceManagementStore()
             appState.open(.workspaceManagement(destination))
         }
+        return true
+    }
+
+    private func makeWorkspaceManagementStore() -> WorkspaceManagementStore? {
+        let profileID = workspaceAgentID
+        if usesWorkspaceFixtures, let owner = currentWorkspaceOwner {
+            return WorkspaceManagementStore(
+                hostName: workspaceHostName, profileName: workspaceProfileName,
+                client: FixtureWorkspaceManagementClient(),
+                isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
+            )
+        } else if let owner = currentWorkspaceOwner, let performer = workspaceConnections?.workspace {
+            return WorkspaceManagementStore(
+                hostName: workspaceHostName, profileName: workspaceProfileName,
+                client: NativeWorkspaceManagementClient(
+                    owner: owner, profileID: profileID, performer: performer,
+                    isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
+                ),
+                isCurrent: { currentWorkspaceOwner == owner && workspaceAgentID == profileID }
+            )
+        }
+        return nil
     }
 
     /// Deleting from the Agents screen or the agent editor. Same lifecycle path
@@ -204,11 +246,13 @@ extension RootShellView {
         try await coordinator.deleteAgent(profileID: profileID)
     }
 
-    func openLifecycleDestination(_ destination: WorkspaceDestination) {
+    func openLifecycleDestination(_ destination: WorkspaceDestination, reattaching: Bool) -> Bool {
         guard let connections = workspaceConnections, let owner = currentWorkspaceOwner,
               connections.owner == owner, let runtime = nativeRuntime else {
-            actionErrorMessage = "Connect to a native Hermes host before managing sessions or profiles."
-            return
+            if !reattaching {
+                actionErrorMessage = "Connect to a native Hermes host before managing sessions or profiles."
+            }
+            return false
         }
         let presentationID = UUID()
         do {
@@ -258,9 +302,13 @@ extension RootShellView {
             lifecycleCoordinator = coordinator
             lifecycleProfileID = workspaceAgentID
             lifecyclePresentationID = presentationID
-            appState.open(.workspaceManagement(destination))
+            if !reattaching { appState.open(.workspaceManagement(destination)) }
+            return true
         } catch {
-            actionErrorMessage = "The session and profile controls could not connect to this host."
+            if !reattaching {
+                actionErrorMessage = "The session and profile controls could not connect to this host."
+            }
+            return false
         }
     }
 

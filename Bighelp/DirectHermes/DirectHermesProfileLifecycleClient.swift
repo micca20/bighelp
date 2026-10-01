@@ -314,14 +314,24 @@ final class DirectHermesProfileLifecycleClient: HermesProfileLifecycleManaging {
         guard try Self.reviewToken(finalTarget, active: finalReview.active) == reviewed.reviewToken else {
             throw HermesProfileLifecycleError.reviewChanged
         }
-        let value = try await mutateHTTP(.init(
-            path: "/api/profiles/\(try Self.pathComponent(target.id))", method: .delete,
-            maximumResponseBytes: 64 * 1_024
-        ))
+        let fallbackID = current.profiles.first(where: { $0.isDefaultProfile })?.id ?? "default"
+        // Hermes stops the agent's gateway (up to 10 s) and its other processes
+        // before removing it, so give it the longest wait. If the answer still
+        // gets lost, the profile list says whether the delete happened.
+        let value: BighelpJSONValue
+        do {
+            value = try await mutateHTTP(.init(
+                path: "/api/profiles/\(try Self.pathComponent(target.id))", method: .delete,
+                maximumResponseBytes: 64 * 1_024, timeout: DirectHermesHTTP.longestRequestSeconds
+            ))
+        } catch {
+            let readback = try await catalog(selectedProfileID: fallbackID)
+            guard !readback.profiles.contains(where: { Self.exact($0.id, target.id) }) else { throw error }
+            return .init(change: change, catalog: readback, profile: nil)
+        }
         guard value.object?["ok"]?.boolean == true else {
             throw HermesProfileLifecycleError.outcomeUnknown
         }
-        let fallbackID = current.profiles.first(where: { $0.isDefaultProfile })?.id ?? "default"
         let readback = try await catalog(selectedProfileID: fallbackID)
         guard !readback.profiles.contains(where: { Self.exact($0.id, target.id) }) else {
             throw HermesProfileLifecycleError.outcomeUnknown

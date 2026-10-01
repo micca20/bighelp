@@ -104,7 +104,7 @@ final class VoiceConfigurationRecordingController {
             let url = fileManager.temporaryDirectory
                 .appendingPathComponent("loopdy-host-voice-\(UUID().uuidString.lowercased())")
                 .appendingPathExtension("m4a")
-            let claim = try sessionCoordinator.acquire()
+            let claim = try sessionCoordinator.acquire(for: .conversation)
             do {
                 let recorder = try AVAudioRecorder(
                     url: url,

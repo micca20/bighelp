@@ -21,14 +21,14 @@ final class ProjectChangesAvailabilityUITests: BighelpUITestCase {
         homeWorkspace.tap()
         dismissActionsAfterWorkspaceSelection(in: app)
 
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         XCTAssertTrue(
             changes.label.contains("not available"),
             "Project Changes accessibility label: \(changes.label)"
         )
         let railScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        railScreenshot.name = "Project Changes non-repository N-A rail"
+        railScreenshot.name = "Project Changes non-repository N-A menu item"
         railScreenshot.lifetime = .keepAlways
         add(railScreenshot)
 

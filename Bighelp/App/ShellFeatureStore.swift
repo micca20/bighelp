@@ -336,7 +336,7 @@ final class ShellFeatureStore {
             approvalModels[requestID].map(PreparedRouteModel.approval)
         case .skillsAndTools, .bighelpLinkDevices, .bighelpLinkDevice,
              .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub,
-             .projects, .project:
+             .projects, .project, .kanban:
             nil
         }
     }
@@ -404,7 +404,7 @@ final class ShellFeatureStore {
             return true
         case .skillsAndTools, .bighelpLinkDevices, .bighelpLinkDevice,
              .workspaceActivity, .workspaceSettings, .workspaceManagement, .workspaceConnections, .workspaceHub,
-             .projects, .project:
+             .projects, .project, .kanban:
             return true
         }
     }
@@ -1523,6 +1523,7 @@ final class ShellFeatureStore {
     func makeVoicePresentation(
         for conversationID: String,
         mode: VoiceMode = .pressToTalk,
+        transcription: VoiceTranscriptionSource = .onDevice,
         conversationMode: VoiceConversationMode = .codexLive,
         liveProvider: LiveVoiceProvider = .codexSubscription,
         liveVoice: String = LiveVoiceProvider.codexSubscription.defaultVoice
@@ -1558,10 +1559,11 @@ final class ShellFeatureStore {
                 status: (chatModels[conversationID]?.isSending == true || session?.isActive == true) ? .working : .listening,
                 isAgentRunActive: chatModels[conversationID]?.isSending == true || session?.isActive == true,
                 mode: mode,
+                transcription: transcription,
                 client: client,
                 inputLevelSource: voiceInputLevelSource(),
                 transcriptRows: initialTranscript,
-                userName: { [weak userIdentity] in userIdentity?.identity.name ?? "You" },
+                userName: { [weak userIdentity] in userIdentity?.identity.displayName ?? UserIdentity.placeholderName },
                 onStartedTurn: { [weak self] transcript in
                     self?.acceptVoiceTurnStarted(
                         transcript: transcript,
@@ -1610,11 +1612,11 @@ final class ShellFeatureStore {
         conversationID: String,
         isSteering: Bool = false
     ) {
-        let identity = userIdentity?.identity ?? UserIdentity(name: "You", avatarFileName: nil)
+        let identity = userIdentity?.identity ?? UserIdentity(name: "", avatarFileName: nil)
         let human = TimelineItem(
             id: "voice-user-\(UUID().uuidString.lowercased())",
             role: .human,
-            sender: .user(snapshot: .init(name: identity.name, avatarFileName: identity.avatarFileName)),
+            sender: .user(snapshot: .init(name: identity.displayName, avatarFileName: identity.avatarFileName)),
             content: .message(transcript),
             metadata: .init(source: "Voice", freshness: "Just now", delivery: "Sent", timestamp: Date())
         )

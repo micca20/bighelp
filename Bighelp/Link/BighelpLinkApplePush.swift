@@ -306,10 +306,15 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
     ) {
-        let thread = notification.request.content.threadIdentifier
+        let content = notification.request.content
+        // The chat from the push data; the thread names the agent once the
+        // notification extension has grouped it.
+        let chat = BighelpNotificationGrouping.chat(of: content.userInfo)
+            ?? (content.threadIdentifier.hasPrefix("bighelp") ? nil : content.threadIdentifier)
+        let agent = BighelpNotificationGrouping.agent(of: content.userInfo)
         Task { @MainActor in
             // Stay quiet for the chat you're already looking at; the reply is on screen.
-            let showing = await BighelpVisibleChats.shared.isShowing(thread: thread)
+            let showing = BighelpVisibleChats.shared.isShowing(chat: chat, agent: agent)
             completionHandler(showing ? [] : [.banner, .list, .sound])
         }
     }
@@ -319,6 +324,26 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping @Sendable () -> Void
     ) {
+        // A question or approval alert opens its chat, where the request pops up.
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let url = BighelpPromptAlertLink.url(in: response.notification.request.content.userInfo) {
+            Task { @MainActor in
+                completionHandler()
+                await UIApplication.shared.open(url)
+            }
+            return
+        }
+        #if os(iOS)
+        // "Open on iPhone" from the Watch carries one of bighelp's own links.
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let url = WatchOpenRequest.url(in: response.notification.request.content.userInfo) {
+            Task { @MainActor in
+                completionHandler()
+                await UIApplication.shared.open(url)
+            }
+            return
+        }
+        #endif
         Self.respond(
             to: BighelpProactiveNotificationOpen(userInfo: response.notification.request.content.userInfo),
             dismissed: response.actionIdentifier == UNNotificationDismissActionIdentifier,

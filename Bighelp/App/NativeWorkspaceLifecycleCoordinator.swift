@@ -6,6 +6,10 @@ enum NativeWorkspaceLifecycleError: Error, Equatable, LocalizedError, Sendable {
     case durableSessionUnavailable
     case profileStateCouldNotBeVerified(profileID: String)
     case protectedProfileState(profileID: String, sessionIDs: [String])
+    /// Delete only: a reply didn't stop in time.
+    case profileBusy(profileID: String)
+    /// Delete only: the agent is in these group chats.
+    case profileInGroups(profileID: String, groupTitles: [String])
     case sharedStateMismatch
 
     var errorDescription: String? {
@@ -20,6 +24,12 @@ enum NativeWorkspaceLifecycleError: Error, Equatable, LocalizedError, Sendable {
             "bighelp could not verify every saved draft for this profile, so the profile change was not sent."
         case .protectedProfileState(_, let sessionIDs):
             "Resolve or save the pending work in \(sessionIDs.count) profile session(s) before renaming or deleting this profile. No profile change was sent."
+        case .profileBusy:
+            "This agent is still replying and didn't stop. Wait for it to finish, then delete it. Nothing was deleted."
+        case .profileInGroups(_, let titles):
+            titles.count == 1
+                ? "This agent is in the group chat “\(titles[0])”. Delete that group first, then delete the agent. Nothing was deleted."
+                : "This agent is in \(titles.count) group chats. Delete those groups first, then delete the agent. Nothing was deleted."
         case .sharedStateMismatch:
             "Hermes confirmed the profile change, but the shared bighelp stores did not reconcile to the exact readback. Reopen Profiles; do not repeat the server operation."
         }
@@ -54,6 +64,9 @@ final class NativeWorkspaceLifecycleCoordinator {
     private let adoptedSession: AdoptedSessionHandler
     private let retiredProfile: RetiredProfileHandler
     private let reconciledProfile: ReconciledProfileHandler
+    /// How long a delete waits for a stopped reply to settle (8 s).
+    private let stopSettleAttempts = 16
+    private let stopSettleInterval: Duration = .milliseconds(500)
 
     init(
         owner: WorkspaceOwner,
@@ -189,14 +202,18 @@ final class NativeWorkspaceLifecycleCoordinator {
 
     /// Called by the fixed-route lifecycle client after review recheck and
     /// before mutation. Default activation changes no current ownership.
-    /// Rename/delete refuse while any target draft, uncertain submission,
-    /// prompt, live turn, group membership or unreadable local payload remains.
+    /// Rename refuses while any target draft, uncertain submission, prompt,
+    /// live turn, group membership or unreadable local payload remains: the
+    /// chats survive a rename. Delete removes the agent and its chats, so it
+    /// stops replies and clears unsent drafts instead; only group chats (and a
+    /// reply that won't stop) hold it back.
     func retireProfileOwnership(_ change: HermesProfileLifecycleChange) async throws {
         try requireOwner()
         let profileID: String
+        let isDelete: Bool
         switch change {
-        case .renamed(let from, _): profileID = from
-        case .deleted(let deleted): profileID = deleted
+        case .renamed(let from, _): profileID = from; isDelete = false
+        case .deleted(let deleted): profileID = deleted; isDelete = true
         case .defaultActivated:
             return
         case .imported, .descriptionChanged, .onboardingFactsSaved:
@@ -205,6 +222,8 @@ final class NativeWorkspaceLifecycleCoordinator {
 
         catalog.flushPersistence()
         var blocked = Set<String>()
+        var groupTitles: [String] = []
+        var localDrafts: [String] = []
         let scoped = catalog.records.filter { record in
             record.agentIDs.contains { $0.utf8.elementsEqual(profileID.utf8) }
         }
@@ -213,9 +232,15 @@ final class NativeWorkspaceLifecycleCoordinator {
             do {
                 record = try catalog.restoreSessionContent(id: summary.id)
             } catch {
+                if isDelete { continue }
                 throw NativeWorkspaceLifecycleError.profileStateCouldNotBeVerified(
                     profileID: profileID
                 )
+            }
+            if isDelete {
+                if record.kind == .botMode { groupTitles.append(record.title) }
+                else if record.isLocalPresentationDraft { localDrafts.append(record.id) }
+                continue
             }
             if record.kind == .botMode
                 || record.isLocalPresentationDraft
@@ -226,21 +251,50 @@ final class NativeWorkspaceLifecycleCoordinator {
                 blocked.insert(record.id)
             }
         }
-        for state in try bridge.profileSessionOwnership(profileID: profileID)
-            where state.blocksDestructiveRetirement {
-            blocked.insert(state.sessionID)
-        }
-        guard blocked.isEmpty else {
-            throw NativeWorkspaceLifecycleError.protectedProfileState(
-                profileID: profileID,
-                sessionIDs: blocked.sorted()
-            )
+
+        if isDelete {
+            guard groupTitles.isEmpty else {
+                throw NativeWorkspaceLifecycleError.profileInGroups(
+                    profileID: profileID, groupTitles: groupTitles.sorted()
+                )
+            }
+            try await stopProfileWork(profileID: profileID)
+            for id in localDrafts { catalog.discardLocalPresentationDraft(id: id) }
+        } else {
+            for state in try bridge.profileSessionOwnership(profileID: profileID)
+                where state.blocksDestructiveRetirement {
+                blocked.insert(state.sessionID)
+            }
+            guard blocked.isEmpty else {
+                throw NativeWorkspaceLifecycleError.protectedProfileState(
+                    profileID: profileID,
+                    sessionIDs: blocked.sorted()
+                )
+            }
         }
 
-        let retiredStreamIDs = try bridge.retireProfileSessions(profileID: profileID)
+        let retiredStreamIDs = try bridge.retireProfileSessions(profileID: profileID, discardingLocalWork: isDelete)
         let affectedSessionIDs = Set(scoped.map(\.id)).union(retiredStreamIDs).sorted()
         try await retiredProfile(change, affectedSessionIDs)
         try requireOwner()
+    }
+
+    /// Asks each running reply to stop, then waits a few seconds for Hermes to
+    /// settle it. Throws `profileBusy` if one is still running.
+    private func stopProfileWork(profileID: String) async throws {
+        func isWorking() throws -> Bool {
+            try bridge.profileSessionOwnership(profileID: profileID).contains(where: \.hasActiveOperation)
+        }
+        guard try isWorking() else { return }
+        await bridge.stopProfileWork(profileID: profileID)
+        for _ in 0..<stopSettleAttempts {
+            try requireOwner()
+            guard try isWorking() else { return }
+            try await Task.sleep(for: stopSettleInterval)
+        }
+        guard try !isWorking() else {
+            throw NativeWorkspaceLifecycleError.profileBusy(profileID: profileID)
+        }
     }
 
     /// Reconciles only after the lifecycle client has exact server readback.

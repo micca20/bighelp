@@ -53,6 +53,35 @@ final class FloatingTabBarUITests: BighelpUITestCase {
         XCTAssertFalse(app.otherElements["primary-navigation"].exists)
     }
 
+    /// On Chats, New chat sits centered above the tabs instead of squeezing
+    /// them; the tab row is as wide as on every other tab.
+    @MainActor
+    func testChatsNewChatSitsCenteredAboveFullWidthTabs() throws {
+        for appearance in ["light", "dark"] {
+            let app = makeApp()
+            app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-loopdy.demo.appearance", appearance]
+            app.launch()
+            let newChat = app.buttons["root.new-chat"]
+            let chats = app.buttons["tab.sessions"], apps = app.buttons["tab.apps"]
+            XCTAssertTrue(newChat.waitForExistence(timeout: 20))
+            XCTAssertTrue(newChat.isHittable)
+            XCTAssertLessThanOrEqual(newChat.frame.maxY, chats.frame.minY, "New chat sits above the tabs")
+            XCTAssertEqual(newChat.frame.midX, app.frame.midX, accuracy: 1, "New chat is centered")
+            let chatsRowWidth = apps.frame.maxX - chats.frame.minX
+            if let folder = ProcessInfo.processInfo.environment["BIGHELP_TABBAR_EVIDENCE"] {
+                try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+                try app.screenshot().pngRepresentation
+                    .write(to: URL(fileURLWithPath: folder).appendingPathComponent("chats-\(appearance).png"))
+            }
+
+            app.buttons["tab.feed"].tap()
+            XCTAssertTrue(newChat.waitForNonExistence(timeout: 5))
+            XCTAssertEqual(apps.frame.maxX - chats.frame.minX, chatsRowWidth, accuracy: 1,
+                           "The tab row keeps its width on Chats")
+            app.terminate()
+        }
+    }
+
     /// Native rows behind a transparent modal must not receive drawer taps.
     @MainActor
     func testWorkspaceDrawerOwnsFirstTapAndRestoresRootAfterDismissal() {
@@ -69,12 +98,6 @@ final class FloatingTabBarUITests: BighelpUITestCase {
         close.tap()
         XCTAssertTrue(underlyingActivity.waitForExistence(timeout: 5))
         XCTAssertTrue(underlyingActivity.isHittable)
-        rootMenu.tap()
-        let tools = app.buttons["menu.hermes-tools"]
-        XCTAssertTrue(tools.waitForExistence(timeout: 5))
-        XCTAssertTrue(tools.isHittable)
-        tools.tap()
-        XCTAssertTrue(underlyingActivity.waitForExistence(timeout: 5))
         underlyingActivity.tap()
         XCTAssertTrue(app.collectionViews["dashboard.screen"].waitForExistence(timeout: 5))
         XCTAssertFalse(close.exists)
@@ -117,8 +140,7 @@ final class FloatingTabBarUITests: BighelpUITestCase {
         let chats = app.buttons["menu.chats"]
         let agents = app.buttons["menu.agents"]
         let tasks = app.buttons["menu.scheduled-tasks"]
-        let workspace = app.buttons["menu.hermes-tools"]
-        for destination in [chats, agents, tasks, workspace] {
+        for destination in [chats, agents, tasks] {
             XCTAssertTrue(destination.waitForExistence(timeout: 5))
             XCTAssertTrue(destination.isHittable)
             XCTAssertGreaterThanOrEqual(destination.frame.height, 44)

@@ -9,7 +9,6 @@ enum SessionStatusRailDestination: String, Identifiable {
 }
 
 struct SessionStatusRailView: View {
-    let changes: ProjectChangesRailSummary?
     let goal: ChatGoalRailState?
     let subagents: [SessionSubagentSnapshot]
     let nativeSubagents: [NativeSubagentRailItem]
@@ -20,6 +19,10 @@ struct SessionStatusRailView: View {
     var isContextPresented: Binding<Bool> = .constant(false)
     var onContextSelect: (() -> Void)? = nil
     var onShowProviderUsage: (() -> Void)? = nil
+    var runtimeControls: SessionRuntimeControlModel? = nil
+    var onChangeModel: (() -> Void)? = nil
+    /// Runs once the context pop-up has finished closing.
+    var onContextDismissed: (() -> Void)? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -31,7 +34,6 @@ struct SessionStatusRailView: View {
 
     var body: some View {
         let items = SessionStatusRailPresentation.items(
-            changes: changes,
             goal: goal,
             subagents: subagents,
             nativeSubagents: nativeSubagents,
@@ -102,8 +104,10 @@ struct SessionStatusRailView: View {
                     attachmentAnchor: .rect(.bounds),
                     arrowEdge: .bottom
                 ) {
-                    SessionContextTokenPopover(snapshot: context, onShowProviderUsage: onShowProviderUsage)
+                    SessionContextTokenPopover(snapshot: context, onShowProviderUsage: onShowProviderUsage,
+                                               runtimeControls: runtimeControls, onChangeModel: onChangeModel)
                         .presentationCompactAdaptation(.popover)
+                        .onDisappear { onContextDismissed?() }
                 }
                 .companionComposerAnchor(.contextRing)
         }
@@ -123,10 +127,9 @@ struct SessionStatusRailView: View {
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: dynamicTypeSize.isAccessibilitySize, vertical: true)
                 if dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
-                Text(compactDetail(item.kind))
+                Text(statusDetail(item.kind))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(item.kind == .changes && changes?.state == .failed
-                        ? theme.danger : theme.primaryText)
+                    .foregroundStyle(theme.primaryText)
                     .monospacedDigit()
             }
             .multilineTextAlignment(.center)
@@ -147,26 +150,10 @@ struct SessionStatusRailView: View {
             : "")
     }
 
-    private func compactDetail(_ kind: SessionStatusRailKind) -> String {
-        guard kind == .changes, let changes else { return statusDetail(kind) }
-        switch changes.state {
-        case .loading: return "Loading"
-        case .failed: return "Retry"
-        case .unavailable: return "N/A"
-        case .clean: return "Clean"
-        case .dirty: return changes.fileCount == 1 ? "1 file" : "\(changes.fileCount) files"
-        }
-    }
-
     private func fullRailContent(_ items: [SessionStatusRailItem]) -> some View {
         HStack(spacing: BighelpTokens.space8) {
             ForEach(items) { item in
-                if item.kind == .changes {
-                    compactStatusButton(item)
-                        .fixedSize(horizontal: true, vertical: true)
-                } else {
-                    fullStatusButton(item)
-                }
+                fullStatusButton(item)
             }
             contextControl
         }
@@ -186,13 +173,8 @@ struct SessionStatusRailView: View {
                     .foregroundStyle(theme.primaryText)
                 Text(statusDetail(item.kind))
                     .font(.caption)
-                    .foregroundStyle(item.kind == .changes && changes?.state == .failed
-                        ? theme.danger : theme.secondaryText)
+                    .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
-                if item.kind == .changes, changes?.isRefreshing == true {
-                    ProgressView().controlSize(.mini)
-                        .accessibilityLabel("Refreshing project changes")
-                }
             }
             .lineLimit(1)
             .padding(.horizontal, BighelpTokens.space12)
@@ -211,15 +193,6 @@ struct SessionStatusRailView: View {
 
     private func statusDetail(_ kind: SessionStatusRailKind) -> String {
         switch kind {
-        case .changes:
-            guard let changes else { return "Project" }
-            switch changes.state {
-            case .loading: return "Loading"
-            case .failed: return "Unavailable · Retry"
-            case .unavailable: return "N/A"
-            case .clean, .dirty:
-                return ProjectChangesRailPresentation.visibleLabels(for: changes).joined(separator: " ")
-            }
         case .goal:
             guard let goal else { return "Goal" }
             return (goal.lifecycle == .paused ? "Paused · " : "") + goal.compactSummary
@@ -232,7 +205,6 @@ struct SessionStatusRailView: View {
 
     private func statusTitle(_ kind: SessionStatusRailKind) -> String {
         switch kind {
-        case .changes: "Changes"
         case .goal: "Goal"
         case .subagents: "Agents"
         case .tasks: "Tasks"
@@ -263,7 +235,6 @@ struct SessionStatusRailView: View {
 
     private func icon(for kind: SessionStatusRailKind) -> String {
         switch kind {
-        case .changes: "plusminus"
         case .goal: "target"
         case .subagents: "cpu"
         case .tasks: "checklist"
@@ -272,9 +243,6 @@ struct SessionStatusRailView: View {
 
     private func accessibilityLabel(for kind: SessionStatusRailKind) -> String {
         switch kind {
-        case .changes:
-            guard let changes else { return "Project changes" }
-            return ProjectChangesRailPresentation.accessibilityLabel(for: changes)
         case .goal:
             guard let goal else { return "Goal" }
             return "Goal \(goal.lifecycle.rawValue), \(goal.compactSummary)"

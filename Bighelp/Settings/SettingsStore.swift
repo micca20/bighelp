@@ -16,34 +16,16 @@ private struct SessionSectionPreferenceCatalog: Codable {
 @MainActor
 @Observable
 final class SettingsStore {
-    nonisolated static let maximumCustomThemes = 24
-
-    private(set) var customThemes: [CustomTheme]
-    private(set) var customThemePersistenceError: CustomThemePersistenceError?
     private(set) var sessionSectionPreferencesRevision = 0
-
-    var availableCustomThemeSlots: Int {
-        max(0, Self.maximumCustomThemes - customThemes.count)
-    }
-
-    var selectedCustomTheme: CustomTheme? {
-        customThemes.first { $0.themeID == themeID }
-    }
 
     var appearanceContext: BighelpAppearanceContext {
         BighelpAppearanceContext(
             appearance: appearance,
-            themeID: themeID,
-            customTheme: selectedCustomTheme,
-            customLightLogoURL: selectedCustomTheme.flatMap {
-                customLogoURL(for: $0.id, variant: .light)
-            },
-            customDarkLogoURL: selectedCustomTheme.flatMap {
-                customLogoURL(for: $0.id, variant: .dark)
-            },
             lightBackground: lightBackground,
             darkBackground: darkBackground,
-            bubbleColor: bubbleColor
+            bubbleColor: bubbleColor,
+            customBubbleHex: customBubbleHex,
+            windowTransparency: windowTransparency
         )
     }
 
@@ -56,13 +38,35 @@ final class SettingsStore {
         didSet { defaults.set(darkBackground.rawValue, forKey: Keys.darkBackground) }
     }
 
-    /// Nil keeps the selected theme's own accent.
+    /// Nil is bighelp's own lavender.
     var bubbleColor: BighelpBubbleColor? {
         didSet { defaults.set(bubbleColor?.rawValue, forKey: Keys.bubbleColor) }
     }
 
-    var themeID: BighelpThemeID {
-        didSet { defaults.set(themeID.rawValue, forKey: Keys.themeID) }
+    /// A color you picked yourself ("0E7C66"); wins over `bubbleColor`.
+    var customBubbleHex: String? {
+        didSet {
+            let valid = BighelpCustomBubbleColor.validated(customBubbleHex)
+            if valid != customBubbleHex { customBubbleHex = valid }
+            defaults.set(valid, forKey: Keys.customBubbleColor)
+        }
+    }
+
+    /// "Custom" or the built-in color's name.
+    var bubbleColorName: String {
+        customBubbleHex != nil ? "Custom" : (bubbleColor ?? .lavender).name
+    }
+
+    /// One of the built-in colors, replacing a custom one.
+    func pickBubbleColor(_ color: BighelpBubbleColor) {
+        // Lavender is the default, so it's stored as no choice.
+        bubbleColor = color == .lavender ? nil : color
+        customBubbleHex = nil
+    }
+
+    /// Vision Pro: how much of the room shows through the windows (0–1).
+    var windowTransparency: Double {
+        didSet { defaults.set(windowTransparency, forKey: Keys.windowTransparency) }
     }
 
     var appearance: AppAppearance {
@@ -91,6 +95,11 @@ final class SettingsStore {
 
     var voiceConversationMode: VoiceConversationMode {
         didSet { defaults.set(voiceConversationMode.rawValue, forKey: Keys.voiceConversationMode) }
+    }
+
+    /// TTS voice mode: where what you say becomes text.
+    var voiceTranscription: VoiceTranscriptionSource {
+        didSet { defaults.set(voiceTranscription.rawValue, forKey: Keys.voiceTranscription) }
     }
 
     /// Vision Pro: a quick pinch on the agent in the room talks or types.
@@ -211,31 +220,17 @@ final class SettingsStore {
     }
 
     private let defaults: UserDefaults
-    private let customThemeLogoStore: CustomThemeLogoStore
 
     init(
         defaults: UserDefaults = .standard,
-        customThemeLogoDirectory: URL? = nil
+        legacyThemeLogoDirectory: URL? = nil
     ) {
         self.defaults = defaults
-        customThemeLogoStore = CustomThemeLogoStore(
-            directory: customThemeLogoDirectory ?? Self.defaultCustomThemeLogoDirectory
-        )
-        let persistedCustomThemes = CustomThemePersistence.load(
-            defaults.data(forKey: Keys.customThemes),
-            maximumThemeCount: Self.maximumCustomThemes
-        )
-        customThemes = persistedCustomThemes.themes
-        customThemePersistenceError = persistedCustomThemes.error
+        Self.removeRetiredThemes(defaults: defaults,
+                                 logoDirectory: legacyThemeLogoDirectory ?? Self.defaultLegacyThemeLogoDirectory)
         let recoveredReflectiveVisionActivation = ReflectiveVisionRecoveryMarker(
             defaults: defaults
         ).consumePendingActivation()
-        let storedThemeID = BighelpThemeID(
-            rawValue: defaults.string(forKey: Keys.themeID) ?? ""
-        )
-        let storedThemeExists = BighelpThemeRegistry.contains(storedThemeID)
-            || persistedCustomThemes.themes.contains(where: { $0.themeID == storedThemeID })
-        themeID = storedThemeExists ? storedThemeID : .bighelp
         appearance = AppAppearance(
             rawValue: defaults.string(forKey: Keys.appearance) ?? ""
         ) ?? .system
@@ -260,6 +255,9 @@ final class SettingsStore {
         voiceConversationMode = VoiceConversationMode(
             rawValue: defaults.string(forKey: Keys.voiceConversationMode) ?? ""
         ) ?? .codexLive
+        voiceTranscription = VoiceTranscriptionSource(
+            rawValue: defaults.string(forKey: Keys.voiceTranscription) ?? ""
+        ) ?? .onDevice
         spatialAvatarPinchAction = SpatialAvatarPinchAction(
             rawValue: defaults.string(forKey: Keys.spatialAvatarPinchAction) ?? ""
         ) ?? .talk
@@ -330,6 +328,10 @@ final class SettingsStore {
         lightBackground = defaults.string(forKey: Keys.lightBackground).flatMap(BighelpLightBackground.init(rawValue:)) ?? .cream
         darkBackground = defaults.string(forKey: Keys.darkBackground).flatMap(BighelpDarkBackground.init(rawValue:)) ?? .graphite
         bubbleColor = defaults.string(forKey: Keys.bubbleColor).flatMap(BighelpBubbleColor.init(rawValue:))
+        customBubbleHex = BighelpCustomBubbleColor.validated(defaults.string(forKey: Keys.customBubbleColor))
+        windowTransparency = defaults.object(forKey: Keys.windowTransparency) == nil
+            ? BighelpVisionGlass.defaultTransparency
+            : defaults.double(forKey: Keys.windowTransparency)
         agentIslandEnabled = defaults.bool(forKey: Keys.agentIsland, default: true)
         responseHapticsEnabled = defaults.bool(forKey: Keys.responseHaptics, default: true)
         showProjectChanges = defaults.bool(
@@ -345,17 +347,18 @@ final class SettingsStore {
             default: false
         )
         nerdModeEnabled = defaults.bool(forKey: Keys.nerdMode, default: false)
+    }
 
-        if persistedCustomThemes.requiresMigration {
-            do {
-                defaults.set(
-                    try CustomThemePersistence.encode(customThemes),
-                    forKey: Keys.customThemes
-                )
-            } catch {
-                customThemePersistenceError = .malformedData
-            }
-        }
+    /// Themes (Nous, Superpilot and your own, with their logos) were replaced by
+    /// bubble colors and light and dark backgrounds. Picking a bubble color
+    /// quietly replaced a chosen theme anyway. Their saved data and logo files
+    /// are removed once, so nothing is left taking up space.
+    static func removeRetiredThemes(defaults: UserDefaults, logoDirectory: URL) {
+        guard defaults.object(forKey: Keys.customThemes) != nil || defaults.object(forKey: Keys.themeID) != nil
+                || FileManager.default.fileExists(atPath: logoDirectory.path) else { return }
+        defaults.removeObject(forKey: Keys.customThemes)
+        defaults.removeObject(forKey: Keys.themeID)
+        try? FileManager.default.removeItem(at: logoDirectory)
     }
 
     static func eraseSessionSectionPreferences(defaults: UserDefaults = .standard) {
@@ -468,285 +471,6 @@ final class SettingsStore {
         )
     }
 
-    @discardableResult
-    func saveCustomTheme(_ theme: CustomTheme) throws -> CustomThemeSaveOutcome {
-        var candidate = customThemes
-        let outcome: CustomThemeSaveOutcome
-        if let index = candidate.firstIndex(where: { $0.id == theme.id }) {
-            candidate[index] = theme
-            outcome = .updated
-        } else {
-            guard candidate.count < Self.maximumCustomThemes else {
-                throw CustomThemeStoreError.limitReached(maximum: Self.maximumCustomThemes)
-            }
-            candidate.append(theme)
-            outcome = .created
-        }
-
-        do {
-            defaults.set(
-                try CustomThemePersistence.encode(candidate),
-                forKey: Keys.customThemes
-            )
-        } catch {
-            customThemePersistenceError = .malformedData
-            throw CustomThemeStoreError.persistenceFailed
-        }
-        customThemes = candidate
-        customThemePersistenceError = nil
-        return outcome
-    }
-
-    @discardableResult
-    func setCustomThemeLogo(
-        data: Data,
-        for themeID: UUID,
-        variant: CustomThemeLogoVariant? = nil
-    ) throws -> CustomThemeLogo {
-        guard let theme = customThemes.first(where: { $0.id == themeID }) else {
-            throw CustomThemeLogoStoreError.themeNotFound
-        }
-        let previousLogos = variant == nil
-            ? [theme.lightLogo, theme.darkLogo]
-            : [variant == .light ? theme.lightLogo : theme.darkLogo]
-        let logo = try customThemeLogoStore.store(data)
-        do {
-            _ = try saveCustomTheme(theme.replacingLogo(logo, variant: variant))
-            for previousLogo in previousLogos.compactMap({ $0 })
-            where previousLogo != logo && !isLogoReferenced(previousLogo) {
-                try? customThemeLogoStore.remove(previousLogo)
-            }
-            return logo
-        } catch {
-            try? customThemeLogoStore.remove(logo)
-            throw error
-        }
-    }
-
-    func customLogoURL(
-        for themeID: UUID,
-        variant: CustomThemeLogoVariant? = nil
-    ) -> URL? {
-        guard let theme = customThemes.first(where: { $0.id == themeID }) else {
-            return nil
-        }
-        let logo = switch variant {
-        case .light: theme.lightLogo
-        case .dark: theme.darkLogo
-        case nil: theme.logo
-        }
-        guard let logo else { return nil }
-        return customThemeLogoStore.existingURL(for: logo)
-    }
-
-    func customLogoData(
-        for themeID: UUID,
-        variant: CustomThemeLogoVariant
-    ) throws -> Data? {
-        guard let theme = customThemes.first(where: { $0.id == themeID }) else {
-            throw CustomThemeLogoStoreError.themeNotFound
-        }
-        let logo = variant == .light ? theme.lightLogo : theme.darkLogo
-        guard let logo else { return nil }
-        guard let url = customThemeLogoStore.existingURL(for: logo) else {
-            throw CustomThemeImportTransactionError.persistenceReadbackFailed
-        }
-        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        guard data.count == logo.byteCount,
-              data.count <= CustomThemeLogoStore.maximumByteCount
-        else { throw CustomThemeImportTransactionError.persistenceReadbackFailed }
-        return data
-    }
-
-    /// Stages a portable theme and its files, then verifies their persisted
-    /// readback before exposing the imported local copy.
-    /// Any failure restores the exact prior settings bytes and removes staged
-    /// logos, so callers cannot observe a partial installation.
-    @discardableResult
-    private func importPortableCustomTheme(
-        _ theme: CustomTheme,
-        lightLogoData: Data?,
-        darkLogoData: Data?
-    ) throws -> CustomTheme {
-        guard !customThemes.contains(where: { $0.id == theme.id }) else {
-            throw CustomThemeImportTransactionError.identifierAlreadyExists
-        }
-        guard theme.lightLogo == nil, theme.darkLogo == nil else {
-            throw CustomThemeImportTransactionError.invalidStagedTheme
-        }
-
-        let originalThemes = customThemes
-        let originalPersistenceData = defaults.data(forKey: Keys.customThemes)
-        let originalThemeID = themeID
-        do {
-            _ = try saveCustomTheme(theme)
-            if let lightLogoData {
-                _ = try setCustomThemeLogo(
-                    data: lightLogoData,
-                    for: theme.id,
-                    variant: .light
-                )
-            }
-            if let darkLogoData {
-                _ = try setCustomThemeLogo(
-                    data: darkLogoData,
-                    for: theme.id,
-                    variant: .dark
-                )
-            }
-            guard let installed = customThemes.first(where: { $0.id == theme.id }) else {
-                throw CustomThemeImportTransactionError.persistenceReadbackFailed
-            }
-            let persisted = CustomThemePersistence.load(
-                defaults.data(forKey: Keys.customThemes),
-                maximumThemeCount: Self.maximumCustomThemes
-            )
-            guard persisted.error == nil,
-                  persisted.themes.first(where: { $0.id == theme.id }) == installed,
-                  try customLogoData(for: theme.id, variant: .light) == lightLogoData,
-                  try customLogoData(for: theme.id, variant: .dark) == darkLogoData
-            else { throw CustomThemeImportTransactionError.persistenceReadbackFailed }
-
-            return installed
-        } catch {
-            let stagedLogos = customThemes.first(where: { $0.id == theme.id }).map {
-                [$0.lightLogo, $0.darkLogo].compactMap { $0 }
-            } ?? []
-            customThemes = originalThemes
-            if let originalPersistenceData {
-                defaults.set(originalPersistenceData, forKey: Keys.customThemes)
-            } else {
-                defaults.removeObject(forKey: Keys.customThemes)
-            }
-            themeID = originalThemeID
-            for logo in stagedLogos where !isLogoReferenced(logo) {
-                try? customThemeLogoStore.remove(logo)
-            }
-            throw error
-        }
-    }
-
-    func removeCustomThemeLogo(
-        for themeID: UUID,
-        variant: CustomThemeLogoVariant? = nil
-    ) throws {
-        guard let theme = customThemes.first(where: { $0.id == themeID }) else {
-            throw CustomThemeLogoStoreError.themeNotFound
-        }
-        let logos = variant == nil
-            ? [theme.lightLogo, theme.darkLogo]
-            : [variant == .light ? theme.lightLogo : theme.darkLogo]
-        guard logos.contains(where: { $0 != nil }) else { return }
-        _ = try saveCustomTheme(theme.replacingLogo(nil, variant: variant))
-        for logo in logos.compactMap({ $0 }) where !isLogoReferenced(logo) {
-            try customThemeLogoStore.remove(logo)
-        }
-    }
-
-    @discardableResult
-    func duplicateCustomTheme(id: UUID) throws -> CustomTheme {
-        guard let source = customThemes.first(where: { $0.id == id }) else {
-            throw CustomThemeLogoStoreError.themeNotFound
-        }
-        let suffix = " Copy"
-        let availableNameLength = max(1, CustomTheme.maximumNameLength - suffix.count)
-        let duplicate = try CustomTheme(
-            name: String(source.name.prefix(availableNameLength)) + suffix,
-            description: source.description,
-            font: source.font,
-            accentHex: source.accentHex,
-            light: source.light,
-            dark: source.dark,
-            lightLogo: source.lightLogo,
-            darkLogo: source.darkLogo
-        )
-        _ = try saveCustomTheme(duplicate)
-        return duplicate
-    }
-
-    func deleteCustomTheme(id: UUID) throws {
-        guard let index = customThemes.firstIndex(where: { $0.id == id }) else {
-            throw CustomThemeLogoStoreError.themeNotFound
-        }
-        var candidate = customThemes
-        let removed = candidate.remove(at: index)
-        defaults.set(
-            try CustomThemePersistence.encode(candidate),
-            forKey: Keys.customThemes
-        )
-        customThemes = candidate
-        customThemePersistenceError = nil
-        if themeID == removed.themeID {
-            themeID = .bighelp
-        }
-        for logo in [removed.lightLogo, removed.darkLogo].compactMap({ $0 })
-        where !isLogoReferenced(logo) {
-            try customThemeLogoStore.remove(logo)
-        }
-    }
-
-    /// Collection exports retain their existing upsert behavior. Portable
-    /// single-theme files are untrusted copies: never use their UUID to replace
-    /// local work.
-    func importCustomThemeFile(_ data: Data) throws {
-        guard data.count <= PortableCustomThemePackage.maximumArtifactByteCount else {
-            throw PortableCustomThemePackageError.packageTooLarge
-        }
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        if root["kind"] != nil || root["content"] != nil {
-            // A malformed portable package must not fall back to the more
-            // permissive collection decoder.
-            let payload = try PortableCustomThemePackage.decodeArtifact(data)
-            let source = payload.theme
-            let imported = try CustomTheme(
-                name: source.name,
-                description: source.description,
-                font: source.font,
-                accentHex: source.accentHex,
-                light: source.light,
-                dark: source.dark
-            )
-            _ = try importPortableCustomTheme(
-                imported,
-                lightLogoData: payload.lightLogoData,
-                darkLogoData: payload.darkLogoData
-            )
-        } else {
-            let catalog = try JSONDecoder().decode(CustomThemeCatalog.self, from: data)
-            guard catalog.schemaVersion == CustomThemeCatalog.currentSchemaVersion else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            try importCustomThemes(catalog.themes)
-        }
-    }
-
-    func importCustomThemes(_ themes: [CustomTheme]) throws {
-        guard Set(themes.map(\.id)).count == themes.count else {
-            throw CustomThemePersistenceError.invalidCatalog
-        }
-
-        var candidate = customThemes
-        for theme in themes {
-            if let index = candidate.firstIndex(where: { $0.id == theme.id }) {
-                candidate[index] = theme
-            } else {
-                candidate.append(theme)
-            }
-        }
-        guard candidate.count <= Self.maximumCustomThemes else {
-            throw CustomThemeStoreError.limitReached(maximum: Self.maximumCustomThemes)
-        }
-
-        defaults.set(
-            try CustomThemePersistence.encode(candidate),
-            forKey: Keys.customThemes
-        )
-        customThemes = candidate
-        customThemePersistenceError = nil
-    }
-
     func liveVoice(for provider: LiveVoiceProvider) -> String {
         switch provider {
         case .codexSubscription: codexLiveVoice
@@ -762,15 +486,10 @@ final class SettingsStore {
         }
     }
 
-    private func isLogoReferenced(_ logo: CustomThemeLogo) -> Bool {
-        customThemes.contains {
-            $0.lightLogo == logo || $0.darkLogo == logo
-        }
-    }
 }
 
 private extension SettingsStore {
-    static var defaultCustomThemeLogoDirectory: URL {
+    static var defaultLegacyThemeLogoDirectory: URL {
         let arguments = ProcessInfo.processInfo.arguments
         let usesFixtures = arguments.contains("-disable-demo-delays")
             || arguments.contains("-use-demo-fixtures")
@@ -845,9 +564,11 @@ private extension SettingsStore {
 
     enum Keys {
         static let appearance = "loopdy.demo.appearance"
+        /// Retired with themes; removed at launch.
         static let themeID = "loopdy.appearance.theme"
         static let uiV2Enabled = "loopdy.appearance.ui-v2-enabled"
         static let interfaceVersion = "loopdy.appearance.interface-version"
+        /// Retired with themes; removed at launch.
         static let customThemes = "loopdy.appearance.customThemes"
         static let autoSuggestions = "loopdy.demo.autoSuggestions"
         static let messageActions = "loopdy.demo.messageActions"
@@ -855,6 +576,7 @@ private extension SettingsStore {
         static let voiceSpeed = "loopdy.demo.voiceSpeed"
         static let voiceMode = "loopdy.voice.mode"
         static let voiceConversationMode = "loopdy.voice.conversation-mode"
+        static let voiceTranscription = "bighelp.voice.transcription"
         static let spatialAvatarPinchAction = "bighelp.spatial-avatar.pinch-action"
         static let liveVoiceProvider = "loopdy.voice.live.provider"
         static let codexLiveVoice = "loopdy.voice.live.codex-voice"
@@ -874,6 +596,8 @@ private extension SettingsStore {
         static let lightBackground = "loopdy.appearance.lightBackground"
         static let darkBackground = "loopdy.appearance.darkBackground"
         static let bubbleColor = "loopdy.appearance.bubbleColor"
+        static let customBubbleColor = "loopdy.appearance.customBubbleColor"
+        static let windowTransparency = "loopdy.appearance.windowTransparency"
         static let responseHaptics = "loopdy.chat.responseHaptics"
         static let showProjectChanges = "loopdy.chat.showProjectChanges"
         static let organizeChatsByProjects = "loopdy.sessions.organizeByProjects"

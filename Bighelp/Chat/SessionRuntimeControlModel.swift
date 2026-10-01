@@ -208,6 +208,14 @@ final class SessionRuntimeControlModel {
         _ = await (modelLoad, reasoningLoad)
     }
 
+    /// For showing the chat's model and reasoning (context pop-up, Info, the
+    /// avatar's profile). The model is already known from the session; this
+    /// reads the reasoning once. Never mid-turn: the read touches the session.
+    func loadSummaryIfNeeded() async {
+        guard !isTurnActive, currentReasoningValue == nil, reasoningPicker == nil else { return }
+        await loadReasoningPickerIfNeeded()
+    }
+
     func loadModelPickerIfNeeded() async {
         guard modelPicker == nil else { return }
         await loadModelPicker()

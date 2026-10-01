@@ -50,8 +50,16 @@ final class AgentHomeUITests: BighelpUITestCase {
         save("07-drawer", app)
         tap(app.buttons["menu.done"])
 
-        // New chat: one agent is a 1:1 chat, two or more a group.
-        tap(app.buttons["chat.home.new-chat"])
+        // New chat: a tap starts one with this agent right away, no picker.
+        let newChat = app.buttons["chat.home.new-chat"]
+        tap(newChat)
+        XCTAssertFalse(app.buttons["bot-mode.create.submit"].waitForExistence(timeout: 2), "A tap doesn't ask who")
+        XCTAssertTrue(app.textViews["chat.composer.text"].waitForExistence(timeout: 10), "The new chat opens")
+        save("07a-new-chat-tap", app)
+
+        // Touch and hold: pick agents. One agent is a 1:1 chat, two or more a group.
+        XCTAssertTrue(newChat.waitForExistence(timeout: 5))
+        newChat.press(forDuration: 0.8)
         let submit = app.buttons["bot-mode.create.submit"]
         XCTAssertTrue(submit.waitForExistence(timeout: 10))
         XCTAssertEqual(submit.label, "Start chat")

@@ -70,25 +70,13 @@ final class AgentEditorModel: Identifiable {
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) -> AgentEditorModel {
         var draft = AgentDraft(name: "", role: "", summary: "", instructions: "", avatarFileName: nil, isDefault: false)
-        if let template {
-            // A saved template fills in everything but a fresh, unused name.
-            let taken = Set(store.profiles.map { $0.name.lowercased() })
-            var name = template.title
-            var number = 2
-            while taken.contains(name.lowercased()) { name = "\(template.title) \(number)"; number += 1 }
-            draft.name = name
-            draft.role = template.role
-            draft.summary = template.summary
-            draft.instructions = template.instructions
-            draft.avatar = template.avatar
-        }
         // New agents start as a copy of the default agent's setup (skills,
         // memories, settings) unless unchecked in Advanced. Name, role,
         // about and instructions still come from this editor.
         if profileCloneSupport.unavailableReason == nil {
             draft.cloneSourceProfileID = store.profiles.first(where: \.isDefault)?.id
         }
-        return AgentEditorModel(
+        let model = AgentEditorModel(
             editingID: nil,
             draft: draft,
             store: store,
@@ -97,6 +85,8 @@ final class AgentEditorModel: Identifiable {
             profileCloneSupport: profileCloneSupport,
             isCurrent: isCurrent
         )
+        if let template { model.startFrom(template) }
+        return model
     }
 
     static func editing(
@@ -172,22 +162,84 @@ final class AgentEditorModel: Identifiable {
         if enabled { draft.cloneSourceProfileID = nil }
     }
 
-    /// The Agent Studio starter last applied to this new-agent draft.
-    private(set) var appliedStarterID: String?
+    // MARK: Starting point
 
-    /// Prefills the local draft from a starter. Fields the user already changed
-    /// are kept; only empty fields or values from the previous starter are replaced.
-    func applyStarter(_ starter: AgentStudioStarter) {
+    /// Where a new agent starts: nothing, a built-in personality, or one of the person's saved templates.
+    enum StartChoice: String, CaseIterable, Sendable {
+        case scratch, builtIn, saved
+    }
+
+    /// The Start from choice showing in the studio.
+    private(set) var startChoice: StartChoice = .scratch
+    /// "builtin:<id>" or "saved:<uuid>", for the template applied now.
+    private(set) var appliedTemplateID: String?
+    /// The applied template's instructions with `{{agent_name}}` still in them.
+    private var templateInstructions: String?
+    /// What the applied template put in each field, so another choice replaces
+    /// only those values and never what the person typed.
+    private var applied = AppliedValues()
+
+    private struct AppliedValues {
+        var name = ""
+        var role = ""
+        var summary = ""
+        var instructions = ""
+        var avatar: AgentAvatar?
+    }
+
+    /// Shows a choice. From scratch clears what a template filled in; the others
+    /// wait for a template to be picked.
+    func showStartChoice(_ choice: StartChoice) {
         guard !isEditing else { return }
-        let previous = AgentStudioStarter.all.first { $0.id == appliedStarterID } ?? .blank
+        startChoice = choice
+        if choice == .scratch { apply(AppliedValues(), template: nil, id: nil) }
+    }
+
+    func startFrom(_ template: AgentSoulTemplate) {
+        guard !isEditing, let soul = template.soul else { return }
+        startChoice = .builtIn
+        // A personality doesn't name the agent: the person's own name goes into it.
+        apply(AppliedValues(role: template.profile, summary: template.about), template: soul,
+              id: "builtin:\(template.id)")
+    }
+
+    func startFrom(_ template: SavedAgentTemplate) {
+        guard !isEditing else { return }
+        startChoice = .saved
+        // Everything but a fresh, unused name, and the saved agent's own name
+        // in its instructions becomes the new one's.
+        let taken = Set(store.profiles.map { $0.name.lowercased() })
+        var name = template.title
+        var number = 2
+        while taken.contains(name.lowercased()) { name = "\(template.title) \(number)"; number += 1 }
+        apply(AppliedValues(name: name, role: template.role, summary: template.summary, avatar: template.avatar),
+              template: AgentNamePlaceholder.generalize(template.instructions, name: template.sourceAgentName),
+              id: "saved:\(template.id.uuidString)")
+    }
+
+    /// Keeps the applied template's instructions in step with the name as it's typed,
+    /// until the person edits the instructions themselves.
+    func nameDidChange() {
+        guard let templateInstructions, draft.instructions == applied.instructions else { return }
+        let filled = AgentNamePlaceholder.fill(templateInstructions, name: draft.name)
+        draft.instructions = filled
+        applied.instructions = filled
+    }
+
+    private func apply(_ next: AppliedValues, template: String?, id: String?) {
+        var next = next
         func merged(_ current: String, previous: String, next: String) -> String {
             current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || current == previous ? next : current
         }
-        draft.name = merged(draft.name, previous: previous.name, next: starter.name)
-        draft.role = merged(draft.role, previous: previous.role, next: starter.role)
-        draft.summary = merged(draft.summary, previous: previous.summary, next: starter.summary)
-        draft.instructions = merged(draft.instructions, previous: previous.instructions, next: starter.instructions)
-        appliedStarterID = starter.id
+        draft.name = merged(draft.name, previous: applied.name, next: next.name)
+        next.instructions = template.map { AgentNamePlaceholder.fill($0, name: draft.name) } ?? ""
+        draft.role = merged(draft.role, previous: applied.role, next: next.role)
+        draft.summary = merged(draft.summary, previous: applied.summary, next: next.summary)
+        draft.instructions = merged(draft.instructions, previous: applied.instructions, next: next.instructions)
+        if draft.avatar == applied.avatar, pendingAvatar == nil { draft.avatar = next.avatar }
+        applied = next
+        templateInstructions = template
+        appliedTemplateID = id
         let filled: [(Field, String)] = [
             (.name, draft.name), (.role, draft.role), (.summary, draft.summary), (.instructions, draft.instructions)
         ]
@@ -268,6 +320,8 @@ final class AgentEditorModel: Identifiable {
         let oldFileName = draft.avatarFileName
         let requestedAvatarRemoval = draft.removesAvatar
         var storedFileName: String?
+        // Any `{{agent_name}}` still in the instructions gets the agent's name.
+        draft.instructions = AgentNamePlaceholder.fill(draft.instructions, name: draft.name)
         var savedDraft = draft
 
         do {

@@ -12,9 +12,7 @@ struct ChatComposer: View {
     @Bindable var model: ChatModel
     let agentName: String
     let sessionCatalog: SessionCatalogStore?
-    let projectChangesSummary: ProjectChangesRailSummary?
     let onAttachmentTap: (() -> Void)?
-    let onProjectChangesTap: () -> Void
     let onVoiceTap: () -> Void
     let onFittingRailVerticalDrag: (ChatRailScrollDirection) -> Void
     let draftFocus: Binding<Bool>
@@ -34,6 +32,8 @@ struct ChatComposer: View {
     @State private var restoresFocusAfterExpansion = false
     @State private var presentedStatus: SessionStatusRailDestination?
     @State private var isSessionContextPresented = false
+    /// Change in the context pop-up: open Model & reasoning once the pop-up is gone.
+    @State private var opensModelControlsAfterContext = false
     @State private var companionAdventureResetToken = 0
     @State private var clipboardImportSession = ClipboardImageImportSession()
     @State private var clipboardImportTask: Task<Void, Never>?
@@ -208,7 +208,6 @@ struct ChatComposer: View {
             compactSessionActions
         } else {
             SessionStatusRailView(
-                changes: projectChangesSummary,
                 goal: model.goalRailState,
                 subagents: nerdModeEnabled ? model.sessionSubagents : [],
                 nativeSubagents: nerdModeEnabled ? model.nativeSubagents : [],
@@ -222,7 +221,17 @@ struct ChatComposer: View {
                     isSessionContextPresented = true
                     onDismissKeyboard()
                 },
-                onShowProviderUsage: providerUsageAction
+                onShowProviderUsage: providerUsageAction,
+                runtimeControls: model.runtimeControls,
+                onChangeModel: {
+                    opensModelControlsAfterContext = true
+                    isSessionContextPresented = false
+                },
+                onContextDismissed: {
+                    guard opensModelControlsAfterContext else { return }
+                    opensModelControlsAfterContext = false
+                    model.requestSessionControls()
+                }
             )
             .padding(.leading, horizontalSizeClass == .regular ? companionRailReservation : 0)
             .padding(.trailing, companionRailReservation)
@@ -234,26 +243,33 @@ struct ChatComposer: View {
     @ViewBuilder
     private var compactSessionActions: some View {
         let items = SessionStatusRailPresentation.items(
-            changes: projectChangesSummary, goal: model.goalRailState,
+            goal: model.goalRailState,
             subagents: nerdModeEnabled ? model.sessionSubagents : [],
             nativeSubagents: nerdModeEnabled ? model.nativeSubagents : [],
             tasks: model.taskDrawer
         )
         let showsContext = nerdModeEnabled && model.sessionContext != nil
-        if !items.isEmpty || showsContext {
+        if !items.isEmpty || showsContext || model.runtimeControls != nil {
             Menu {
                 ForEach(items) { item in
                     Button {
                         presentStatus(item.kind)
                     } label: {
                         switch item.kind {
-                        case .changes: Label("Changes", systemImage: "chevron.left.forwardslash.chevron.right")
                         case .goal: Label("Goal", systemImage: "target")
                         case .subagents: Label("Agents", systemImage: "person.2")
                         case .tasks: Label("Tasks", systemImage: "checklist")
                         }
                     }
                     .accessibilityIdentifier("chat.composer.menu.\(item.kind.rawValue)")
+                }
+                if let controls = model.runtimeControls {
+                    let summary = ChatModelSummaryPresentation(controls: controls)
+                    Button { model.requestSessionControls() } label: {
+                        Label { Text(summary.modelName); Text(summary.reasoning) } icon: { Image(systemName: "cpu") }
+                    }
+                    .disabled(ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive))
+                    .accessibilityIdentifier("chat.composer.menu.model")
                 }
                 if showsContext {
                     Button("Context usage", systemImage: "gauge.with.dots.needle.33percent") {
@@ -616,8 +632,6 @@ struct ChatComposer: View {
         draftFocus.wrappedValue = false
         BighelpKeyboard.dismiss()
         switch kind {
-        case .changes:
-            onProjectChangesTap()
         case .goal:
             presentedStatus = .goal
         case .subagents:

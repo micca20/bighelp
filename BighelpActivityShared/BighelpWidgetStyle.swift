@@ -14,6 +14,24 @@ struct BighelpWidgetColors: Sendable {
 
     static let fallback = BighelpWidgetColors(palette: .emberLight, isFullColor: true)
 
+    /// Glass widgets: the system's vibrant ink, with the after-dark bubble color for accents.
+    static func glass(snapshot: BighelpWidgetSnapshot) -> BighelpWidgetColors {
+        let palette = snapshot.darkPalette ?? .emberDark
+        return BighelpWidgetColors(canvas: .clear, primary: .primary, secondary: .secondary,
+                                   accent: Color(widgetHex: palette.accentHex),
+                                   accentForeground: Color(widgetHex: palette.accentForegroundHex), isFullColor: true)
+    }
+
+    private init(canvas: Color, primary: Color, secondary: Color, accent: Color, accentForeground: Color,
+                 isFullColor: Bool) {
+        self.canvas = canvas
+        self.primary = primary
+        self.secondary = secondary
+        self.accent = accent
+        self.accentForeground = accentForeground
+        self.isFullColor = isFullColor
+    }
+
     init(snapshot: BighelpWidgetSnapshot, scheme: ColorScheme, isFullColor: Bool) {
         let palette = scheme == .dark
             ? snapshot.darkPalette ?? .emberDark
@@ -72,8 +90,9 @@ extension Color {
 }
 
 /// Every widget's frame: the app's page color with a soft glow of the bubble
-/// color, text in the app's colors, and the colors in the environment.
-#if !os(visionOS) // Widget-only; Vision Pro has no widget extension.
+/// color, text in the app's colors, and the colors in the environment. On
+/// Vision Pro the widget is glass in the room, so text stays the system's own
+/// vibrant ink and only the glow keeps the bubble color.
 struct BighelpWidgetScaffold<Content: View>: View {
     let snapshot: BighelpWidgetSnapshot
     @ViewBuilder let content: Content
@@ -83,12 +102,20 @@ struct BighelpWidgetScaffold<Content: View>: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
+        #if os(visionOS)
+        let colors = BighelpWidgetColors.glass(snapshot: snapshot)
+        #else
         let colors = BighelpWidgetColors(snapshot: snapshot, scheme: scheme, isFullColor: mode == .fullColor)
+        #endif
         content
             .environment(\.bighelpWidgetColors, colors)
             .foregroundStyle(colors.primary)
             .tint(colors.accent)
             .containerBackground(for: .widget) {
+                #if os(visionOS)
+                RadialGradient(colors: [colors.accent.opacity(0.18), .clear],
+                               center: .topLeading, startRadius: 0, endRadius: 260)
+                #else
                 if colors.isFullColor, !family.isAccessory {
                     ZStack {
                         colors.canvas
@@ -98,19 +125,34 @@ struct BighelpWidgetScaffold<Content: View>: View {
                 } else {
                     Color.clear
                 }
+                #endif
             }
     }
 }
 
 extension WidgetFamily {
     var isAccessory: Bool {
+        #if os(visionOS)
+        false
+        #else
         switch self {
         case .accessoryCircular, .accessoryRectangular, .accessoryInline: true
         default: false
         }
+        #endif
     }
 }
-#endif
+
+extension WidgetConfiguration {
+    /// Vision Pro: frosted glass, on a wall or set into a surface.
+    func bighelpWidgetPlacement() -> some WidgetConfiguration {
+        #if os(visionOS)
+        widgetTexture(.glass).supportedMountingStyles([.elevated, .recessed])
+        #else
+        self
+        #endif
+    }
+}
 
 /// The agent's real picture (or its initial), ringed in the bubble color with
 /// a badge for the work while it runs.

@@ -64,13 +64,26 @@ struct HomeMenuPresentation<Menu: View>: ViewModifier {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.visionSideMenu) private var sideMenu
     @State private var isCoverPresented = false
     @State private var isPanelVisible = false
 
     static var panelWidth: CGFloat { 380 }
 
     func body(content: Content) -> some View {
-        if horizontalSizeClass == .regular {
+        if let sideMenu {
+            // Vision Pro: a column beside the app, which narrows to make room.
+            content.onChange(of: isPresented, initial: true) { _, presented in
+                if presented {
+                    sideMenu.show(AnyView(menu().environment(\.homeMenuClose, { isPresented = false }))) {
+                        isPresented = false
+                        onDismiss()
+                    }
+                } else {
+                    sideMenu.hide()
+                }
+            }
+        } else if horizontalSizeClass == .regular {
             content
                 .fullScreenCover(isPresented: $isCoverPresented, onDismiss: onDismiss) {
                     panel.presentationBackground(.clear)

@@ -19,10 +19,11 @@ final class HostActivityRenderTests: XCTestCase {
         for dark in [false, true] {
             let view = VStack(spacing: 12) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    // The card draws the app's page color itself, as it does on the Lock Screen.
                     BighelpLiveActivityCard(attributes: attributes, state: row.1, isStale: row.2)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
                 }
-            }.padding(16).frame(width: 393).background(Color(uiColor: .systemBackground))
+            }.padding(16).frame(width: 393).background(dark ? Color.black : Color(white: 0.55))
                 .environment(\.colorScheme, dark ? .dark : .light)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
@@ -34,8 +35,7 @@ final class HostActivityRenderTests: XCTestCase {
             add(attachment)
         }
         let large = ImageRenderer(content: BighelpLiveActivityCard(attributes: attributes, state: rows[2].1)
-            .frame(width: 320).environment(\.dynamicTypeSize, .accessibility3)
-            .background(Color(uiColor: .secondarySystemBackground)))
+            .frame(width: 320).environment(\.dynamicTypeSize, .accessibility3))
         let attachment = XCTAttachment(image: try XCTUnwrap(large.uiImage))
         attachment.name = "activity-attention-accessibility"
         attachment.lifetime = .keepAlways

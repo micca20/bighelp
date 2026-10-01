@@ -175,6 +175,25 @@ struct AgentDirectoryStoreTests {
         #expect(store.pinnedAgents.map(\.id).last == "agent-6")
     }
 
+    @Test func draggedPinnedOrderIsKeptAcrossRelaunch() async throws {
+        let defaults = isolatedDefaults()
+        let client = AgentDirectoryFixtureClient(profiles: [.defaultFixture, .financeFixture])
+        let store = AgentDirectoryStore(client: client, defaults: defaults)
+        try await store.load()
+        store.pinAgent("finance")
+        #expect(store.pinnedAgentIDs == ["default", "finance"])
+
+        #expect(store.reorderPinnedAgents(["finance", "default"]))
+        #expect(store.reorderPinnedAgents(["finance", "default"]) == false, "Same order, nothing to save")
+        #expect(store.reorderPinnedAgents(["nobody", "default"]), "Unknown ids are ignored")
+        #expect(store.pinnedAgentIDs == ["default", "finance"])
+        store.reorderPinnedAgents(["finance"])
+
+        let restored = AgentDirectoryStore(client: client, defaults: defaults)
+        try await restored.load()
+        #expect(restored.pinnedAgentIDs == ["finance", "default"])
+    }
+
     @Test func pinnedIntentSurvivesPartialCatalogAndRelaunch() async throws {
         let defaults = isolatedDefaults()
         let client = AgentDirectoryFixtureClient(profiles: [.defaultFixture, .financeFixture])

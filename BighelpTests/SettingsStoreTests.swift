@@ -6,7 +6,7 @@ import UIKit
 
 @MainActor
 struct SettingsStoreTests {
-    @Test func everyStoredLegacyInterfaceUsesV3WithoutChangingThemeBytes() throws {
+    @Test func everyStoredLegacyInterfaceUsesV3WithoutChangingAppearanceBytes() throws {
         for version in ["v1", "v2", "v3", "future-version"] {
             let name = "ui-release-migration-\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: name)!
@@ -14,21 +14,49 @@ struct SettingsStoreTests {
             defaults.set(version, forKey: "loopdy.appearance.interface-version")
             defaults.set(false, forKey: "loopdy.appearance.ui-v2-enabled")
             let previous = SettingsStore(defaults: defaults)
-            let custom = try makeCustomTheme(id: "00000000-0000-0000-0000-000000000180", name: "My existing theme")
-            try previous.saveCustomTheme(custom)
-            previous.themeID = custom.themeID
+            previous.bubbleColor = .ocean
+            previous.lightBackground = .paper
             previous.appearance = .dark
             defaults.set(version, forKey: "loopdy.appearance.interface-version")
             let before = defaults.dictionaryRepresentation().filter { $0.key.contains("appearance") && !$0.key.contains("interface") && !$0.key.contains("ui-v2") }
             let settings = SettingsStore(defaults: defaults)
             #expect(settings.interfaceVersion == .v3)
             #expect(settings.uiV2Enabled)
-            #expect(settings.themeID == custom.themeID)
-            #expect(settings.selectedCustomTheme == custom)
+            #expect(settings.bubbleColor == .ocean)
+            #expect(settings.lightBackground == .paper)
             #expect(settings.appearance == .dark)
             let after = defaults.dictionaryRepresentation().filter { $0.key.contains("appearance") && !$0.key.contains("interface") && !$0.key.contains("ui-v2") }
             #expect(NSDictionary(dictionary: before).isEqual(to: after))
         }
+    }
+
+    @Test func windowTransparencyPersistsAndStaysInRange() {
+        let name = "window-transparency-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = SettingsStore(defaults: defaults)
+        #expect(settings.windowTransparency == BighelpVisionGlass.defaultTransparency)
+        settings.windowTransparency = 0.9
+        #expect(SettingsStore(defaults: defaults).appearanceContext.windowTransparency == 0.9)
+        // A launch argument arrives as text.
+        defaults.set("0.25", forKey: "loopdy.appearance.windowTransparency")
+        #expect(SettingsStore(defaults: defaults).windowTransparency == 0.25)
+
+        // More transparent means less of the page color over the glass, never none or all of it.
+        let solid = BighelpVisionGlass.canvasOpacity(forTransparency: 0)
+        let clear = BighelpVisionGlass.canvasOpacity(forTransparency: 1)
+        #expect(solid > BighelpVisionGlass.canvasOpacity(forTransparency: 0.5))
+        #expect(BighelpVisionGlass.canvasOpacity(forTransparency: 0.5) > clear)
+        #expect(clear > 0 && solid < 1)
+        #expect(BighelpVisionGlass.canvasOpacity(forTransparency: 7) == clear)
+        #expect(BighelpVisionGlass.canvasOpacity(forTransparency: -3) == solid)
+        #expect(BighelpVisionGlass.canvasOpacity(forTransparency: .nan)
+            == BighelpVisionGlass.canvasOpacity(forTransparency: BighelpVisionGlass.defaultTransparency))
+
+        // A light window never goes bare: dark text needs a light backing in a dim room.
+        let lightClear = BighelpVisionGlass.canvasOpacity(forTransparency: 1, dark: false)
+        #expect(lightClear >= 0.4)
+        #expect(BighelpVisionGlass.canvasOpacity(forTransparency: 0, dark: false) > lightClear)
     }
 
     @Test func invalidInterfaceVersionWithoutLegacyChoiceUsesV3() {
@@ -162,7 +190,7 @@ struct SettingsStoreTests {
         #expect(composition.scheduledTasks.tasks.isEmpty)
         #expect(composition.personalities.catalog == nil)
         #expect(composition.linkDevices.devices.isEmpty)
-        #expect(composition.userIdentity.identity == UserIdentity(name: "You", avatarFileName: nil))
+        #expect(composition.userIdentity.identity == UserIdentity(name: "", avatarFileName: nil))
         #expect(composition.featureStore.preparedModel(for: route) == nil)
     }
 
@@ -252,7 +280,7 @@ struct SettingsStoreTests {
         let accountState = account.state
         let path = composition.appState.path
 
-        composition.settings.themeID = .nous
+        composition.settings.bubbleColor = .rose
 
         #expect(composition.linkAccount === account)
         #expect(composition.linkDevices === devices)
@@ -315,7 +343,7 @@ struct SettingsStoreTests {
         settings.showReasoningByDefault = true
         settings.showToolCallsByDefault = false
         settings.reflectiveVisionEnabled = true
-        settings.themeID = .superpilot
+        settings.bubbleColor = .teal
         settings.leftEdgeSwipeAction = .sessions
         settings.rightEdgeSwipeAction = .newChat
         settings.preferredBrowser = .firefox
@@ -332,7 +360,7 @@ struct SettingsStoreTests {
         #expect(restored.showReasoningByDefault)
         #expect(!restored.showToolCallsByDefault)
         #expect(restored.reflectiveVisionEnabled)
-        #expect(restored.themeID == .superpilot)
+        #expect(restored.bubbleColor == .teal)
         #expect(restored.leftEdgeSwipeAction == .sessions)
         #expect(restored.rightEdgeSwipeAction == .newChat)
         #expect(restored.preferredBrowser == .firefox)
@@ -465,13 +493,17 @@ struct SettingsStoreTests {
             .workspace,
             .agentsAndPersonalities,
             .chat,
+            .voice,
             .notifications,
+            .providerUsage,
             .permissions,
             .connectivityAndNotifications,
+            .companion,
             .help,
             .watch,
         ])
-        #expect(Set(SettingsMenuSection.allCases.map(\.title)).count == 10)
+        #expect(Set(SettingsMenuSection.allCases.map(\.title)).count == 13)
+        #expect(Set(SettingsMenuSection.allCases.map(\.accessibilityIdentifier)).count == 13)
     }
 
     @Test func currentEdgeGestureChoicesExcludeTheLegacyInboxDestination() {
@@ -501,7 +533,7 @@ struct SettingsStoreTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = SettingsStore(defaults: defaults)
-        settings.themeID = .nous
+        settings.bubbleColor = .grape
         settings.appearance = .dark
 
         #expect(!settings.reflectiveVisionEnabled)
@@ -510,7 +542,7 @@ struct SettingsStoreTests {
         let restored = SettingsStore(defaults: defaults)
 
         #expect(restored.reflectiveVisionEnabled)
-        #expect(restored.themeID == .nous)
+        #expect(restored.bubbleColor == .grape)
         #expect(restored.appearance == .dark)
     }
 
@@ -686,7 +718,7 @@ struct SettingsStoreTests {
         defaults.set("warp", forKey: "loopdy.demo.voiceSpeed")
         defaults.set("teleport", forKey: "loopdy.workspace.leftEdgeSwipeAction")
         defaults.set("obliterate", forKey: "loopdy.workspace.rightEdgeSwipeAction")
-        defaults.set("missing-theme", forKey: "loopdy.appearance.theme")
+        defaults.set("missing-color", forKey: "loopdy.appearance.bubbleColor")
 
         let settings = SettingsStore(defaults: defaults)
 
@@ -694,664 +726,51 @@ struct SettingsStoreTests {
         #expect(settings.voiceSpeed == .normal)
         #expect(settings.leftEdgeSwipeAction == .sessions)
         #expect(settings.rightEdgeSwipeAction == .newChat)
-        #expect(settings.themeID == .bighelp)
+        #expect(settings.bubbleColor == nil)
     }
 
-    @Test func settingsStoreKeepsGrowingCustomThemeCardsBeyondThree() throws {
-        let suiteName = #function
+    @Test func aCustomBubbleColorIsSavedAndAPresetReplacesIt() {
+        let suiteName = "custom-bubble-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = SettingsStore(defaults: defaults)
-        let themes = try [
-            makeCustomTheme(id: "00000000-0000-0000-0000-000000000001", name: "One"),
-            makeCustomTheme(id: "00000000-0000-0000-0000-000000000002", name: "Two"),
-            makeCustomTheme(id: "00000000-0000-0000-0000-000000000003", name: "Three"),
-            makeCustomTheme(id: "00000000-0000-0000-0000-000000000004", name: "Four"),
-        ]
-
-        #expect(try settings.saveCustomTheme(themes[0]) == .created)
-        #expect(try settings.saveCustomTheme(themes[1]) == .created)
-        #expect(try settings.saveCustomTheme(themes[2]) == .created)
-        #expect(try settings.saveCustomTheme(themes[3]) == .created)
-        #expect(settings.customThemes == themes)
-        #expect(settings.availableCustomThemeSlots == SettingsStore.maximumCustomThemes - 4)
-        #expect(BighelpThemeRegistry.builtIns.count == 3)
-    }
-
-    @Test func duplicatingCustomThemeCreatesIndependentCardWithSameDesign() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let settings = SettingsStore(defaults: defaults)
-        let original = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000005",
-            name: "Original"
-        )
-        try settings.saveCustomTheme(original)
-
-        let duplicate = try settings.duplicateCustomTheme(id: original.id)
-
-        #expect(duplicate.id != original.id)
-        #expect(duplicate.name == "Original Copy")
-        #expect(duplicate.font == original.font)
-        #expect(duplicate.accentHex == original.accentHex)
-        #expect(duplicate.light == original.light)
-        #expect(duplicate.dark == original.dark)
-        #expect(settings.customThemes == [original, duplicate])
-    }
-
-    @Test func updatingAnExistingCustomThemeDoesNotConsumeAnotherSlot() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let settings = SettingsStore(defaults: defaults)
-        let id = "00000000-0000-0000-0000-000000000011"
-        let original = try makeCustomTheme(id: id, name: "Original")
-        let updated = try makeCustomTheme(id: id, name: "Updated")
-
-        #expect(try settings.saveCustomTheme(original) == .created)
-        #expect(try settings.saveCustomTheme(updated) == .updated)
-        #expect(settings.customThemes == [updated])
-        #expect(settings.availableCustomThemeSlots == SettingsStore.maximumCustomThemes - 1)
-    }
-
-    @Test func importingCustomThemesAppendsToTheExistingCatalog() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let settings = SettingsStore(defaults: defaults)
-        let existing = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000012",
-            name: "Existing"
-        )
-        let imported = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000013",
-            name: "Imported"
-        )
-        try settings.saveCustomTheme(existing)
-
-        try settings.importCustomThemes([imported])
-
-        #expect(settings.customThemes == [existing, imported])
-        #expect(SettingsStore(defaults: defaults).customThemes == [existing, imported])
-    }
-
-    @Test func importingAnExistingThemeIDUpdatesItWithoutReplacingOtherThemes() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let settings = SettingsStore(defaults: defaults)
-        let existing = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000014",
-            name: "Existing"
-        )
-        let retained = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000015",
-            name: "Retained"
-        )
-        let updated = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000014",
-            name: "Updated"
-        )
-        try settings.saveCustomTheme(existing)
-        try settings.saveCustomTheme(retained)
-
-        try settings.importCustomThemes([updated])
-
-        #expect(settings.customThemes == [updated, retained])
-    }
-
-    @Test func customThemesAndTheSelectedCustomIDPersistThroughInjectedDefaults() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let theme = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000021",
-            name: "Persistent"
-        )
-        let settings = SettingsStore(defaults: defaults)
-
-        try settings.saveCustomTheme(theme)
-        settings.themeID = theme.themeID
-
+        #expect(settings.customBubbleHex == nil)
+        settings.customBubbleHex = "#12ab34"
+        #expect(settings.customBubbleHex == "12AB34")
         let restored = SettingsStore(defaults: defaults)
-        #expect(restored.customThemes == [theme])
-        #expect(restored.themeID == theme.themeID)
-        #expect(restored.selectedCustomTheme == theme)
-        #expect(restored.customThemePersistenceError == nil)
+        #expect(restored.customBubbleHex == "12AB34")
+        #expect(restored.appearanceContext.customBubbleHex == "12AB34")
+
+        restored.pickBubbleColor(.ocean)
+        #expect(restored.customBubbleHex == nil && restored.bubbleColor == .ocean)
+        restored.pickBubbleColor(.lavender)
+        #expect(restored.bubbleColor == nil)
+        #expect(SettingsStore(defaults: defaults).customBubbleHex == nil)
+
+        defaults.set("not-a-color", forKey: "loopdy.appearance.customBubbleColor")
+        #expect(SettingsStore(defaults: defaults).customBubbleHex == nil)
     }
 
-    @Test func selectedCustomThemeBuildsAppWideAppearanceContext() throws {
-        let suiteName = #function
+    /// Themes were replaced by bubble colors. A saved theme, its catalog and its
+    /// logo files are removed at launch, and other appearance picks stay.
+    @Test func retiredThemesAndTheirLogoFilesAreRemoved() throws {
+        let suiteName = "retired-themes-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000024",
-            name: "App wide"
-        )
-        let settings = SettingsStore(defaults: defaults)
-        try settings.saveCustomTheme(custom)
-        settings.themeID = custom.themeID
-        settings.appearance = .dark
+        let logos = FileManager.default.temporaryDirectory.appending(path: suiteName, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: logos) }
+        try FileManager.default.createDirectory(at: logos, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: logos.appending(path: "custom-theme-logo-1.png"))
+        defaults.set("custom-6F64BA03", forKey: "loopdy.appearance.theme")
+        defaults.set(Data("{\"schemaVersion\":2,\"themes\":[]}".utf8), forKey: "loopdy.appearance.customThemes")
+        defaults.set("ocean", forKey: "loopdy.appearance.bubbleColor")
 
-        let context = settings.appearanceContext
+        let settings = SettingsStore(defaults: defaults, legacyThemeLogoDirectory: logos)
 
-        #expect(context.appearance == .dark)
-        #expect(context.themeID == custom.themeID)
-        #expect(context.customTheme == custom)
-        #expect(context.customLogoURL == nil)
-        let resolved = BighelpTheme.resolve(
-            appearance: context,
-            colorScheme: .light,
-            contrast: .standard
-        )
-        #expect(resolved.themeID == custom.themeID)
-        #expect(resolved.typeface == .system)
-        #expect(resolved.typography == .bighelp)
-        #expect(resolved.action != BighelpTheme.resolve(
-            themeID: .bighelp,
-            appearance: .dark,
-            colorScheme: .light,
-            contrast: .standard
-        ).action)
+        #expect(defaults.object(forKey: "loopdy.appearance.theme") == nil)
+        #expect(defaults.object(forKey: "loopdy.appearance.customThemes") == nil)
+        #expect(!FileManager.default.fileExists(atPath: logos.path))
+        #expect(settings.bubbleColor == .ocean)
     }
 
-    @Test func customLogoIsValidatedAndCopiedIntoOwnedStorage() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: suiteName, directoryHint: .isDirectory)
-        let ownedDirectory = root.appending(path: "owned", directoryHint: .isDirectory)
-        let externalURL = root.appending(path: "chosen-logo.png")
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: root)
-        }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let logoData = makeLogoPNG(width: 96, height: 64)
-        try logoData.write(to: externalURL)
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000025",
-            name: "Logo storage"
-        )
-        let settings = SettingsStore(
-            defaults: defaults,
-            customThemeLogoDirectory: ownedDirectory
-        )
-        try settings.saveCustomTheme(custom)
-        settings.themeID = custom.themeID
-
-        let logo = try settings.setCustomThemeLogo(data: logoData, for: custom.id)
-        let ownedURL = try #require(settings.customLogoURL(for: custom.id))
-
-        #expect(logo.pixelWidth == 96)
-        #expect(logo.pixelHeight == 64)
-        #expect(logo.byteCount == logoData.count)
-        #expect(ownedURL.deletingLastPathComponent().standardizedFileURL == ownedDirectory.standardizedFileURL)
-        #expect(ownedURL != externalURL)
-        #expect(try Data(contentsOf: ownedURL) == logoData)
-        #expect(settings.selectedCustomTheme?.logo == logo)
-        #expect(settings.appearanceContext.customLogoURL == ownedURL)
-    }
-
-    @Test func customThemeStoresIndependentLightAndDarkLogos() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: suiteName, directoryHint: .isDirectory)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000029",
-            name: "Dual logos"
-        )
-        let settings = SettingsStore(defaults: defaults, customThemeLogoDirectory: root)
-        try settings.saveCustomTheme(custom)
-        settings.themeID = custom.themeID
-
-        let light = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 80, height: 50),
-            for: custom.id,
-            variant: .light
-        )
-        let dark = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 120, height: 72),
-            for: custom.id,
-            variant: .dark
-        )
-
-        #expect(settings.selectedCustomTheme?.lightLogo == light)
-        #expect(settings.selectedCustomTheme?.darkLogo == dark)
-        #expect(settings.appearanceContext.customLightLogoURL != nil)
-        #expect(settings.appearanceContext.customDarkLogoURL != nil)
-        #expect(settings.appearanceContext.customLightLogoURL != settings.appearanceContext.customDarkLogoURL)
-    }
-
-    @Test func replacingCustomLogoRemovesTheOldOwnedAsset() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: suiteName, directoryHint: .isDirectory)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000026",
-            name: "Logo replacement"
-        )
-        let settings = SettingsStore(defaults: defaults, customThemeLogoDirectory: root)
-        try settings.saveCustomTheme(custom)
-
-        _ = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 80, height: 50),
-            for: custom.id
-        )
-        let oldURL = try #require(settings.customLogoURL(for: custom.id))
-        _ = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 120, height: 72),
-            for: custom.id
-        )
-        let replacementURL = try #require(settings.customLogoURL(for: custom.id))
-
-        #expect(oldURL != replacementURL)
-        #expect(!FileManager.default.fileExists(atPath: oldURL.path))
-        #expect(FileManager.default.fileExists(atPath: replacementURL.path))
-    }
-
-    @Test func removingCustomLogoClearsMetadataAndOwnedAsset() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: suiteName, directoryHint: .isDirectory)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000027",
-            name: "Logo removal"
-        )
-        let settings = SettingsStore(defaults: defaults, customThemeLogoDirectory: root)
-        try settings.saveCustomTheme(custom)
-        settings.themeID = custom.themeID
-        _ = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 80, height: 50),
-            for: custom.id
-        )
-        let ownedURL = try #require(settings.customLogoURL(for: custom.id))
-
-        try settings.removeCustomThemeLogo(for: custom.id)
-
-        #expect(settings.selectedCustomTheme?.logo == nil)
-        #expect(settings.customLogoURL(for: custom.id) == nil)
-        #expect(settings.appearanceContext.customLogoURL == nil)
-        #expect(!FileManager.default.fileExists(atPath: ownedURL.path))
-    }
-
-    @Test func deletingCustomThemeRemovesItsOwnedLogoAndRestoresBuiltInSelection() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: suiteName, directoryHint: .isDirectory)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: root)
-        }
-        let custom = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000028",
-            name: "Logo deletion"
-        )
-        let settings = SettingsStore(defaults: defaults, customThemeLogoDirectory: root)
-        try settings.saveCustomTheme(custom)
-        settings.themeID = custom.themeID
-        _ = try settings.setCustomThemeLogo(
-            data: makeLogoPNG(width: 80, height: 50),
-            for: custom.id
-        )
-        let ownedURL = try #require(settings.customLogoURL(for: custom.id))
-
-        try settings.deleteCustomTheme(id: custom.id)
-
-        #expect(settings.customThemes.isEmpty)
-        #expect(settings.themeID == .bighelp)
-        #expect(!FileManager.default.fileExists(atPath: ownedURL.path))
-    }
-
-    @Test func legacyCustomThemeCatalogMigratesToTheCurrentVersion() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let theme = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000022",
-            name: "Migrated"
-        )
-        let items = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode([theme])
-        )
-        let legacy = try JSONSerialization.data(withJSONObject: [
-            "schemaVersion": 0,
-            "items": items,
-        ])
-        defaults.set(legacy, forKey: "loopdy.appearance.customThemes")
-
-        let restored = SettingsStore(defaults: defaults)
-
-        #expect(restored.customThemes == [theme])
-        #expect(restored.customThemePersistenceError == nil)
-        let migratedData = try #require(
-            defaults.data(forKey: "loopdy.appearance.customThemes")
-        )
-        let migratedObject = try #require(
-            JSONSerialization.jsonObject(with: migratedData) as? [String: Any]
-        )
-        #expect(migratedObject["schemaVersion"] as? Int == 1)
-        #expect(migratedObject["themes"] != nil)
-    }
-
-    @Test func malformedAndFutureThemeCatalogsFailSafelyWithoutBeingOverwritten() throws {
-        let malformedSuite = "\(#function).malformed"
-        let malformedDefaults = UserDefaults(suiteName: malformedSuite)!
-        malformedDefaults.removePersistentDomain(forName: malformedSuite)
-        defer { malformedDefaults.removePersistentDomain(forName: malformedSuite) }
-        let malformed = Data("{ definitely-not-json".utf8)
-        malformedDefaults.set(malformed, forKey: "loopdy.appearance.customThemes")
-        malformedDefaults.set(
-            "custom.00000000-0000-0000-0000-000000000099",
-            forKey: "loopdy.appearance.theme"
-        )
-
-        let malformedStore = SettingsStore(defaults: malformedDefaults)
-        #expect(malformedStore.customThemes.isEmpty)
-        #expect(malformedStore.themeID == .bighelp)
-        #expect(malformedStore.customThemePersistenceError == .malformedData)
-        #expect(malformedDefaults.data(forKey: "loopdy.appearance.customThemes") == malformed)
-
-        let futureSuite = "\(#function).future"
-        let futureDefaults = UserDefaults(suiteName: futureSuite)!
-        futureDefaults.removePersistentDomain(forName: futureSuite)
-        defer { futureDefaults.removePersistentDomain(forName: futureSuite) }
-        let future = Data("{\"schemaVersion\":2,\"themes\":[]}".utf8)
-        futureDefaults.set(future, forKey: "loopdy.appearance.customThemes")
-
-        let futureStore = SettingsStore(defaults: futureDefaults)
-        #expect(futureStore.customThemes.isEmpty)
-        #expect(
-            futureStore.customThemePersistenceError
-                == .unsupportedSchemaVersion(found: 2, current: 1)
-        )
-        #expect(futureDefaults.data(forKey: "loopdy.appearance.customThemes") == future)
-    }
-
-    @Test func customThemeCatalogRoundTripsThroughVersionedJSON() throws {
-        let theme = try makeCustomTheme(id: "00000000-0000-0000-0000-000000000023", name: "Round trip")
-        let catalog = CustomThemeCatalog(themes: [theme])
-        let data = try JSONEncoder().encode(catalog)
-        let decoded = try JSONDecoder().decode(CustomThemeCatalog.self, from: data)
-        #expect(decoded == catalog)
-        #expect(decoded.schemaVersion == 1)
-    }
-
-    @Test func customThemeDescriptionRoundTripsAndLegacyThemesRemainValid() throws {
-        let legacy = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000023",
-            name: "Legacy"
-        )
-        let legacyData = try JSONEncoder().encode(legacy)
-        let decodedLegacy = try JSONDecoder().decode(CustomTheme.self, from: legacyData)
-        #expect(decodedLegacy.description == nil)
-        #expect(decodedLegacy.definition.summary == "Custom theme using System.")
-
-        let described = try CustomTheme(
-            id: legacy.id,
-            name: legacy.name,
-            description: "  Warm   neutrals for focused work.  ",
-            font: legacy.font,
-            accentHex: legacy.accentHex,
-            light: legacy.light,
-            dark: legacy.dark
-        )
-        let decoded = try JSONDecoder().decode(
-            CustomTheme.self,
-            from: JSONEncoder().encode(described)
-        )
-        #expect(decoded.description == "Warm neutrals for focused work.")
-        #expect(decoded.definition.summary == "Warm neutrals for focused work.")
-    }
-
-    @Test func customThemeDescriptionIsOptionalAndBounded() throws {
-        let theme = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000024",
-            name: "Optional"
-        )
-        let empty = try CustomTheme(
-            id: theme.id,
-            name: theme.name,
-            description: " \n ",
-            font: theme.font,
-            accentHex: theme.accentHex,
-            light: theme.light,
-            dark: theme.dark
-        )
-        #expect(empty.description == nil)
-        #expect(throws: CustomThemeValidationError.invalidDescription) {
-            try CustomTheme(
-                id: theme.id,
-                name: theme.name,
-                description: String(repeating: "a", count: CustomTheme.maximumDescriptionLength + 1),
-                font: theme.font,
-                accentHex: theme.accentHex,
-                light: theme.light,
-                dark: theme.dark
-            )
-        }
-    }
-
-    @Test func duplicateAndLogoReplacementPreserveCustomThemeDescription() throws {
-        let defaults = isolatedDefaults()
-        let store = SettingsStore(defaults: defaults)
-        let base = try makeCustomTheme(
-            id: "00000000-0000-0000-0000-000000000025",
-            name: "Described"
-        )
-        let theme = try CustomTheme(
-            id: base.id,
-            name: base.name,
-            description: "Quiet colors for late-night work.",
-            font: base.font,
-            accentHex: base.accentHex,
-            light: base.light,
-            dark: base.dark
-        )
-        try store.saveCustomTheme(theme)
-
-        let duplicate = try store.duplicateCustomTheme(id: theme.id)
-        #expect(duplicate.description == theme.description)
-        #expect(try theme.replacingLogo(nil).description == theme.description)
-    }
-
-    @Test func persistedCatalogCannotBypassTheCustomThemeLimit() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        // One theme past the product limit must be rejected wholesale rather
-        // than silently truncated, so a tampered catalog cannot widen the cap.
-        let themes = try (0...SettingsStore.maximumCustomThemes).map { index in
-            try makeCustomTheme(
-                id: String(format: "00000000-0000-0000-0000-%012d", index + 31),
-                name: "Theme \(index + 31)"
-            )
-        }
-        #expect(themes.count == SettingsStore.maximumCustomThemes + 1)
-        let themeObject = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(themes)
-        )
-        let persisted = try JSONSerialization.data(withJSONObject: [
-            "schemaVersion": 1,
-            "themes": themeObject,
-        ])
-        defaults.set(persisted, forKey: "loopdy.appearance.customThemes")
-
-        let restored = SettingsStore(defaults: defaults)
-
-        #expect(restored.customThemes.isEmpty)
-        #expect(restored.customThemePersistenceError == .invalidCatalog)
-        #expect(defaults.data(forKey: "loopdy.appearance.customThemes") == persisted)
-    }
-
-    @Test func persistedCatalogAtTheLimitIsAccepted() throws {
-        let suiteName = #function
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let themes = try (0..<SettingsStore.maximumCustomThemes).map { index in
-            try makeCustomTheme(
-                id: String(format: "00000000-0000-0000-0000-%012d", index + 31),
-                name: "Theme \(index + 31)"
-            )
-        }
-        let themeObject = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(themes)
-        )
-        defaults.set(
-            try JSONSerialization.data(withJSONObject: [
-                "schemaVersion": 1,
-                "themes": themeObject,
-            ]),
-            forKey: "loopdy.appearance.customThemes"
-        )
-
-        let restored = SettingsStore(defaults: defaults)
-
-        #expect(restored.customThemes.count == SettingsStore.maximumCustomThemes)
-        #expect(restored.customThemePersistenceError == nil)
-    }
-
-    @Test func builtInThemesAreRegistryBackedAndResolveDistinctLightAndDarkPalettes() {
-        #expect(BighelpThemeRegistry.builtIns.map(\.id) == [.bighelp, .nous, .superpilot])
-
-        let nousLight = BighelpTheme.resolve(
-            themeID: .nous,
-            appearance: .light,
-            colorScheme: .dark,
-            contrast: .standard
-        )
-        let nousDark = BighelpTheme.resolve(
-            themeID: .nous,
-            appearance: .dark,
-            colorScheme: .light,
-            contrast: .standard
-        )
-        let superpilotLight = BighelpTheme.resolve(
-            themeID: .superpilot,
-            appearance: .light,
-            colorScheme: .dark,
-            contrast: .standard
-        )
-
-        #expect(nousLight.themeID == .nous)
-        let nousDefinition = BighelpThemeRegistry.definition(for: .nous)
-        let superpilotDefinition = BighelpThemeRegistry.definition(for: .superpilot)
-        #expect(nousDefinition?.light.actionHex == "0071A9")
-        #expect(nousDefinition?.light.typography.displayFontNames.first == "Sigurd Variable")
-        #expect(nousDefinition?.light.typography.bodyFontNames.first == "Rules Variable")
-        #expect(superpilotDefinition?.light.typeface == .rounded)
-        #expect(superpilotDefinition?.light.typography.displayFontNames.first == "Segoe UI Semibold")
-        #expect(superpilotDefinition?.light.typography.bodyFontNames.first == "Segoe UI")
-        #expect(nousLight.canvasHex != nousDark.canvasHex)
-        #expect(superpilotLight.themeID == .superpilot)
-        #expect(superpilotLight.typeface == .system)
-        #expect(superpilotLight.backgroundAccentHexes.count == 3)
-        #expect(nousLight.typography == .bighelp)
-        #expect(superpilotLight.typography == .bighelp)
-        #expect(BighelpTheme.light.typeface == .system)
-        #expect(BighelpTheme.light.typography.bodyFontNames.isEmpty)
-        #expect(BighelpTheme.light.typography.codeFontNames.isEmpty)
-        #expect(BighelpTheme.light.typography.brandFontNames.isEmpty)
-    }
-
-    @Test func builtInThemesUseNeutralCanvasesAndDistinctAccents() {
-        let ids = BighelpThemeRegistry.builtIns.map(\.id)
-        let light = ids.map {
-            BighelpTheme.resolve(
-                themeID: $0,
-                appearance: .light,
-                colorScheme: .dark,
-                contrast: .standard
-            )
-        }
-        let dark = ids.map {
-            BighelpTheme.resolve(
-                themeID: $0,
-                appearance: .dark,
-                colorScheme: .light,
-                contrast: .standard
-            )
-        }
-
-        // Every built-in theme shares the default pages (Cream, Graphite); only the accent varies.
-        #expect(light.allSatisfy { $0.canvasHex == "FFF9F5" && $0.surfaceHex == "FFFFFF" })
-        #expect(dark.allSatisfy { $0.canvasHex == BighelpTheme.graphiteDark.canvasHex
-            && $0.surfaceHex == BighelpTheme.graphiteDark.surfaceHex })
-        #expect(Set(light.map(\.actionHex)).count == 3)
-    }
-
-    @Test func themeDefinitionsRoundTripForFutureImportedThemeCatalogs() throws {
-        let definition = try #require(BighelpThemeRegistry.definition(for: .superpilot))
-        let encoded = try JSONEncoder().encode(definition)
-        let decoded = try JSONDecoder().decode(BighelpThemeDefinition.self, from: encoded)
-
-        #expect(decoded == definition)
-    }
-
-
-    private func makeCustomTheme(id: String, name: String) throws -> CustomTheme {
-        try CustomTheme(
-            id: UUID(uuidString: id)!,
-            name: name,
-            font: .system,
-            accentHex: "3366CC",
-            light: CustomThemePalette(
-                backgroundHex: "FFFFFF",
-                primaryTextHex: "111111",
-                secondaryTextHex: "333333",
-                tertiaryTextHex: "555555"
-            ),
-            dark: CustomThemePalette(
-                backgroundHex: "101010",
-                primaryTextHex: "FFFFFF",
-                secondaryTextHex: "E0E0E0",
-                tertiaryTextHex: "B0B0B0"
-            )
-        )
-    }
-
-    private func makeLogoPNG(width: Int, height: Int) -> Data {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        return UIGraphicsImageRenderer(
-            size: CGSize(width: width, height: height),
-            format: format
-        ).pngData { context in
-            UIColor.systemIndigo.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        }
-    }
 }

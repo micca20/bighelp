@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 @testable import Bighelp
 
-/// Live app presentation is independent of the retained theme-document palette.
+/// One live look: only the bubble color changes the action ink.
 /// These checks resolve real UIKit colors; stored hex equality alone is not proof.
 @MainActor
 final class IMessageThemeContractTests: XCTestCase {
@@ -15,11 +15,13 @@ final class IMessageThemeContractTests: XCTestCase {
         ("cardBackground", \.cardBackground), ("navigationBackground", \.navigationBackground)
     ]
 
+    /// Every bubble color, plus no choice (bighelp's own lavender).
+    private var contexts: [BighelpAppearanceContext] {
+        [BighelpAppearanceContext(appearance: .system)]
+            + BighelpBubbleColor.allCases.map { BighelpAppearanceContext(appearance: .system, bubbleColor: $0) }
+    }
+
     func testOutgoingMessageUsesWhiteWithoutChangingActionInk() throws {
-        let customs = try ["FFFFFF", "FFCC00", "0088FF", "8040C0"].map { try makeCustom(accent: $0) }
-        let contexts = BighelpThemeRegistry.builtIns.map {
-            BighelpAppearanceContext(appearance: .system, themeID: $0.id)
-        } + customs.map { BighelpAppearanceContext(appearance: .system, themeID: $0.themeID, customTheme: $0) }
         for dark in [false, true] {
             let nativeTraits = traits(dark: dark)
             for context in contexts {
@@ -31,33 +33,26 @@ final class IMessageThemeContractTests: XCTestCase {
             }
         }
     }
-    func testEveryLiveThemeUsesTheSameAdaptiveNeutralRoles() throws {
-        let custom = try makeCustom()
-        let contexts = BighelpThemeRegistry.builtIns.map {
-            BighelpAppearanceContext(appearance: .system, themeID: $0.id)
-        } + [BighelpAppearanceContext(appearance: .system, themeID: custom.themeID, customTheme: custom)]
+
+    func testEveryBubbleColorKeepsTheSameAdaptiveNeutralRoles() throws {
         for dark in [false, true] {
             for increased in [false, true] {
                 let traits = traits(dark: dark, increased: increased)
-                let reference = resolve(BighelpAppearanceContext(appearance: .system, themeID: .bighelp), dark, increased)
+                let reference = resolve(BighelpAppearanceContext(appearance: .system), dark, increased)
                 for context in contexts {
                     let theme = resolve(context, dark, increased)
                     for (name, path) in roles {
                         assertColor(theme[keyPath: path], equals: reference[keyPath: path], traits: traits,
-                                    "\(context.themeID.rawValue) \(name), dark=\(dark), increased=\(increased)")
+                                    "\(context.bubbleColor?.rawValue ?? "default") \(name), dark=\(dark), increased=\(increased)")
                     }
                 }
             }
         }
     }
 
-    func testLiveTypeAndControlGeometryDoNotChangeWithTheme() throws {
-        let custom = try makeCustom()
+    func testLiveTypeAndControlGeometryDoNotChangeWithBubbleColor() throws {
         for dark in [false, true] {
-            let reference = resolve(.init(appearance: .system, themeID: .bighelp), dark, false)
-            let contexts = BighelpThemeRegistry.builtIns.map {
-                BighelpAppearanceContext(appearance: .system, themeID: $0.id)
-            } + [.init(appearance: .system, themeID: custom.themeID, customTheme: custom)]
+            let reference = resolve(.init(appearance: .system), dark, false)
             for context in contexts {
                 let theme = resolve(context, dark, false)
                 XCTAssertEqual(theme.cornerScale, reference.cornerScale)
@@ -74,10 +69,6 @@ final class IMessageThemeContractTests: XCTestCase {
     }
 
     func testOutgoingForegroundHasReadableContrastAgainstActualAccent() throws {
-        let customs = try ["FFFFFF", "000000", "FFCC00", "0088FF", "8040C0", "FF5A4F"].map { try makeCustom(accent: $0) }
-        let contexts = BighelpThemeRegistry.builtIns.map {
-            BighelpAppearanceContext(appearance: .system, themeID: $0.id)
-        } + customs.map { BighelpAppearanceContext(appearance: .system, themeID: $0.themeID, customTheme: $0) }
         for dark in [false, true] {
             for increased in [false, true] {
                 let traits = traits(dark: dark, increased: increased)
@@ -86,7 +77,8 @@ final class IMessageThemeContractTests: XCTestCase {
                     let background = luminance(components(theme.action, traits: traits))
                     let foreground = luminance(components(theme.actionForeground, traits: traits))
                     let ratio = (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05)
-                    XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(context.themeID.rawValue), dark=\(dark), increased=\(increased)")
+                    XCTAssertGreaterThanOrEqual(ratio, 4.5,
+                                                "\(context.bubbleColor?.rawValue ?? "default"), dark=\(dark), increased=\(increased)")
                 }
             }
         }
@@ -95,7 +87,7 @@ final class IMessageThemeContractTests: XCTestCase {
     func testCompanionHexMatchesTheActualNativeActionForEveryAppearance() {
         for dark in [false, true] {
             for increased in [false, true] {
-                let theme = resolve(.init(appearance: .system, themeID: .bighelp), dark, increased)
+                let theme = resolve(.init(appearance: .system), dark, increased)
                 let traits = traits(dark: dark, increased: increased)
                 let actual = components(theme.action, traits: traits)
                 let encoded = components(Color(hex: theme.actionHex), traits: traits)
@@ -107,52 +99,20 @@ final class IMessageThemeContractTests: XCTestCase {
         }
     }
 
-    func testSelectingCustomAccentActuallyChangesLiveActions() throws {
-        let first = try makeCustom(accent: "8040C0")
-        let second = try makeCustom(accent: "207040")
+    func testPickingABubbleColorActuallyChangesLiveActions() throws {
         for dark in [false, true] {
-            let a = resolve(.init(appearance: .system, themeID: first.themeID, customTheme: first), dark, false)
-            let b = resolve(.init(appearance: .system, themeID: second.themeID, customTheme: second), dark, false)
+            let a = resolve(.init(appearance: .system, bubbleColor: .ocean), dark, false)
+            let b = resolve(.init(appearance: .system, bubbleColor: .mint), dark, false)
             XCTAssertNotEqual(components(a.action, traits: traits(dark: dark)), components(b.action, traits: traits(dark: dark)))
         }
     }
 
-    func testResolvingLivePresentationDoesNotRewriteSavedThemeDocuments() throws {
-        let custom = try makeCustom()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let before = try encoder.encode(custom)
-        let definitionsBefore = try encoder.encode(BighelpThemeRegistry.builtIns)
-        for dark in [false, true] {
-            _ = resolve(.init(appearance: .system, themeID: custom.themeID, customTheme: custom), dark, true)
-        }
-        XCTAssertEqual(try encoder.encode(custom), before)
-        XCTAssertEqual(try encoder.encode(BighelpThemeRegistry.builtIns), definitionsBefore)
-        XCTAssertEqual(try JSONDecoder().decode(CustomTheme.self, from: before), custom)
-        XCTAssertEqual(custom.light.backgroundHex, "FFF0DD")
-        XCTAssertEqual(custom.dark.backgroundHex, "201020")
-        XCTAssertEqual(custom.font, .rounded)
-    }
-
-    func testExplicitThemeDocumentPreviewRetainsItsStoredPalette() throws {
-        let custom = try makeCustom()
-        for dark in [false, true] {
-            let palette = dark ? custom.dark : custom.light
-            let preview = try CustomTheme.previewPalette(palette: palette, accentHex: custom.accentHex, font: custom.font, isDark: dark)
-            assertColor(preview.canvas, equals: Color(hex: palette.backgroundHex), traits: traits(dark: dark), "Document canvas")
-            assertColor(preview.primaryText, equals: Color(hex: palette.primaryTextHex), traits: traits(dark: dark), "Document text")
-        }
-    }
-
-    func testPartnerAndCustomActionInkStaysReadableOnTheNeutralCanvas() throws {
-        let customs = try ["FFFFFF", "000000", "FFCC00", "0088FF"].map { try makeCustom(accent: $0) }
-        let definitions = BighelpThemeRegistry.builtIns.filter { $0.id != .bighelp } + customs.map(\.definition)
-        for definition in definitions {
+    /// bighelp's own lavender declares its ink; every other bubble color is darkened until readable.
+    func testEveryBubbleColorStaysReadableOnTheNeutralCanvas() throws {
+        for context in contexts where context.bubbleColor != nil && context.bubbleColor != .lavender {
             for dark in [false, true] {
                 for increased in [false, true] {
-                    let theme = BighelpTheme.resolve(definition: definition, appearance: .system,
-                                                   colorScheme: dark ? .dark : .light,
-                                                   contrast: increased ? .increased : .standard)
+                    let theme = resolve(context, dark, increased)
                     let baseTraits = traits(dark: dark, increased: increased)
                     for traits in [baseTraits, UITraitCollection(traitsFrom: [baseTraits,
                                       UITraitCollection(userInterfaceLevel: .elevated)])] {
@@ -161,7 +121,8 @@ final class IMessageThemeContractTests: XCTestCase {
                             let background = luminance(components(surface, traits: traits))
                             let ratio = (max(ink, background) + 0.05) / (min(ink, background) + 0.05)
                             XCTAssertGreaterThanOrEqual(ratio, 4.5,
-                                "Links/actions cannot disappear against native surfaces: \(definition.id.rawValue), dark=\(dark)")
+                                "Links/actions cannot disappear against native surfaces: "
+                                + "\(context.bubbleColor?.rawValue ?? "default"), dark=\(dark)")
                         }
                     }
                 }
@@ -169,36 +130,25 @@ final class IMessageThemeContractTests: XCTestCase {
         }
     }
 
-    func testLivePreviewProjectionMatchesTheAppAndLeavesRawPalettesIntact() throws {
-        let custom = try makeCustom()
-        let definitions = BighelpThemeRegistry.builtIns + [custom.definition]
-        for definition in definitions {
-            for dark in [false, true] {
-                for increased in [false, true] {
-                    let palette = dark
-                        ? (increased ? definition.darkHighContrast : definition.dark)
-                        : (increased ? definition.lightHighContrast : definition.light)
-                    let sample = palette.resolvedForLivePresentation(
-                        colorScheme: dark ? .dark : .light, contrast: increased ? .increased : .standard)
-                    let app = BighelpTheme.resolve(definition: definition, appearance: .system,
-                                                  colorScheme: dark ? .dark : .light,
-                                                  contrast: increased ? .increased : .standard)
-                    let traits = traits(dark: dark, increased: increased)
-                    for (_, role) in roles { assertColor(sample[keyPath: role], equals: app[keyPath: role], traits: traits, "Preview role") }
-                    assertColor(sample.action, equals: app.action, traits: traits, "Preview accent")
-                    assertColor(sample.actionForeground, equals: app.actionForeground, traits: traits, "Preview foreground")
-                    XCTAssertEqual(sample.typeface, .system)
-                }
+    func testLivePreviewProjectionMatchesTheApp() throws {
+        let definition = BighelpThemeRegistry.ember
+        for dark in [false, true] {
+            for increased in [false, true] {
+                let palette = dark
+                    ? (increased ? definition.darkHighContrast : definition.dark)
+                    : (increased ? definition.lightHighContrast : definition.light)
+                let sample = palette.resolvedForLivePresentation(
+                    colorScheme: dark ? .dark : .light, contrast: increased ? .increased : .standard)
+                let app = BighelpTheme.resolve(definition: definition, appearance: .system,
+                                              colorScheme: dark ? .dark : .light,
+                                              contrast: increased ? .increased : .standard)
+                let traits = traits(dark: dark, increased: increased)
+                for (_, role) in roles { assertColor(sample[keyPath: role], equals: app[keyPath: role], traits: traits, "Preview role") }
+                assertColor(sample.action, equals: app.action, traits: traits, "Preview accent")
+                assertColor(sample.actionForeground, equals: app.actionForeground, traits: traits, "Preview foreground")
+                XCTAssertEqual(sample.typeface, .system)
             }
         }
-        XCTAssertEqual(custom.light.backgroundHex, "FFF0DD")
-        XCTAssertEqual(custom.font, .rounded)
-    }
-
-    private func makeCustom(accent: String = "8040C0") throws -> CustomTheme {
-        try CustomTheme(name: "Preserved amber and plum", font: .rounded, accentHex: accent,
-                        light: .init(backgroundHex: "FFF0DD", primaryTextHex: "101010", secondaryTextHex: "303030", tertiaryTextHex: "404040"),
-                        dark: .init(backgroundHex: "201020", primaryTextHex: "FFFFFF", secondaryTextHex: "EEEEEE", tertiaryTextHex: "DDDDDD"))
     }
 
     private func resolve(_ context: BighelpAppearanceContext, _ dark: Bool, _ increased: Bool) -> BighelpTheme {

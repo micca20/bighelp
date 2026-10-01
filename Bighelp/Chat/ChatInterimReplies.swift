@@ -5,27 +5,40 @@ import SwiftUI
 ///
 /// Every message stays in place and fully readable; only its look changes.
 /// A message is interim when the agent kept working after it (tools or
-/// thinking). In a finished turn the last message is always the answer.
+/// thinking), including work the chat hides. In a finished turn the last
+/// message is always the answer.
 @MainActor
 enum ChatInterimReplies {
-    static func marking(_ entries: [ChatTranscriptEntry], isSending: Bool, isBotMode: Bool) -> [ChatTranscriptEntry] {
+    /// `activityEvents` is all of the chat's work, shown or hidden: with tool
+    /// calls hidden the transcript has no work in it, but the notes before
+    /// that work are still the agent thinking out loud.
+    static func marking(
+        _ entries: [ChatTranscriptEntry], isSending: Bool, isBotMode: Bool,
+        activityEvents: [ChatActivityEvent] = []
+    ) -> [ChatTranscriptEntry] {
         // In a room several agents answer at once; each reply is someone's answer.
         guard !isBotMode else { return entries }
         let turnStarts = entries.indices.filter {
             if case .message(let item) = entries[$0], item.role == .human { return true }
             return false
         }
+        let workOrders = activityEvents.filter(\.isPresentable).compactMap(\.sourceOrder).sorted()
         var result = entries
         var start = 0
         for (index, end) in (turnStarts + [entries.count]).enumerated() {
             let isLastTurn = index == turnStarts.count
-            markTurn(&result, range: start..<end, inFlight: isLastTurn && isSending)
+            let lower = start > 0 ? order(of: entries[start - 1]) : nil
+            let upper = end < entries.count ? order(of: entries[end]) : nil
+            let hiddenWork = lastOrder(in: workOrders, after: lower, before: upper)
+            markTurn(&result, range: start..<end, inFlight: isLastTurn && isSending, lastHiddenWork: hiddenWork)
             start = end + 1
         }
         return result
     }
 
-    private static func markTurn(_ entries: inout [ChatTranscriptEntry], range: Range<Int>, inFlight: Bool) {
+    private static func markTurn(
+        _ entries: inout [ChatTranscriptEntry], range: Range<Int>, inFlight: Bool, lastHiddenWork: Int?
+    ) {
         guard !range.isEmpty else { return }
         let replies = range.filter { isReply(entries[$0]) }
         guard let lastReply = replies.last else { return }
@@ -34,11 +47,33 @@ enum ChatInterimReplies {
             return false
         }
         for index in replies {
-            let workFollows = lastWork.map { index < $0 } ?? false
+            let shownWorkFollows = lastWork.map { index < $0 } ?? false
+            let hiddenWorkFollows = order(of: entries[index]).flatMap { reply in
+                lastHiddenWork.map { reply < $0 }
+            } ?? false
+            let workFollows = shownWorkFollows || hiddenWorkFollows
             let interim = workFollows && (inFlight || index < lastReply)
             guard interim, case .message(let item) = entries[index] else { continue }
             entries[index] = .message(item.markedInterim())
         }
+    }
+
+    private static func order(of entry: ChatTranscriptEntry) -> Int? {
+        guard case .message(let item) = entry else { return nil }
+        return item.metadata.sourceOrder
+    }
+
+    /// The latest work strictly inside one turn's order bounds.
+    private static func lastOrder(in sorted: [Int], after lower: Int?, before upper: Int?) -> Int? {
+        var low = 0
+        var high = sorted.count
+        while low < high {
+            let middle = (low + high) / 2
+            if upper.map({ sorted[middle] < $0 }) ?? true { low = middle + 1 } else { high = middle }
+        }
+        guard low > 0 else { return nil }
+        let candidate = sorted[low - 1]
+        return lower.map { candidate > $0 } ?? true ? candidate : nil
     }
 
     /// Plain agent prose only; cards, approvals and media keep their own look.

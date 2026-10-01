@@ -32,6 +32,9 @@ struct AgentProfileSheet: View {
     let schedules: [ScheduledTask]
     let onEdit: () -> Void
     let onOpenSchedule: (ScheduledTask) -> Void
+    /// Opened from a chat: that chat's model and reasoning, with Change.
+    var chatControls: SessionRuntimeControlModel? = nil
+    var onChangeModel: (() -> Void)? = nil
     @State private var tab: Tab = .activity
     @State private var document: (title: String, body: AgentIdentityDocuments.Document)?
     @Environment(\.dismiss) private var dismiss
@@ -40,6 +43,7 @@ struct AgentProfileSheet: View {
         ScrollView {
             VStack(spacing: BighelpTokens.space16) {
                 header
+                if let chatControls { chatModelCard(chatControls) }
                 tabBar
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,6 +106,21 @@ struct AgentProfileSheet: View {
                 .foregroundStyle(isConnected ? Color.green : theme.secondaryText)
                 .accessibilityIdentifier("agent.profile.connection")
         }
+    }
+
+    private func chatModelCard(_ controls: SessionRuntimeControlModel) -> some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+            Text("THIS CHAT")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(0.9)
+                .foregroundStyle(theme.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            ChatModelSummaryRow(controls: controls, onChange: onChangeModel)
+                .padding(.horizontal, BighelpTokens.space16)
+                .padding(.vertical, BighelpTokens.space8)
+                .background(theme.surface, in: .rect(cornerRadius: 18))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var tabBar: some View {

@@ -123,6 +123,73 @@ import Testing
         #expect(!management.actions.contains("install"))
     }
 
+    /// No app build pins the plugin: an install uses the newest release on GitHub.
+    @Test func featureSetupInstallsTheNewestRelease() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        let releases = try FixedPluginReleases.release("3.0.0", "c")
+        management.onInstall = { management.rows = [fixture.row(sha: String(repeating: "c", count: 40), version: "3.0.0")] }
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry, releases: releases,
+                                               management: management, enrollNotifications: false)
+        await model.enable()
+        #expect(model.state == .installed)
+        let install = try #require(management.requests.first { $0["action"] == .string("install") })
+        #expect(install["ref"] == .string(String(repeating: "c", count: 40)))
+        #expect(install["force"] == .boolean(false))
+    }
+
+    @Test func anOlderPluginIsUpdatedAndANewerOrEqualOneIsKept() async throws {
+        for (installed, replaced) in [("2.19.0", true), ("3.0.0", false), ("3.1.0", false)] {
+            let fixture = try Fixture()
+            defer { fixture.cleanup() }
+            let management = Manager(saved: fixture.saved)
+            management.rows = [fixture.row(sha: String(repeating: "e", count: 40), version: installed)]
+            management.onInstall = { management.rows = [fixture.row(sha: String(repeating: "c", count: 40), version: "3.0.0")] }
+            let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+                releases: try FixedPluginReleases.release("3.0.0", "c"), management: management, enrollNotifications: false)
+            await model.enable()
+            #expect(model.state == .installed, "\(installed)")
+            let install = management.requests.first { $0["action"] == .string("install") }
+            #expect((install != nil) == replaced, "\(installed)")
+            if replaced { #expect(install?["force"] == .boolean(true)) }
+        }
+    }
+
+    /// A lost reply may still be installing on the host: that same commit is
+    /// reconciled, never a newer release installed on top of it.
+    @Test func anUnfinishedInstallIsFinishedWithItsOwnCommit() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        var host = fixture.host
+        let requested = String(repeating: "b", count: 40)
+        host.pluginIntent = .init(identifier: fixture.pin.identifier, revision: requested, profile: nil, phase: .installRequested)
+        try fixture.registry.update(host)
+        let management = Manager(saved: fixture.saved)
+        let releases = try FixedPluginReleases.release("3.0.0", "c")
+        let model = HostNotificationSetupModel(host: host, registry: fixture.registry, releases: releases,
+                                               management: management, enrollNotifications: false)
+        await model.enable()
+        #expect(model.state == .outcomeUnknown)
+        #expect(!management.actions.contains("install"))
+        management.rows = [fixture.row(sha: requested, version: "2.19.0", enabled: true)]
+        await model.enable()
+        #expect(model.state == .installed)
+        #expect(!management.actions.contains("install"))
+    }
+
+    @Test func unreachableGitHubIsExplainedAndInstallsNothing() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            releases: FixedPluginReleases(.failure(.unreachable)), management: management, enrollNotifications: false)
+        await model.enable()
+        #expect(model.state == .releaseUnavailable)
+        #expect(model.actionTitle == "Try Again")
+        #expect(!management.actions.contains("install"))
+    }
+
     @Test func remoteDashboardOffersItsExistingSessionTokenMode() throws {
         let endpoint = try HostAddressInput.endpoint(address: "https://hermes.example.ts.net", port: "9119", allowPrivateHTTP: false)
         let discovery = HostAuthenticationDiscovery(endpoint: endpoint, requiresAuthentication: false, nativePKCE: false, providers: [])
@@ -135,6 +202,9 @@ import Testing
         #expect(vpn.baseURL.absoluteString == "http://10.8.0.5:9119")
         let lan = try HostAddressInput.endpoint(address: "hermes.lan", port: "9119", allowPrivateHTTP: true)
         #expect(lan.baseURL.absoluteString == "http://hermes.lan:9119")
+        // A Tailscale name is private too: plain HTTP, not a certificate error.
+        let tailnet = try HostAddressInput.endpoint(address: "mac.tail1234.ts.net:9119", port: "", allowPrivateHTTP: true)
+        #expect(tailnet.baseURL.absoluteString == "http://mac.tail1234.ts.net:9119")
         // Without the switch, or for a public name, or when https:// is typed, TLS stays.
         #expect(try HostAddressInput.endpoint(address: "10.8.0.5:9119", port: "", allowPrivateHTTP: false).baseURL.scheme == "https")
         #expect(try HostAddressInput.endpoint(address: "hermes.example.com", port: "", allowPrivateHTTP: true).baseURL.scheme == "https")
@@ -378,6 +448,10 @@ import Testing
             try JSONEncoder().encode(Snapshot(hosts: [host], selected: host.id)).write(to: root.appending(path: scope + ".json"))
             registry.bind(deviceID: "test-account", authorizationEpoch: 1, forceReload: true)
             pin = try HostPluginPin(revision: String(repeating: "a", count: 40))
+        }
+        func row(sha: String, version: String, enabled: Bool = true) -> BighelpJSONValue {
+            .object(["name": .string("loopdy"), "key": .string("loopdy"), "status": .string(enabled ? "enabled" : "disabled"),
+                     "pinned_sha": .string(sha), "version": .string(version)])
         }
         func plugin(enabled: Bool) -> BighelpJSONValue {
             .object(["name": .string("loopdy"), "key": .string("loopdy"), "status": .string(enabled ? "enabled" : "disabled"), "pinned_sha": .string(pin.revision)])

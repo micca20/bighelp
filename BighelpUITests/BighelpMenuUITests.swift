@@ -1,8 +1,8 @@
 import XCTest
 
 /// One menu (☰) with hosts, chats and everywhere else; the bighelp logo switches
-/// hosts on touch and hold; Settings holds this app's settings and Hermes Tools the
-/// host's tools. Set BIGHELP_MENU_EVIDENCE (TEST_RUNNER_BIGHELP_MENU_EVIDENCE) to
+/// hosts on touch and hold; Settings holds this app's settings and, in Nerd Mode,
+/// the host's tools. Set BIGHELP_MENU_EVIDENCE (TEST_RUNNER_BIGHELP_MENU_EVIDENCE) to
 /// save screenshots.
 final class BighelpMenuUITests: BighelpUITestCase {
     @MainActor
@@ -15,31 +15,40 @@ final class BighelpMenuUITests: BighelpUITestCase {
         XCTAssertFalse(app.buttons["quick-workspace.menu"].exists, "The grid button is gone.")
         save("01-settings", app)
 
-        // ☰: hosts first, then chats, then everywhere else.
+        // ☰: the host on top as one row, then the places you go, then recent chats.
         tap(app.buttons["home.drawer.open"])
         let menu = app.descendants(matching: .any)["navigation.menu"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        let hosts = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "menu.host.")).allElementsBoundByIndex
-        XCTAssertFalse(hosts.isEmpty, "The menu lists hosts to switch between.")
+        let hostSwitcher = app.buttons["menu.hosts"].firstMatch
+        XCTAssertTrue(hostSwitcher.waitForExistence(timeout: 3), "One row switches hosts.")
         XCTAssertTrue(app.buttons["menu.new-chat"].waitForExistence(timeout: 3))
-        XCTAssertLessThan(hosts[0].frame.minY, app.buttons["menu.new-chat"].frame.minY)
+        XCTAssertLessThan(hostSwitcher.frame.minY, app.buttons["menu.new-chat"].frame.minY)
         save("02-menu", app)
-        for id in ["menu.chats", "menu.agents", "menu.scheduled-tasks", "menu.hermes-tools", "menu.settings"] {
-            let row = app.buttons[id]
-            for _ in 0..<4 where !(row.exists && row.isHittable) { menu.swipeUp() }
-            XCTAssertTrue(row.exists, id)
+        // Everything on the first screen is reachable without scrolling.
+        for id in ["menu.new-chat", "menu.agents", "menu.projects", "menu.scheduled-tasks", "menu.settings", "menu.chats"] {
+            XCTAssertTrue(app.buttons[id].isHittable, "\(id) shows without scrolling")
         }
         XCTAssertLessThan(app.buttons["menu.agents"].frame.minY, app.buttons["menu.settings"].frame.minY)
-        save("02b-menu-scrolled", app)
+        XCTAssertLessThan(app.buttons["menu.settings"].frame.maxY, app.buttons["menu.chats"].frame.minY,
+                          "Recent chats come after the places you go")
+        hostSwitcher.tap()
+        let hosts = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "menu.host.")).allElementsBoundByIndex
+        XCTAssertFalse(hosts.isEmpty, "The switcher lists hosts.")
+        save("02b-host-switcher", app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
+        XCTAssertFalse(app.buttons["menu.hermes-tools"].exists, "Hermes tools live in Settings, not the menu.")
+        tap(app.buttons["menu.settings"])
 
-        // Hermes Tools keeps the host's tools; this app's settings moved to Settings.
-        tap(app.buttons["menu.hermes-tools"])
+        // Settings › Hermes tools keeps the host's tools; this app's own settings aren't in it.
+        openHermesTool("activity", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["dashboard.screen"].firstMatch.waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.descendants(matching: .any)["workspace.hub"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["workspace.open.activity"].waitForExistence(timeout: 5))
         for moved in ["appearance", "permissions", "watch", "contact", "tabBar", "caching", "instances", "security"] {
             XCTAssertFalse(app.buttons["workspace.open.\(moved)"].exists, moved)
         }
         save("03-hermes-tools", app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
 
         // Touch and hold the logo to switch hosts.
         let logo = app.buttons["brand.host-switcher"].firstMatch

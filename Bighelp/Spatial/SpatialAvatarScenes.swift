@@ -1,4 +1,5 @@
 #if os(visionOS)
+import RealityKit
 import SwiftUI
 
 /// The values every bighelp window reads, for scenes outside the main window.
@@ -24,6 +25,7 @@ struct SpatialSceneEnvironment: ViewModifier {
 struct SpatialAvatarVolume: View {
     @Bindable var model: SpatialAvatarModel
     let settings: SettingsStore
+    let permissionCenter: PermissionCenter
 
     @Environment(\.openWindow) private var openWindow
     @Environment(\.surfaceSnappingInfo) private var snapping
@@ -31,12 +33,86 @@ struct SpatialAvatarVolume: View {
     @BighelpThemeReader private var theme
     @State private var facing: SquareAzimuth = .front
     @FocusState private var isPromptFocused: Bool
+    @State private var rig = SpatialAvatarRig()
+    @State private var spin = Self.demoSpin
+    @State private var spinAtDragStart = Self.demoSpin
+    @Environment(\.companionStore) private var companionStore
+    @Environment(\.companionAgentScope) private var companionAgentScope
+    @Environment(\.physicalMetrics) private var metrics
 
+    @AppStorage(SpatialAvatarVolumeSize.key) private var rememberedScale = 1.0
+
+    /// The agent's space at the volume's default size; it grows and shrinks with the volume.
     static let avatarSize: CGFloat = 300
 
+    /// "-test-spatial-avatar-spin 0.7" (demo only) starts it turned, so screenshots show its depth.
+    private static var demoSpin: Float {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-use-demo-fixtures"),
+              let index = arguments.firstIndex(of: "-test-spatial-avatar-spin"),
+              arguments.indices.contains(index + 1) else { return 0 }
+        return Float(arguments[index + 1]) ?? 0
+    }
+
     var body: some View {
+        // Width and height are enough; a 3D reader would push the flat parts to the back.
+        GeometryReader { proxy in
+            stage(scale: scale(for: proxy.size))
+        }
+        // The volume can be this much smaller or bigger; its corners resize it.
+        // Depth has to be able to change too, or visionOS locks the size.
+        .frame(minWidth: points(SpatialAvatarVolumeSize.width * SpatialAvatarVolumeSize.smallest),
+               maxWidth: points(SpatialAvatarVolumeSize.width * SpatialAvatarVolumeSize.largest),
+               minHeight: points(SpatialAvatarVolumeSize.height * SpatialAvatarVolumeSize.smallest),
+               maxHeight: points(SpatialAvatarVolumeSize.height * SpatialAvatarVolumeSize.largest))
+        .frame(minDepth: points(SpatialAvatarVolumeSize.depth * SpatialAvatarVolumeSize.smallest),
+               maxDepth: points(SpatialAvatarVolumeSize.depth * SpatialAvatarVolumeSize.largest))
+        // Turn to face you as you walk around it. The system's floor guide shows
+        // when you look near it, so the volume's edges are easy to find and grab.
+        .rotation3DEffect(facing.orientation)
+        .volumeBaseplateVisibility(.automatic)
+        .supportedVolumeViewpoints(.all)
+        .onVolumeViewpointChange { _, viewpoint in
+            withAnimation(reduceMotion ? nil : .smooth) { facing = viewpoint.squareAzimuth }
+        }
+        .ornament(visibility: model.isPromptPresented ? .visible : .hidden,
+                  attachmentAnchor: .scene(.bottomFront), contentAlignment: .top) {
+            promptBar
+        }
+        // Voice sits on the agent's own volume, just to its right, and moves with it.
+        // A separate window landed low and tilted, nearly edge-on, until the volume moved.
+        // Its bottom lines up with the agent's base, so End stays at the agent's level.
+        .ornament(visibility: model.voice == nil ? .hidden : .visible,
+                  attachmentAnchor: .scene(.bottomTrailingFront), contentAlignment: .bottomLeading) {
+            voicePanel
+        }
+        .animation(reduceMotion ? nil : .snappy, value: model.isPromptPresented)
+        .animation(reduceMotion ? nil : .snappy, value: model.voice?.id)
+        .animation(reduceMotion ? nil : .snappy, value: model.reply)
+        .task { await model.connectIfNeeded() }
+        .task(id: model.isShowingMoveTip) {
+            guard model.isShowingMoveTip else { return }
+            try? await Task.sleep(for: .seconds(6))
+            model.isShowingMoveTip = false
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("spatial-avatar")
+    }
+
+    /// People resize the volume from its corners; the agent keeps its proportions.
+    private func scale(for size: CGSize) -> CGFloat {
+        let scale = min(size.width / points(SpatialAvatarVolumeSize.width),
+                        size.height / points(SpatialAvatarVolumeSize.height))
+        return SpatialAvatarVolumeSize.clamped(scale)
+    }
+
+    private func points(_ meters: Double) -> CGFloat {
+        metrics.convert(CGFloat(meters), from: .meters)
+    }
+
+    private func stage(scale: CGFloat) -> some View {
         VStack(spacing: BighelpTokens.space16) {
-            avatar
+            avatar(scale: scale)
             statusChip
             if !model.isMainWindowOpen {
                 // Simple mode: the way back to the whole app.
@@ -49,66 +125,87 @@ struct SpatialAvatarVolume: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .top) { topCard }
-        // Turn to face you as you walk around it; no plate under a floating pet.
-        .rotation3DEffect(facing.orientation)
-        .volumeBaseplateVisibility(.hidden)
-        .supportedVolumeViewpoints(.all)
-        .onVolumeViewpointChange { _, viewpoint in
-            withAnimation(reduceMotion ? nil : .smooth) { facing = viewpoint.squareAzimuth }
-        }
-        .ornament(visibility: model.isPromptPresented ? .visible : .hidden,
-                  attachmentAnchor: .scene(.bottomFront), contentAlignment: .top) {
-            promptBar
-        }
-        .animation(reduceMotion ? nil : .snappy, value: model.isPromptPresented)
-        .animation(reduceMotion ? nil : .snappy, value: model.reply)
-        .task { await model.connectIfNeeded() }
-        .task(id: model.isShowingMoveTip) {
-            guard model.isShowingMoveTip else { return }
-            try? await Task.sleep(for: .seconds(6))
-            model.isShowingMoveTip = false
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("spatial-avatar")
+        // Opens at the size it had last time.
+        .onChange(of: scale) { _, scale in rememberedScale = Double(scale) }
     }
 
     // MARK: Avatar
 
-    private var avatar: some View {
-        AgentLiveAvatar(agentID: model.agent?.id ?? "agent",
-                        displayName: model.agent?.name ?? "Your agent",
-                        imageURL: model.agent?.imageURL,
-                        activity: model.activity,
-                        size: Self.avatarSize,
-                        restingState: model.restingState)
-            .phaseAnimator(reduceMotion ? [0] : [0, 1]) { face, phase in
-                // A slow bob, so it reads as someone standing there.
-                face.offset(y: phase == 1 ? -6 : 0)
-            } animation: { _ in .easeInOut(duration: 2.4) }
-            .background(alignment: .bottom) { floorShadow }
-            .contentShape(.hoverEffect, .circle)
-            .hoverEffect(.highlight)
-            .onTapGesture(perform: pinch)
-            .onLongPressGesture(minimumDuration: 0.6) { model.isShowingMoveTip = true }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(model.agent?.name ?? "Your agent")
-            .accessibilityValue(model.activity.label)
-            .accessibilityHint(settings.spatialAvatarPinchAction == .talk ? "Starts talking" : "Opens a message box")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction(.default, pinch)
-            .accessibilityIdentifier("spatial-avatar.avatar")
+    private func avatar(scale: CGFloat) -> some View {
+        let size = Self.avatarSize * scale
+        // Feet on the bottom edge of its space, so the name under it stays in view.
+        let floor = -Float(metrics.convert(size * 1.15, to: .meters)) / 2
+        return ZStack {
+            RealityView { content in
+                content.add(rig.root)
+                rig.updates = content.subscribe(to: SceneEvents.Update.self) { [rig] _ in rig.update() }
+            } update: { _ in
+                rig.root.position = [0, floor, 0]
+                rig.root.scale = SIMD3(repeating: Float(scale))
+                rig.show(look)
+                rig.mood = mood
+                rig.reduceMotion = reduceMotion
+                rig.root.orientation = simd_quatf(angle: spin, axis: [0, 1, 0])
+            }
+            .allowsHitTesting(false)
+            // Taps, holds and drags land on the space it stands in, which is
+            // bigger than its outline and so easier to pinch. Vision Pro only
+            // targets what's drawn, so this can't be fully clear.
+            Color.white.opacity(0.001)
+        }
+        .frame(width: size, height: size * 1.15)
+        .onTapGesture(perform: poked)
+        .onLongPressGesture(minimumDuration: 0.6) { model.isShowingMoveTip = true }
+        // Alongside, so a pinch that moves a little still counts as a tap.
+        .simultaneousGesture(DragGesture(minimumDistance: 12)
+            .onChanged { turn(by: $0.translation.width) }
+            .onEnded { _ in spinAtDragStart = spin })
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.agent?.name ?? "Your agent")
+        .accessibilityValue(model.activity.label)
+        .accessibilityHint(settings.spatialAvatarPinchAction == .talk ? "Starts talking" : "Opens a message box")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, pinch)
+        .accessibilityIdentifier("spatial-avatar.avatar")
     }
 
-    /// A soft shadow on the floor of the volume grounds the avatar in the room.
-    private var floorShadow: some View {
-        Ellipse()
-            .fill(RadialGradient(colors: [.black.opacity(0.35), .clear], center: .center,
-                                 startRadius: 0, endRadius: Self.avatarSize * 0.36))
-            .frame(width: Self.avatarSize * 0.8, height: Self.avatarSize * 0.8)
-            .rotation3DEffect(.degrees(90), axis: (x: 1, y: 0, z: 0))
-            .offset(y: Self.avatarSize * 0.42)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+    /// A pinch: a happy hop, then talk or type.
+    private func poked() {
+        rig.poke()
+        pinch()
+    }
+
+    /// Dragging sideways turns it around.
+    private func turn(by width: CGFloat) {
+        spin = spinAtDragStart + Float(width) * 0.012
+    }
+
+    /// The Agent Studio look being tried on, or the agent's own.
+    private var appearance: CompanionAppearance? {
+        if let preview = model.previewAppearance { return preview }
+        guard let companionStore, !companionAgentScope.isEmpty else { return nil }
+        return companionStore.override(for: CompanionStore.agentKey(agentScope: companionAgentScope,
+                                                                    agentID: model.agent?.id ?? "agent"))
+    }
+
+    /// The agent's own look: its kit character, the default body, or its picture.
+    private var look: SpatialAvatarLook {
+        let agentID = model.agent?.id ?? "agent"
+        if let appearance, let look = SpatialAvatarLook(appearance: appearance, themeHex: theme.actionHex) {
+            return look
+        }
+        if let url = model.agent?.imageURL, FileManager.default.fileExists(atPath: url.bighelpFileSystemPath) {
+            return .photo(url)
+        }
+        let persona = AgentPersona(stableID: agentID)
+        return .persona(colorHex: persona.colorHex, isOrb: persona.body == .orb)
+    }
+
+    /// What it acts out: the agent's work, listening, or its chosen moves.
+    private var mood: String? {
+        if model.activity != .idle { return model.activity.moodID }
+        if model.restingState == .listening { return "listening" }
+        return appearance?.vibe?.moodID
     }
 
     private var statusChip: some View {
@@ -223,10 +320,7 @@ struct SpatialAvatarVolume: View {
         case .prompt:
             isPromptFocused = true
         case .voice:
-            Task {
-                guard let voice = await model.startVoice(settings) else { return }
-                openWindow(id: SpatialAvatarSceneID.voice, value: voice.id)
-            }
+            Task { _ = await model.startVoice(settings) }
         case .retrying:
             Task { await model.connectIfNeeded() }
         }
@@ -243,60 +337,32 @@ struct SpatialAvatarVolume: View {
         // Brings the main window back if it was closed; the chat is already selected.
         if !model.isMainWindowOpen { openWindow(id: SpatialAvatarSceneID.main) }
     }
-}
 
-/// Voice for the avatar's chat, in a panel that opens beside it. It's the same
-/// voice screen as in a chat, so both voice modes behave the same.
-struct SpatialAvatarVoicePanel: View {
-    let model: SpatialAvatarModel
-    let presentationID: String?
-    let settings: SettingsStore
-    let permissionCenter: PermissionCenter
+    // MARK: Voice
 
-    @Environment(\.dismissWindow) private var dismissWindow
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Group {
-            if let voice = model.voice, voice.id == presentationID {
-                VoicePresentationContainer(
-                    presentation: voice,
-                    agentID: model.agent?.id,
-                    agentImageURL: model.agent?.imageURL,
-                    permissionCenter: permissionCenter,
-                    onEnded: close,
-                    onWorkspaceTap: openChat,
-                    onUseTurnBased: useTTS,
-                    chatActivity: { model.activity }
-                )
-            } else {
-                // A voice panel restored after a relaunch has nothing to show.
-                Color.clear.onAppear { dismissWindow() }
-            }
-        }
-        .onDisappear {
-            if model.voice?.id == presentationID { model.endVoice() }
+    /// The same voice screen as in a chat, so both voice modes behave the same.
+    @ViewBuilder private var voicePanel: some View {
+        if let voice = model.voice {
+            VoicePresentationContainer(
+                presentation: voice,
+                agentID: model.agent?.id,
+                agentImageURL: model.agent?.imageURL,
+                permissionCenter: permissionCenter,
+                onEnded: { model.endVoice() },
+                onWorkspaceTap: openChat,
+                onUseTurnBased: useTurnBasedVoice,
+                chatActivity: { model.activity }
+            )
+            .id(voice.id)
+            .frame(width: 360, height: 500)
+            .glassBackgroundEffect(in: .rect(cornerRadius: 32))
         }
     }
 
-    private func close() {
-        model.endVoice()
-        dismissWindow()
-    }
-
-    private func openChat() {
-        guard model.openConversation() else { return }
-        if !model.isMainWindowOpen { openWindow(id: SpatialAvatarSceneID.main) }
-    }
-
-    private func useTTS() {
+    private func useTurnBasedVoice() {
         settings.voiceConversationMode = .turnBased
         model.endVoice()
-        dismissWindow()
-        Task {
-            guard let voice = await model.startVoice(settings) else { return }
-            openWindow(id: SpatialAvatarSceneID.voice, value: voice.id)
-        }
+        Task { _ = await model.startVoice(settings) }
     }
 }
 
@@ -333,54 +399,58 @@ enum SpatialSimpleMode {
     }
 }
 
-/// The avatar's volume and its voice panel, next to the main window.
-struct SpatialAvatarScenes: Scene {
+/// The avatar volume's default size, in meters, and how far people can resize it.
+enum SpatialAvatarVolumeSize {
+    static let key = "bighelp.spatial-avatar.size"
+    static let width = 0.36
+    static let height = 0.44
+    static let depth = 0.28
+    /// Half to three times the default size.
+    static let smallest = 0.5
+    static let largest = 3.0
+
+    static func clamped<Scale: BinaryFloatingPoint>(_ scale: Scale) -> Scale {
+        guard scale.isFinite else { return 1 }
+        return min(max(scale, Scale(smallest)), Scale(largest))
+    }
+}
+
+/// The avatar's volume, next to the main window. Its voice panel is attached to it.
+struct SpatialAvatarScenes: SwiftUI.Scene {
     let model: SpatialAvatarModel
     let settings: SettingsStore
     let companion: CompanionStore
     let companionAgentScope: String
     let permissionCenter: PermissionCenter
 
-    var body: some Scene {
+    @AppStorage(SpatialAvatarVolumeSize.key) private var avatarScale = 1.0
+
+    private var volumeScale: Double { SpatialAvatarVolumeSize.clamped(avatarScale) }
+
+    var body: some SwiftUI.Scene {
         WindowGroup(id: SpatialAvatarSceneID.avatar) {
-            SpatialAvatarVolume(model: model, settings: settings)
+            SpatialAvatarVolume(model: model, settings: settings, permissionCenter: permissionCenter)
                 .modifier(SpatialSceneEnvironment(settings: settings, companion: companion,
                                                   companionAgentScope: companionAgentScope))
                 .onAppear { model.isVolumeOpen = true }
-                .onDisappear { model.isVolumeOpen = false }
+                .onDisappear {
+                    model.isVolumeOpen = false
+                    // Voice lives on the volume; closing the agent ends it.
+                    model.endVoice()
+                }
         }
         .windowStyle(.volumetric)
         // bighelp starts in its own window; the avatar comes only when chosen.
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
-        // About the size of a small pet on a desk.
-        .defaultSize(width: 0.36, height: 0.44, depth: 0.28, in: .meters)
+        // About the size of a small pet on a desk, or the size you last made it.
+        .defaultSize(width: SpatialAvatarVolumeSize.width * volumeScale,
+                     height: SpatialAvatarVolumeSize.height * volumeScale,
+                     depth: SpatialAvatarVolumeSize.depth * volumeScale, in: .meters)
+        // Drag a corner to make your agent bigger or smaller, within the content's range.
         .windowResizability(.contentSize)
-        .defaultWindowPlacement { _, context in
-            // Beside bighelp at first; after that it stays wherever you put it.
-            if let main = context.windows.first(where: { $0.id == SpatialAvatarSceneID.main }) {
-                return WindowPlacement(.trailing(main))
-            }
-            return WindowPlacement()
-        }
-
-        WindowGroup(id: SpatialAvatarSceneID.voice, for: String.self) { $presentationID in
-            SpatialAvatarVoicePanel(model: model, presentationID: presentationID,
-                                    settings: settings, permissionCenter: permissionCenter)
-                .modifier(SpatialSceneEnvironment(settings: settings, companion: companion,
-                                                  companionAgentScope: companionAgentScope))
-        }
-        .defaultSize(width: 400, height: 560)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .defaultWindowPlacement { _, context in
-            // Beside the avatar, so you keep looking at who you're talking to.
-            if let avatar = context.windows.first(where: { $0.id == SpatialAvatarSceneID.avatar }) {
-                return WindowPlacement(.trailing(avatar))
-            }
-            return WindowPlacement(.utilityPanel)
-        }
-        .restorationBehavior(.disabled)
+        // Within arm's reach, so its bar is easy to grab; after that it stays where you put it.
+        .defaultWindowPlacement { _, _ in WindowPlacement(.utilityPanel) }
     }
 }
 #endif

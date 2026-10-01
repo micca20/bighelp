@@ -131,6 +131,13 @@ struct AvatarCreatorView: View {
     let agentName: String
     let onUse: (CompanionAppearance) -> Void
     @Environment(\.dismiss) private var dismiss
+    #if os(visionOS)
+    /// A mood being tried on the 3D stage; nil plays the chosen moves.
+    @State private var tryingMood: String?
+    @State private var isShowingInRoom = false
+    @Environment(\.spatialAvatar) private var spatialAvatar
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     init(appearance: CompanionAppearance, agentName: String, onUse: @escaping (CompanionAppearance) -> Void) {
         _model = State(initialValue: AvatarCreatorModel(appearance: appearance))
@@ -140,22 +147,15 @@ struct AvatarCreatorView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                stage
-                    .padding(.horizontal, BighelpTokens.space20)
-                    .padding(.top, BighelpTokens.space8)
-                tabBar
-                    .padding(.vertical, BighelpTokens.space12)
-                ScrollView {
-                    panel
-                        .padding(.horizontal, BighelpTokens.space20)
-                        .padding(.bottom, BighelpTokens.space20)
-                }
-                .scrollIndicators(.hidden)
-                // Each tab opens at its top, not where the last one was scrolled.
-                .id(model.tab)
-            }
+            layout
             .background(theme.canvas.ignoresSafeArea())
+            #if os(visionOS)
+            // What you try on in the room follows every change, until you're done here.
+            .onChange(of: model.appearance) { _, appearance in
+                if isShowingInRoom { spatialAvatar?.previewAppearance = appearance }
+            }
+            .onDisappear { spatialAvatar?.previewAppearance = nil }
+            #endif
             .navigationTitle("Avatar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -182,6 +182,46 @@ struct AvatarCreatorView: View {
         .accessibilityIdentifier("avatar.creator")
     }
 
+    /// Phone and iPad: the character on top, choices under it. Vision Pro: the
+    /// 3D character beside the choices, in a wider sheet, so both have room.
+    @ViewBuilder
+    private var layout: some View {
+        #if os(visionOS)
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                stage
+                    .frame(width: min(440, proxy.size.width * 0.46))
+                    .padding([.leading, .vertical], BighelpTokens.space20)
+                VStack(spacing: 0) {
+                    tabBar
+                        .padding(.vertical, BighelpTokens.space12)
+                    choices
+                }
+            }
+        }
+        #else
+        VStack(spacing: 0) {
+            stage
+                .padding(.horizontal, BighelpTokens.space20)
+                .padding(.top, BighelpTokens.space8)
+            tabBar
+                .padding(.vertical, BighelpTokens.space12)
+            choices
+        }
+        #endif
+    }
+
+    private var choices: some View {
+        ScrollView {
+            panel
+                .padding(.horizontal, BighelpTokens.space20)
+                .padding(.bottom, BighelpTokens.space20)
+        }
+        .scrollIndicators(.hidden)
+        // Each tab opens at its top, not where the last one was scrolled.
+        .id(model.tab)
+    }
+
     // MARK: Stage
 
     private var stage: some View {
@@ -196,6 +236,9 @@ struct AvatarCreatorView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
                 }
                 .overlay(RoundedRectangle(cornerRadius: 32, style: .continuous).strokeBorder(theme.border, lineWidth: 1))
+            #if os(visionOS)
+            spatialStage
+            #else
             CompanionAvatar(
                 appearance: model.appearance,
                 reaction: model.isCelebrating ? .celebrate : .idle,
@@ -209,6 +252,7 @@ struct AvatarCreatorView: View {
             .accessibilityIdentifier("avatar.creator.preview")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.top, BighelpTokens.space20)
+            #endif
             Text(model.appearance.character.displayName)
                 .font(.headline)
                 .foregroundStyle(theme.primaryText)
@@ -234,8 +278,81 @@ struct AvatarCreatorView: View {
             .accessibilityHint("Tries a random character and look.")
             .accessibilityIdentifier("avatar.creator.shuffle")
         }
+        #if os(visionOS)
+        .frame(maxHeight: .infinity)
+        #else
         .frame(height: 260)
+        #endif
     }
+
+    #if os(visionOS)
+    /// Moods to try on the 3D stage: how it looks while the agent works.
+    private static let tryouts: [(title: String, mood: String?)] = [
+        ("Its moves", nil), ("Listening", "listening"), ("Thinking", "thinking"),
+        ("Talking", "nod"), ("Happy", "excited"), ("Sleepy", "sleepy"),
+    ]
+
+    /// Vision Pro: the character in 3D, as it will stand in your room.
+    private var spatialStage: some View {
+        VStack(spacing: BighelpTokens.space12) {
+            if let look = SpatialAvatarLook(appearance: model.appearance, themeHex: theme.actionHex) {
+                SpatialAvatarPreview(look: look, mood: tryingMood ?? model.appearance.vibe?.moodID, height: 380) {
+                    model.celebrate()
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(model.appearance.character.displayName) in 3D")
+                .accessibilityHint("Pinch for a hop; drag to turn it around.")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction(.default) { model.celebrate() }
+                .accessibilityIdentifier("avatar.creator.preview")
+            }
+            // Wraps onto two rows in the narrow stage, so every mood is in view.
+            FlowLayout(spacing: BighelpTokens.space8) {
+                    ForEach(Self.tryouts, id: \.title) { tryout in
+                        let isSelected = tryingMood == tryout.mood
+                        Button {
+                            withAnimation(.snappy) { tryingMood = tryout.mood }
+                        } label: {
+                            Text(tryout.title)
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(isSelected ? theme.actionForeground : theme.primaryText)
+                                .padding(.horizontal, BighelpTokens.space16)
+                                .frame(minHeight: BighelpTokens.hitTarget)
+                                .background(Capsule().fill(isSelected ? theme.action : theme.incomingMessageBackground))
+                                .contentShape(.capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
+                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityIdentifier("avatar.creator.try.\(tryout.mood ?? "moves")")
+                    }
+                    if spatialAvatar != nil {
+                        Button {
+                            spatialAvatar?.previewAppearance = model.appearance
+                            isShowingInRoom = true
+                            if spatialAvatar?.isVolumeOpen != true { openWindow(id: SpatialAvatarSceneID.avatar) }
+                        } label: {
+                            Label(isShowingInRoom ? "In your room" : "See it in your room",
+                                  systemImage: "cube.transparent")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(theme.action)
+                                .padding(.horizontal, BighelpTokens.space16)
+                                .frame(minHeight: BighelpTokens.hitTarget)
+                                .background(Capsule().strokeBorder(theme.action, lineWidth: 1.5))
+                                .contentShape(.capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
+                        .accessibilityHint("Shows this look at full size in your space while you design it.")
+                        .accessibilityIdentifier("avatar.creator.in-room")
+                    }
+            }
+            .padding(.horizontal, BighelpTokens.space16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, BighelpTokens.space16)
+    }
+    #endif
 
     private var stageColor: Color {
         Color(hex: String(resolvedBodyHex.dropFirst()))
@@ -613,3 +730,48 @@ struct AvatarCreatorView: View {
 
     @BighelpThemeReader private var theme
 }
+
+#if os(visionOS)
+/// Lays views out left to right, starting a new row when one is full.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = self.rows(for: subviews, width: proposal.width ?? .infinity)
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(rows.count - 1, 0))
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(for: subviews, width: bounds.width) {
+            // Each row is centered, like the stage above it.
+            var x = bounds.minX + (bounds.width - row.width) / 2
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private func rows(for subviews: Subviews, width: CGFloat) -> [(indices: [Int], width: CGFloat, height: CGFloat)] {
+        var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
+        var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if !current.indices.isEmpty, needed > width {
+                rows.append(current)
+                current = ([index], size.width, size.height)
+            } else {
+                current = (current.indices + [index], needed, max(current.height, size.height))
+            }
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
+    }
+}
+#endif

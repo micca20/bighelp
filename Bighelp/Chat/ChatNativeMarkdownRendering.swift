@@ -356,3 +356,26 @@ enum ChatNativeMarkdownAttributedBuilder {
         return resolved
     }
 }
+
+extension ChatNativeMarkdownAttributedBuilder {
+    /// One Markdown table cell, styled like the message text around it.
+    static func tableCell(
+        _ markdown: String,
+        isHeader: Bool,
+        alignment: NSTextAlignment,
+        style: ChatNativeMarkdownStyle
+    ) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        let cell = NSMutableAttributedString(attributedString: inline(
+            markdown, role: .body, textColor: style.primaryText, paragraphStyle: paragraph, style: style
+        ))
+        if isHeader {
+            cell.enumerateAttribute(.font, in: NSRange(location: 0, length: cell.length)) { value, range, _ in
+                guard let font = value as? UIFont else { return }
+                cell.addAttribute(.font, value: font.bighelpApplyingTraits(.traitBold), range: range)
+            }
+        }
+        return cell
+    }
+}

@@ -226,7 +226,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let menuIDs = [
             "menu.agents",
             "menu.scheduled-tasks",
-            "menu.hermes-tools",
             "menu.settings",
         ]
         let menuRows = menuIDs.map { app.buttons[$0].firstMatch }
@@ -743,14 +742,14 @@ final class BighelpLaunchTests: BighelpUITestCase {
         }, evaluatedWith: app)
         waitForExpectations(timeout: 10)
         app.activate()
-        let changes = app.buttons["chat.session-status.changes"]
+        let context = app.buttons["chat.session-context"]
         let canvas = app.descendants(matching: .any)["chat.canvas"].firstMatch
-        XCTAssertTrue(changes.waitForExistence(timeout: 5))
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
         let rail = app.descendants(matching: .any)["chat.session-status-rail"].firstMatch
         XCTAssertTrue(rail.exists)
         XCTAssertEqual(rail.frame.midX, canvas.frame.midX, accuracy: 1,
-                       "The Changes and context controls must stay centered together")
-        XCTAssertTrue(changes.isHittable)
+                       "The rail's controls must stay centered together")
+        XCTAssertTrue(context.isHittable)
         let mode = landscape ? "landscape" : accessibility ? "accessibility" : "portrait"
         saveV2Evidence(app, name: "v3-ipad-centered-rail-\(mode)")
         options.tap()
@@ -1053,36 +1052,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
     }
 
     @MainActor
-    func testV3DarkChatSidePanelAndThemes() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", "dark"]
-        app.launch()
-        XCTAssertTrue(app.buttons["chat.session-controls"].waitForExistence(timeout: 5))
-        saveV2Evidence(app, name: "v3-chat-dark")
-        app.buttons["chat.session-controls"].tap()
-        XCTAssertTrue(app.buttons["chat.models.see-all"].waitForExistence(timeout: 4))
-        saveV2Evidence(app, name: "v3-model-picker")
-        // Start the navigation leg without the picker presentation owning taps.
-        app.terminate()
-        app.launch()
-        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 5))
-        openChatWorkspaceMenu(in: app)
-        XCTAssertTrue(app.buttons["menu.new-chat"].waitForExistence(timeout: 4))
-        saveV2Evidence(app, name: "v3-side-panel")
-        app.buttons["menu.settings"].tap()
-        settingsRow("settings.menu.appearance", in: app).tap()
-        openThemeList(in: app)
-        let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "settings.theme."))
-        XCTAssertTrue(choices.firstMatch.waitForExistence(timeout: 4))
-        saveV2Evidence(app, name: "v3-theme-picker")
-        let alternative = choices.element(boundBy: 1)
-        if !alternative.isHittable { app.swipeUp() }
-        XCTAssertTrue(alternative.isHittable)
-        alternative.tap()
-        XCTAssertEqual(alternative.value as? String, "Selected")
-    }
-
-    @MainActor
     func testV3LandscapeAttachmentAndVoiceControls() throws {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", "light"]
@@ -1176,27 +1145,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue((chip.value as? String)?.contains("session-chosen-model") == true, String(describing: chip.value))
         XCTAssertFalse(app.buttons["chat.models.see-all"].exists)
         saveV2Evidence(app, name: "session-model-before-picker")
-    }
-
-    @MainActor
-    func testV2ThemeEditorFinishesNavigationBeforeEditing() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-loopdy.appearance.ui-v2-enabled", "YES", "-loopdy.demo.appearance", "dark"]
-        app.launch()
-        openSettings(in: app)
-        settingsRow("settings.menu.appearance", in: app).tap()
-        openThemeList(in: app)
-        let create = app.buttons["settings.custom-theme.new"]
-        for _ in 0..<5 where !create.isHittable { app.swipeUp() }
-        XCTAssertTrue(create.isHittable)
-        create.tap()
-        let name = app.textFields["settings.custom-theme.name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        XCTAssertTrue(name.isHittable)
-        XCTAssertGreaterThanOrEqual(name.frame.minX, app.frame.minX)
-        XCTAssertLessThanOrEqual(name.frame.maxX, app.frame.maxX)
-        saveV2Evidence(app, name: "theme-editor-settled")
     }
 
     @MainActor
@@ -1462,61 +1410,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
         return CGRect(x: (cropRect.minX + bounds.minX) / scale,
                       y: (cropRect.minY + bounds.minY) / scale,
                       width: bounds.width / scale, height: bounds.height / scale)
-    }
-
-    @MainActor
-    func testV2AdaptiveChatVoiceDrawerAndThemeTour() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-start-chat", "-loopdy.appearance.ui-v2-enabled", "YES", "-loopdy.demo.appearance", "dark"]
-        app.launch()
-        defer { XCUIDevice.shared.orientation = .portrait }
-        func capture(_ name: String) {
-            saveV2Evidence(app, name: "tour-\(name)")
-        }
-        let composer = messageComposer(in: app)
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        XCTAssertTrue(composer.isHittable)
-        capture("chat-portrait")
-        XCUIDevice.shared.orientation = .landscapeLeft
-        let rotationDeadline = Date().addingTimeInterval(5)
-        while app.frame.width < app.frame.height && Date() < rotationDeadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        XCTAssertGreaterThan(app.frame.width, app.frame.height)
-        XCTAssertTrue(composer.waitForExistence(timeout: 4))
-        XCTAssertTrue(composer.isHittable)
-        capture("chat-landscape")
-        app.buttons["chat.attachment"].tap()
-        let voice = app.buttons["chat.action.voice"]
-        XCTAssertTrue(voice.waitForExistence(timeout: 4))
-        capture("drawer-landscape")
-        for _ in 0..<3 where !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
-        XCTAssertTrue(voice.isHittable)
-        voice.tap()
-        let endVoice = app.buttons["End voice chat"]
-        XCTAssertTrue(endVoice.waitForExistence(timeout: 5))
-        XCTAssertTrue(endVoice.isHittable)
-        capture("voice-landscape")
-        endVoice.tap()
-        XCUIDevice.shared.orientation = .portrait
-        XCTAssertTrue(composer.waitForExistence(timeout: 5))
-        openChatWorkspaceMenu(in: app)
-        let settings = app.buttons["menu.settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 4))
-        capture("side-panel")
-        settings.tap()
-        let appearance = settingsRow("settings.menu.appearance", in: app)
-        XCTAssertTrue(appearance.waitForExistence(timeout: 4))
-        appearance.tap()
-        capture("appearance")
-        let themes = app.buttons["settings.themes"]
-        XCTAssertTrue(themes.waitForExistence(timeout: 3))
-        openThemeList(in: app)
-        let createTheme = app.buttons["settings.custom-theme.new"]
-        for _ in 0..<4 where !createTheme.isHittable { app.swipeUp() }
-        XCTAssertTrue(createTheme.isHittable)
-        createTheme.tap()
-        capture("theme-editor")
     }
 
     @MainActor
@@ -2990,7 +2883,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         let suffix = String(Int(Date().timeIntervalSince1970) % 1_000_000)
         let expectedReply = "BIGHELPWEATHER\(suffix)"
         let request = "Check the current weather in Chicago and render it as bighelp's "
-            + "native weather forecast card by calling loopdy_render_weather_forecast. "
+            + "native weather forecast card by calling bighelp_render_weather_forecast. "
             + "After the card is sent, reply with exactly \(expectedReply)."
 
         composer.tap()
@@ -3625,12 +3518,12 @@ final class BighelpLaunchTests: BighelpUITestCase {
             let workspaceItem = app.buttons["chat.workspace-menu"]
             XCTAssertTrue(workspaceItem.waitForExistence(timeout: 5))
             workspaceItem.tap()
-            // "home": ☰ › Hermes Tools.
-            let action = app.buttons[destination == "home" ? "menu.hermes-tools" : "menu.chats"]
+            // "home": ☰ › Agents.
+            let action = app.buttons[destination == "home" ? "menu.agents" : "menu.chats"]
             XCTAssertTrue(action.waitForExistence(timeout: 3))
             action.tap()
             let arrived = NSPredicate { _, _ in
-                (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                (destination == "home" ? app.descendants(matching: .any)["agents.screen"].firstMatch.exists
                     : app.buttons["tab.sessions"].isSelected && app.scrollViews["sessions.screen"].isHittable)
                     && !app.otherElements["session.restore.loading"].exists
             }
@@ -3652,13 +3545,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
             let menu = app.buttons["home.drawer.open"].firstMatch
             let nestedMenu = app.buttons["workspace.menu"].firstMatch
             (menu.exists && menu.isHittable ? menu : nestedMenu).tap()
-            let identifier = destination == "home" ? "menu.hermes-tools" : "menu.chats"  // "home": ☰ › Hermes Tools
+            let identifier = destination == "home" ? "menu.agents" : "menu.chats"  // "home": ☰ › Agents
             let action = app.buttons[identifier]
             XCTAssertTrue(action.waitForExistence(timeout: 3))
             action.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
             let arrived = NSPredicate { _, _ in
                 !app.otherElements["navigation.menu"].exists
-                    && (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                    && (destination == "home" ? app.descendants(matching: .any)["agents.screen"].firstMatch.exists
                         : app.buttons["tab.sessions"].isSelected && app.scrollViews["sessions.screen"].isHittable)
             }
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: arrived, object: app)], timeout: 3), .completed)
@@ -3680,14 +3573,14 @@ final class BighelpLaunchTests: BighelpUITestCase {
                 composer.tap()
                 messageComposer(in: app).typeText("Retained draft")
                 openChatWorkspaceMenu(in: app)
-                let identifier = destination == "home" ? "menu.hermes-tools" : "menu.chats"  // "home": ☰ › Hermes Tools
+                let identifier = destination == "home" ? "menu.agents" : "menu.chats"  // "home": ☰ › Agents
                 let action = app.buttons[identifier]
                 XCTAssertTrue(action.waitForExistence(timeout: 3))
                 action.tap()
                 let departed = NSPredicate { _, _ in
                     !app.buttons["chat.options"].exists
                         && !app.otherElements["navigation.menu"].exists
-                        && (destination == "home" ? app.descendants(matching: .any)["workspace.hub"].firstMatch.exists
+                        && (destination == "home" ? app.descendants(matching: .any)["agents.screen"].firstMatch.exists
                             : app.buttons["tab.sessions"].isHittable && app.buttons["tab.sessions"].isSelected
                                 && app.scrollViews["sessions.screen"].isHittable)
                 }
@@ -4015,7 +3908,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(homeWorkspace.waitForExistence(timeout: 3))
         homeWorkspace.tap()
 
-        let changes = app.buttons["chat.session-status.changes"]
+        dismissActionsAfterWorkspaceSelection(in: app)
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         XCTAssertFalse(changes.label.contains("Home"))
         XCTAssertTrue(
@@ -4024,9 +3918,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
         )
         XCTAssertTrue(changes.label.contains("additions"))
         XCTAssertTrue(changes.label.contains("deletions"))
-        dismissActionsAfterWorkspaceSelection(in: app)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Project Changes rail with affected file count"
+        screenshot.name = "File changes menu item with affected file count"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         let hittable = XCTNSPredicateExpectation(
@@ -4070,8 +3963,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(homeWorkspace.waitForExistence(timeout: 3))
         homeWorkspace.tap()
 
-        let changes = app.buttons["chat.session-status.changes"]
-        XCTAssertTrue(changes.waitForExistence(timeout: 5))
         dismissActionsAfterWorkspaceSelection(in: app)
 
         for _ in 0..<6 where !firstMessage.isHittable {
@@ -4096,7 +3987,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             XCTWaiter.wait(for: [finalMessageVisible], timeout: 3),
             .completed,
             "A vertical drag beginning in empty fitting-rail space must scroll the chat timeline. "
-                + "app=\(app.frame), timeline=\(timeline.frame), changes=\(changes.frame)"
+                + "app=\(app.frame), timeline=\(timeline.frame), deadSpace=\(deadSpace.frame)"
         )
     }
 
@@ -4129,12 +4020,11 @@ final class BighelpLaunchTests: BighelpUITestCase {
         dismissActionsAfterWorkspaceSelection(in: app)
 
         let rail = app.descendants(matching: .any)["chat.session-status-rail"].firstMatch
-        let changes = app.buttons["chat.session-status.changes"]
         let goal = app.buttons["chat.session-status.goal"]
         let subagents = app.buttons["chat.session-status.subagents"]
         let tasks = app.buttons["chat.session-status.tasks"]
         XCTAssertTrue(rail.waitForExistence(timeout: 5))
-        for control in [changes, goal, subagents, tasks] {
+        for control in [goal, subagents, tasks] {
             XCTAssertTrue(control.waitForExistence(timeout: 3))
         }
         let dismissRegion = app.otherElements["PopoverDismissRegion"].firstMatch
@@ -4142,13 +4032,13 @@ final class BighelpLaunchTests: BighelpUITestCase {
             dismissRegion.tap()
         }
 
-        for control in [changes, goal, subagents, tasks] {
+        for control in [goal, subagents, tasks] {
             XCTAssertTrue(control.isHittable)
             XCTAssertGreaterThanOrEqual(control.frame.minX, rail.frame.minX)
             XCTAssertLessThanOrEqual(control.frame.maxX, rail.frame.maxX)
         }
         XCTAssertLessThan(
-            changes.frame.midY,
+            goal.frame.midY,
             tasks.frame.midY,
             "At accessibility sizes the overflowing rail must reflow vertically instead of hiding trailing cards."
         )
@@ -4189,9 +4079,9 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(homeWorkspace.waitForExistence(timeout: 3))
         homeWorkspace.tap()
 
-        let changes = app.buttons["chat.session-status.changes"]
-        XCTAssertTrue(changes.waitForExistence(timeout: 5))
         dismissActionsAfterWorkspaceSelection(in: app)
+        let changes = chatMenuItem("chat.file-changes", in: app)
+        XCTAssertTrue(changes.waitForExistence(timeout: 5))
         changes.tap()
 
         let panel = app.otherElements["project-changes.panel"]
@@ -5001,179 +4891,6 @@ final class BighelpLaunchTests: BighelpUITestCase {
         XCTAssertTrue(app.navigationBars["Chat & Voice"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.switches["settings.chat.show-reasoning"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.switches["settings.chat.show-tool-calls"].exists)
-    }
-
-    @MainActor
-    func testThemeMarketplaceStaysRemovedWhileThemeControlsRemainAvailable() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays"]
-        app.launch()
-
-        openRootTab("tab.profile", in: app, timeout: 5)
-        let settingsScreen = app.descendants(matching: .any)["settings.screen"].firstMatch
-        XCTAssertTrue(settingsScreen.waitForExistence(timeout: 5))
-        let marketplace = app.buttons["settings.theme-marketplace"]
-        XCTAssertFalse(marketplace.exists, "Theme Marketplace must not return to Settings.")
-        let themes = app.buttons["settings.themes"]
-        XCTAssertTrue(themes.waitForExistence(timeout: 3))
-        let previousTheme = themes.value as? String
-        openThemeList(in: app)
-        let targetIdentifier = previousTheme?.hasPrefix("Nous") == true
-            ? "settings.theme.superpilot"
-            : "settings.theme.nous"
-        let targetTheme = app.buttons[targetIdentifier]
-        XCTAssertTrue(targetTheme.waitForExistence(timeout: 3))
-        targetTheme.tap()
-
-        XCTAssertTrue(app.navigationBars["Accent Themes"].exists)
-        XCTAssertEqual(targetTheme.value as? String, "Selected")
-        XCTAssertTrue(app.buttons["settings.custom-theme.import"].exists)
-        XCTAssertTrue(app.buttons["settings.custom-theme.export"].exists)
-        XCTAssertFalse(app.buttons["Share or Publish"].exists)
-        XCTAssertFalse(app.buttons["Publish"].exists)
-        XCTAssertFalse(app.staticTexts["Sign in to bighelp"].exists)
-        XCTAssertFalse(app.otherElements["workspace.connection.reconnecting"].exists)
-    }
-
-    @MainActor
-    func testThemeActionsExcludePublishingAndPreserveLocalTransfers() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays"]
-        app.launch()
-
-        openRootTab("tab.profile", in: app, timeout: 5)
-        XCTAssertTrue(app.descendants(matching: .any)["settings.screen"].waitForExistence(timeout: 5))
-        let themes = app.buttons["settings.themes"]
-        XCTAssertTrue(themes.waitForExistence(timeout: 3))
-        openThemeList(in: app)
-
-        XCTAssertTrue(app.buttons["settings.custom-theme.import"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["settings.custom-theme.export"].exists)
-
-        var actions = app.buttons.matching(NSPredicate(
-            format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
-            "settings.custom-theme.",
-            "Actions for "
-        )).firstMatch
-        let newTheme = app.buttons["settings.custom-theme.new"]
-        for _ in 0..<8 where !actions.isHittable && !newTheme.isHittable {
-            app.swipeUp()
-        }
-        if !actions.exists {
-            XCTAssertTrue(newTheme.isHittable)
-            newTheme.tap()
-            XCTAssertTrue(app.navigationBars["New Theme"].waitForExistence(timeout: 3))
-            app.buttons["settings.custom-theme.save"].tap()
-            XCTAssertTrue(app.navigationBars["Accent Themes"].waitForExistence(timeout: 3))
-            actions = app.buttons.matching(NSPredicate(
-                format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
-                "settings.custom-theme.",
-                "Actions for "
-            )).firstMatch
-        }
-
-        for _ in 0..<4 where !actions.isHittable { app.swipeUp() }
-        XCTAssertTrue(actions.isHittable)
-        actions.tap()
-        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Export Theme File"].exists)
-        XCTAssertTrue(app.buttons["Duplicate"].exists)
-        XCTAssertTrue(app.buttons["Delete"].exists)
-        XCTAssertFalse(app.buttons["Share or Publish"].exists)
-        XCTAssertFalse(app.buttons["Publish"].exists)
-    }
-
-    @MainActor
-    func testSavedCustomThemeEditorExposesLocalLogoControls() throws {
-        let app = makeApp()
-        app.launchArguments = ["-use-demo-fixtures"]
-        app.launch()
-
-        openSettings(in: app)
-        let themes = app.buttons["settings.themes"]
-        XCTAssertTrue(themes.waitForExistence(timeout: 3))
-        openThemeList(in: app)
-
-        XCTAssertTrue(app.buttons["settings.custom-theme.import"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["settings.custom-theme.export"].exists)
-
-        var savedTheme = app.buttons.matching(NSPredicate(
-            format: "label == %@",
-            "My Theme custom accent theme"
-        )).firstMatch
-        let newTheme = app.buttons["settings.custom-theme.new"]
-        for _ in 0..<8 where !savedTheme.exists && !newTheme.isHittable {
-            app.swipeUp()
-        }
-        if !savedTheme.exists {
-            XCTAssertTrue(newTheme.isHittable)
-            newTheme.tap()
-            XCTAssertTrue(app.navigationBars["New Theme"].waitForExistence(timeout: 3))
-            app.buttons["settings.custom-theme.save"].tap()
-            XCTAssertTrue(app.navigationBars["Accent Themes"].waitForExistence(timeout: 3))
-            for _ in 0..<4 {
-                app.swipeUp()
-            }
-            savedTheme = app.buttons.matching(NSPredicate(
-                format: "label == %@",
-                "My Theme custom accent theme"
-            )).firstMatch
-        }
-
-        XCTAssertTrue(savedTheme.isHittable)
-        savedTheme.tap()
-        XCTAssertTrue(app.navigationBars["Accent Themes"].exists)
-        XCTAssertEqual(savedTheme.value as? String, "Selected")
-
-        let themeActions = app.buttons.matching(NSPredicate(
-            format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
-            "settings.custom-theme.",
-            "Actions for "
-        )).firstMatch
-        XCTAssertTrue(themeActions.waitForExistence(timeout: 3))
-        themeActions.tap()
-        let edit = app.buttons["Edit"]
-        XCTAssertTrue(edit.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Export Theme File"].exists)
-        XCTAssertTrue(app.buttons["Duplicate"].exists)
-        XCTAssertTrue(app.buttons["Delete"].exists)
-        XCTAssertFalse(app.buttons["Share or Publish"].exists)
-        XCTAssertFalse(app.buttons["Publish"].exists)
-        edit.tap()
-
-        XCTAssertTrue(app.navigationBars["Edit Theme"].waitForExistence(timeout: 3))
-        XCTAssertEqual(app.textFields["settings.custom-theme.name"].label, "Theme name")
-        let fontPicker = app.descendants(matching: .any)["settings.custom-theme.font"]
-        XCTAssertTrue(fontPicker.waitForExistence(timeout: 3))
-        XCTAssertTrue(fontPicker.label.contains("Theme font"))
-        let accentHex = app.descendants(matching: .any)["settings.custom-theme.color.accent.hex"]
-        let accentPicker = app.descendants(matching: .any)["settings.custom-theme.color.accent.picker"]
-        for _ in 0..<6 where !accentHex.exists || !accentPicker.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(
-            accentHex.waitForExistence(timeout: 3),
-            "The custom-theme accent must expose a labeled hex field."
-        )
-        XCTAssertTrue(
-            accentPicker.waitForExistence(timeout: 3),
-            "The custom-theme accent must expose a labeled color picker."
-        )
-        let chooseLightLogo = app.buttons["settings.custom-theme.logo.light.choose"]
-        let chooseDarkLogo = app.buttons["settings.custom-theme.logo.dark.choose"]
-        for _ in 0..<8 where !chooseLightLogo.isHittable || !chooseDarkLogo.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(
-            chooseLightLogo.isHittable,
-            "A saved custom theme must expose the light-mode logo picker control."
-        )
-        XCTAssertTrue(
-            chooseDarkLogo.isHittable,
-            "A saved custom theme must expose the dark-mode logo picker control."
-        )
-        XCTAssertFalse(app.buttons["settings.custom-theme.logo.light.remove"].exists)
-        XCTAssertFalse(app.buttons["settings.custom-theme.logo.dark.remove"].exists)
     }
 
     @MainActor

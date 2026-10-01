@@ -208,6 +208,21 @@ extension ChatModel {
         )
     }
 
+    /// Hermes saves a sent message before the agent answers and reports its
+    /// row (prompt.submit's `user_row_id`, message.complete's
+    /// `persisted_turn`). The message keeps its local ID until a reload, so
+    /// bind that row to it; an agent's reaction then shows right away.
+    func bindNewestUnsavedMessage(role: TimelineRole, toRow rowID: Int, from owner: DirectHermesConversationClient) {
+        guard nativeConversationClient === owner, rowID > 0,
+              NativeMessageReactionRowIdentity.exactItemIDs(for: rowID, in: items).isEmpty,
+              !newestReactionRowByItemID.values.contains(rowID),
+              let item = items.last(where: { $0.role == role && $0.sender.kind != .system }),
+              NativeMessageReactionRowIdentity.rowID(from: item.id) == nil,
+              newestReactionRowByItemID[item.id] == nil else { return }
+        newestReactionRowByItemID[item.id] = rowID
+        advanceNativeMessageReactionRevision()
+    }
+
     func reconcileNativeReactionConnectionState(from owner: DirectHermesConversationClient) {
         guard nativeConversationClient === owner else { return }
         pendingNativeMessageReactionRows.removeAll()

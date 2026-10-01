@@ -318,6 +318,18 @@ final class AgentDirectoryStore {
         return true
     }
 
+    /// Puts the pinned agents in this order (dragging them on the Agents screen).
+    /// Pins not named keep their place after the named ones; unknown ids are ignored.
+    @discardableResult
+    func reorderPinnedAgents(_ ids: [String]) -> Bool {
+        let named = ids.filter { pinnedAgentIDs.contains($0) }
+        let order = named + pinnedAgentIDs.filter { !named.contains($0) }
+        guard order != pinnedAgentIDs else { return false }
+        pinnedAgentIDs = order
+        persistPinState()
+        return true
+    }
+
     /// Keeps the durable pin intent ordered while projecting only agents in the
     /// current catalog. A successful list can still be partial, so absence is
     /// not evidence that a pin, unpin tombstone, or primary was deleted.

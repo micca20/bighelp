@@ -7,6 +7,8 @@ final class VoiceModel {
     let conversationID: String
     let agentName: String
     let mode: VoiceMode
+    /// Where turns become text: this device, or Hermes on the computer.
+    let transcription: VoiceTranscriptionSource
     private(set) var isAgentAudioMuted = false
     private(set) var isMicrophoneMuted = false
     private(set) var status: VoiceStatus
@@ -24,6 +26,8 @@ final class VoiceModel {
     private(set) var turnErrorMessage: String?
     private(set) var isWalkieTalkieCapturing = false
     private(set) var isAgentRunActive: Bool
+    /// A finished turn is being turned into text on the computer.
+    private(set) var isTranscribing = false
 
     private let client: any VoiceSessionClient
     private let inputLevelSource: any VoiceInputLevelSource
@@ -55,6 +59,8 @@ final class VoiceModel {
     private var currentSpokenReply: String?
     private var walkieTalkieTranscript: String?
     private var walkieTalkieGeneration: UInt64 = 0
+    /// A released walkie-talkie turn waiting for the computer's transcript.
+    private var isAwaitingWalkieTalkieTranscript = false
 
     init(
         conversationID: String,
@@ -62,6 +68,7 @@ final class VoiceModel {
         status: VoiceStatus = .listening,
         isAgentRunActive: Bool? = nil,
         mode: VoiceMode = .pressToTalk,
+        transcription: VoiceTranscriptionSource = .onDevice,
         client: any VoiceSessionClient,
         inputLevelSource: any VoiceInputLevelSource = SilentVoiceInputLevelSource(),
         transcriptRows: [VoiceTranscriptRow] = [],
@@ -77,6 +84,7 @@ final class VoiceModel {
         self.status = status
         self.isAgentRunActive = isAgentRunActive ?? (status == .working)
         self.mode = mode
+        self.transcription = transcription
         self.client = client
         self.inputLevelSource = inputLevelSource
         self.transcriptRows = transcriptRows
@@ -161,6 +169,20 @@ final class VoiceModel {
         inputLevelSource.onUnavailable = { [weak self] error, callbackGeneration in
             self?.receiveUnavailable(error, generation: callbackGeneration)
         }
+        inputLevelSource.onTranscribing = { [weak self] transcribing, callbackGeneration in
+            guard let self, self.owns(callbackGeneration) else { return }
+            self.isTranscribing = transcribing
+        }
+        // Interruptions while the agent speaks are caught on this device;
+        // only the person's own turns go to Hermes.
+        let usesHost = transcription == .hermes && status != .speaking
+        inputLevelSource.transcription = usesHost ? .hermes : .onDevice
+        if usesHost {
+            let client = self.client
+            inputLevelSource.hostTranscriber = { @MainActor audio in try await client.transcribe(audio) }
+        } else {
+            inputLevelSource.hostTranscriber = nil
+        }
 
         do {
             inputLevelSource.endsAfterSilence = mode != .walkieTalkie
@@ -191,9 +213,22 @@ final class VoiceModel {
         inputSmoother.reset()
         bargeInDetector.reset()
         isCollectingBargeIn = false
+        isTranscribing = false
         inputLevel = 0
         partialUserTranscript = nil
         meterState = .idle
+    }
+
+    /// True when Send can end the turn now instead of waiting for quiet.
+    var canSendNow: Bool {
+        mode == .pressToTalk && status == .listening && meterState == .monitoring && !isTranscribing
+            && partialUserTranscript?.isEmpty == false
+    }
+
+    /// Ends the turn now: what's been said so far goes to the agent.
+    func sendNow() {
+        guard canSendNow else { return }
+        inputLevelSource.finishNow()
     }
 
     func waitForMonitoringStart() async {
@@ -251,6 +286,12 @@ final class VoiceModel {
         walkieTalkieGeneration &+= 1
         isWalkieTalkieCapturing = false
         walkieTalkieTranscript = nil
+        if submit, transcription == .hermes, meterState == .monitoring {
+            // The computer transcribes the recording; the turn goes out when it answers.
+            isAwaitingWalkieTalkieTranscript = true
+            inputLevelSource.finishNow()
+            return true
+        }
         stopMonitoring()
         guard submit, let transcript else { return false }
         return submitTranscript(transcript)
@@ -258,6 +299,7 @@ final class VoiceModel {
 
     func cancelWalkieTalkieCapture() {
         walkieTalkieGeneration &+= 1
+        isAwaitingWalkieTalkieTranscript = false
         guard isWalkieTalkieCapturing || walkieTalkieTranscript != nil else { return }
         isWalkieTalkieCapturing = false
         walkieTalkieTranscript = nil
@@ -342,8 +384,20 @@ final class VoiceModel {
     }
 
     private func receive(update: VoiceRecognitionUpdate, generation: UInt64) {
-        guard owns(generation), meterState == .monitoring, shouldMonitor else { return }
+        guard owns(generation) else { return }
         let text = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isAwaitingWalkieTalkieTranscript, update.isFinal {
+            isAwaitingWalkieTalkieTranscript = false
+            stopMonitoring()
+            if !text.isEmpty, !text.contains("\0") { _ = submitTranscript(String(text.prefix(100_000))) }
+            return
+        }
+        guard meterState == .monitoring, shouldMonitor else { return }
+        if update.isFinal, text.isEmpty, mode == .pressToTalk, !isCollectingBargeIn {
+            // Nothing was heard after all: listen again.
+            restartListening()
+            return
+        }
         guard !text.isEmpty, !text.contains("\0") else { return }
         if mode == .walkieTalkie {
             guard isWalkieTalkieCapturing,
@@ -600,8 +654,19 @@ final class VoiceModel {
         outputLevel = 0
     }
 
+    private func restartListening() {
+        stopMonitoring()
+        Task { @MainActor [weak self] in await self?.startMonitoring() }
+    }
+
     private func receiveUnavailable(_ error: VoiceInputLevelError, generation: UInt64) {
         guard owns(generation), isActive else { return }
+        if error == .hostTranscriptionFailed {
+            isAwaitingWalkieTalkieTranscript = false
+            turnErrorMessage = "Your computer couldn't turn that into text. Try again, or switch Speech to text to This device in Voice settings."
+            if mode == .pressToTalk { restartListening() } else { stopMonitoring() }
+            return
+        }
         inputLevelSource.stop()
         inputLevelSource.onLevel = nil
         inputLevelSource.onTranscript = nil

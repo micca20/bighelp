@@ -10,7 +10,7 @@ final class HostPluginUpdateUITests: BighelpUITestCase {
         app.launch()
 
         XCTAssertTrue(app.buttons["settings.plugin.update"].waitForExistence(timeout: 10))
-        XCTAssertEqual(app.buttons["settings.plugin.update"].label, "Update to 2.17.0")
+        XCTAssertEqual(app.buttons["settings.plugin.update"].label, "Update plugin to 2.17.0")
         // Old running code can't restart itself: say so, and offer no dead-end Restart button.
         let manual = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Restart Hermes on your computer once")).firstMatch
         XCTAssertTrue(manual.exists)

@@ -99,7 +99,24 @@ extension DirectHermesConversationClient {
                         // If another surface wins the idle race, queue rather
                         // than applying the host's default interrupt/redirect.
                         if !command { params["queued"] = .boolean(true) }
-                        let result = try await self.rpc.request(method, params: params)
+                        if method != "slash.exec" {
+                            await self.noteSpeaker()
+                            guard self.generation == owner, self.pendingID == submission.id else { return }
+                        }
+                        let result: BighelpJSONValue
+                        do {
+                            result = try await self.rpc.request(method, params: params)
+                        } catch DirectHermesError.rpcRejected(code: 4018) where method == "slash.exec" {
+                            // Typed text (a Shortcut, or a command typed without the menu) has
+                            // no catalog selection. Hermes refuses skills here, before running
+                            // anything, and names command.dispatch; its own clients retry there.
+                            guard self.generation == owner, self.pendingID == submission.id else { return }
+                            try self.replaceSubmission(submission, text: message, method: "command.dispatch")
+                            await self.noteSpeaker()
+                            guard self.generation == owner, self.pendingID == submission.id else { return }
+                            result = try await self.rpc.request(
+                                "command.dispatch", params: Self.dispatchParams(typed: message, base: self.sessionParams))
+                        }
                         guard self.generation == owner, self.pendingID == submission.id else { return }
                         var response = result.object ?? [:]
                         // The stock dispatcher returns skill/bundle expansion as
@@ -141,6 +158,9 @@ extension DirectHermesConversationClient {
                                 self.finishAcceptedSubmission()
                             }
                         } else if ["streaming", "ok"].contains(response["status"]?.string ?? "") {
+                            if !command || expandedToPrompt, let row = response["user_row_id"]?.integer {
+                                self.model?.bindNewestUnsavedMessage(role: .human, toRow: row, from: self)
+                            }
                             self.admissionOverlapped = self.submissionTurns.count > 1
                             self.selectPendingTurn()
                             self.admitted = true
@@ -229,6 +249,12 @@ extension DirectHermesConversationClient {
             throw DirectHermesWorkspaceError.midSessionRejected
         }
         let method = behavior == .steer ? "session.steer" : "prompt.submit"
+        if behavior != .steer {
+            // A queued or restarted message starts a new turn; say who's sending
+            // before anything is recorded, so a dropped connection leaves nothing behind.
+            await noteSpeaker()
+            guard !needsRecovery, preparingAttachmentID == nil else { throw DirectHermesWorkspaceError.reviewRequired }
+        }
         // Persist the intent before either mutation. A lost stop receipt must
         // never advance to sending, and a lost send receipt must never retry.
         let entry = try recordSubmission(message, method: behavior == .interruptAndSend ? "session.interrupt" : method)
@@ -315,6 +341,19 @@ extension DirectHermesConversationClient {
         try drafts.save(updated, scope: scope)
         journal = updated
         return submission
+    }
+
+    /// Splits a typed command the way Hermes' slash.exec does: the name after
+    /// "/", then the rest.
+    static func dispatchParams(typed message: String,
+                               base: [String: BighelpJSONValue]) -> [String: BighelpJSONValue] {
+        let command = message.trimmingCharacters(in: .whitespacesAndNewlines).drop { $0 == "/" }
+        let name = command.prefix { !$0.isWhitespace }
+        let arg = command.dropFirst(name.count).drop { $0.isWhitespace }
+        var params = base
+        params["name"] = .string(name.lowercased())
+        params["arg"] = .string(String(arg))
+        return params
     }
 
     static func definitePromptRefusalCode(_ error: Error) -> Int? {

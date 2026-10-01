@@ -204,8 +204,8 @@ Install it with:
 hermes plugins install promptclickrun/bighelp-plugin --enable
 ```
 
-The app pins the plugin revision it expects in `Bighelp/Info.plist`
-(`BighelpNotificationPluginRevision`).
+The app installs and offers the plugin's latest
+[GitHub Release](https://github.com/promptclickrun/bighelp-plugin/releases); nothing is pinned in the app.
 
 ## Internal release automation
 

@@ -56,6 +56,24 @@ struct ProviderUsageTests {
         #expect(ProviderUsagePreferences.hidden("").isEmpty, "Nothing saved shows every provider")
     }
 
+    /// Hidden providers came back after updates: the host names one provider differently
+    /// depending on where it found the sign-in and which agent asks. Choices hold per provider.
+    @Test func aHiddenProviderStaysHiddenWhenTheHostRenamesIt() throws {
+        let saved = ProviderUsagePreferences.hidden(ProviderUsagePreferences.raw(
+            [ProviderUsagePreferences.key(for: "codex"), ProviderUsagePreferences.key(for: "hermes-openrouter")]))
+        for id in ["codex", "codex-hermes", "openrouter", "hermes-openrouter"] {
+            #expect(ProviderUsagePreferences.isHidden(id, in: saved), "\(id)")
+        }
+        #expect(!ProviderUsagePreferences.isHidden("claude", in: saved))
+        // Choices saved by earlier builds, under the exact id, still count.
+        let earlier = ProviderUsagePreferences.hidden("codex-hermes\nhermes-xai")
+        #expect(ProviderUsagePreferences.isHidden("codex", in: earlier))
+        #expect(ProviderUsagePreferences.isHidden("hermes-xai", in: earlier))
+        #expect(ProviderUsagePreferences.isHidden("xai", in: earlier))
+        // The saved key never changes, or every choice would be lost on update.
+        #expect(ProviderUsagePreferences.hiddenKey == "bighelp.provider-usage.hidden")
+    }
+
     @Test func resetAndUpdatedTimesReadNaturally() {
         let now = Date(timeIntervalSince1970: 1_000_000)
         #expect(ProviderUsagePresentation.resetText(now.addingTimeInterval(3 * 3_600 + 12 * 60), now: now) == "Resets in 3 h 12 min")
@@ -100,6 +118,83 @@ struct ProviderUsageTests {
 
         store.configure(client: nil)
         #expect(!store.isAvailable && store.report == nil)
+    }
+
+    /// bighelp reconnects every time you come back to it. The same computer and
+    /// sign-in keeps the usage already on screen; another one starts over.
+    @Test func aReconnectKeepsTheLastResultAndAnotherSignInStartsOver() async throws {
+        let client = ScriptedUsageClient()
+        client.result = .success(try ProviderUsageReport(json: sample))
+        let store = ProviderUsageStore()
+        store.configure(client: client, scope: "host-a")
+        await store.load(refresh: false)
+        #expect(store.report != nil)
+
+        store.configure(client: ScriptedUsageClient(), scope: "host-a")
+        #expect(store.report?.providers.count == 3 && store.state == .loaded)
+        await store.load(refresh: false)
+        #expect(client.refreshes == [false, false], "The first client, which follows the connection, stays")
+
+        store.configure(client: ScriptedUsageClient(), scope: "host-b")
+        #expect(store.report == nil && store.state == .idle)
+    }
+
+    /// Opening usage from a chat after the app came back used the connection
+    /// from before, which is closed, so it failed every time.
+    @Test func theHostClientFollowsTheCurrentConnectionForTheSameSignIn() async throws {
+        let before = try UsagePerformer(sample: sample)
+        let signIn = try #require(before.owner?.signIn)
+        var current: UsagePerformer? = before
+        let client = DirectHermesProviderUsageClient(signIn: signIn, currentWorkspace: { current })
+
+        let reconnected = try UsagePerformer(sample: sample, signIn: signIn)
+        current = reconnected
+        before.owner = nil
+        let report = try await client.usage(agentID: "default", refresh: false)
+        #expect(report.providers.count == 3)
+        #expect(reconnected.calls == 1 && before.calls == 0)
+
+        current = try UsagePerformer(sample: sample)
+        await #expect(throws: WorkspaceClientError.ownerChanged) {
+            _ = try await client.usage(agentID: "default", refresh: false)
+        }
+    }
+
+    /// Right after the app comes back the connection is still on its way.
+    @Test func theHostClientWaitsForTheConnectionToComeBack() async throws {
+        let performer = try UsagePerformer(sample: sample)
+        let signIn = try #require(performer.owner?.signIn)
+        var current: UsagePerformer?
+        let client = DirectHermesProviderUsageClient(signIn: signIn, currentWorkspace: { current },
+                                                     reconnectWait: .milliseconds(20), reconnectAttempts: 50)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            current = performer
+        }
+        let report = try await client.usage(agentID: "default", refresh: false)
+        #expect(report.providers.count == 3 && performer.calls == 1)
+    }
+}
+
+@MainActor
+private final class UsagePerformer: WorkspaceOperationPerforming {
+    var owner: WorkspaceOwner?
+    var capabilities: WorkspaceCapabilities { .init(owner: owner, values: [:]) }
+    private let sample: [String: BighelpJSONValue]
+    private(set) var calls = 0
+
+    init(sample: [String: BighelpJSONValue], signIn: WorkspaceSignIn? = nil) throws {
+        self.sample = sample
+        owner = WorkspaceOwner(authority: try signIn?.authority ?? .fixture(id: UUID().uuidString),
+                               authenticationGeneration: signIn?.authenticationGeneration ?? UUID(),
+                               connectionGeneration: UUID())
+    }
+
+    func perform(_ operation: WorkspaceOperation, payload: [String: BighelpJSONValue],
+                 owner: WorkspaceOwner) async throws -> [String: BighelpJSONValue] {
+        guard owner == self.owner, operation == .usageList else { throw WorkspaceClientError.ownerChanged }
+        calls += 1
+        return sample
     }
 }
 

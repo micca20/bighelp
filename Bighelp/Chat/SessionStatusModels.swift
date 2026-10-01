@@ -460,7 +460,6 @@ enum ProjectChangesRailPresentation {
 }
 
 enum SessionStatusRailKind: String, Equatable, Sendable {
-    case changes
     case goal
     case subagents
     case tasks
@@ -475,16 +474,12 @@ enum SessionStatusRailPresentation {
     static let showsScrollIndicators = false
 
     static func items(
-        changes: ProjectChangesRailSummary?,
         goal: ChatGoalRailState?,
         subagents: [SessionSubagentSnapshot],
         nativeSubagents: [NativeSubagentRailItem] = [],
         tasks: ChatTaskDrawerState?
     ) -> [SessionStatusRailItem] {
         var result: [SessionStatusRailItem] = []
-        if changes != nil {
-            result.append(SessionStatusRailItem(kind: .changes))
-        }
         if goal != nil {
             result.append(SessionStatusRailItem(kind: .goal))
         }

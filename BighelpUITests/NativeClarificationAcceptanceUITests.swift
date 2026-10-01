@@ -7,6 +7,13 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
 
     func testSingleInlineChoiceSubmitsDirectlyAndPreservesComposer() {
         let app = launch(single: true)
+        // The question pops up by itself. Later closes it without answering.
+        let popup = app.navigationBars["Needs attention"]
+        XCTAssertTrue(popup.waitForExistence(timeout: 10))
+        popup.buttons["Later"].tap()
+        XCTAssertTrue(wait { !popup.exists })
+        XCTAssertEqual(app.staticTexts["native-clarify-fixture.receipt"].label, "No clarification submitted")
+        XCTAssertTrue(app.buttons["direct-hermes.attention"].exists, "It's still waiting")
         let fullQuestion = app.tables["chat.timeline"].staticTexts[question].firstMatch
         XCTAssertTrue(fullQuestion.waitForExistence(timeout: 10))
         for _ in 0..<5 {
@@ -16,7 +23,7 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
         XCTAssertTrue(fullQuestion.isHittable)
         let choice = choice(app.tables["chat.timeline"], question: 0, index: 1)
         XCTAssertTrue(choice.waitForExistence(timeout: 10))
-        reveal(choice, in: app)
+        revealInTimeline(choice, in: app)
         XCTAssertTrue(choice.isHittable)
         capture("native-single-full-question", app: app)
         choice.tap()
@@ -30,9 +37,9 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
     func testAttentionPopupCompletesBothQuestionsWithCustomAnswer() {
         let app = launch()
         let attention = app.buttons["direct-hermes.attention"]
-        XCTAssertTrue(attention.waitForExistence(timeout: 10))
-        attention.tap()
-        XCTAssertTrue(app.navigationBars["Needs attention"].waitForExistence(timeout: 5))
+        // The questions pop up by itself, without tapping the bar.
+        XCTAssertTrue(app.navigationBars["Needs attention"].waitForExistence(timeout: 10))
+        XCTAssertTrue(attention.exists)
         // The mounted inline card remains in AX beneath the modal. Restrict
         // interaction to the real List in the foreground attention sheet.
         let sheet = app.collectionViews.firstMatch
@@ -48,7 +55,11 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
         reveal(second, in: app)
         second.tap()
         XCTAssertTrue(app.navigationBars["Needs attention"].exists, "A batch must not submit its first answer alone")
-        let custom = customInput(sheet, question: 1)
+        // One own-words field for the card answers the question left without a choice.
+        let custom = customInput(sheet)
+        XCTAssertEqual(sheet.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "direct-hermes.clarification.custom.")).count, 1,
+            "One field for the whole card, not one per question")
         reveal(custom, in: app)
         XCTAssertTrue(custom.isHittable)
         capture("native-attention-full-questions-and-selected-choice", app: app)
@@ -65,11 +76,20 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
             XCTAssertLessThan(custom.frame.maxY, keyboard.frame.minY)
         }
         capture("native-attention-custom-answer-visible", app: app)
+        // Later answers nothing; the bar brings the questions back as they were left.
+        let receipt = app.staticTexts["native-clarify-fixture.receipt"]
+        app.navigationBars["Needs attention"].buttons["Later"].tap()
+        XCTAssertTrue(wait { !app.navigationBars["Needs attention"].exists })
+        XCTAssertEqual(receipt.label, "No clarification submitted")
+        XCTAssertTrue(attention.waitForExistence(timeout: 5))
+        attention.tap()
+        XCTAssertTrue(app.navigationBars["Needs attention"].waitForExistence(timeout: 5))
+        XCTAssertTrue(wait { self.customInput(sheet).value as? String == "Ship after review" },
+                      "What you typed is still there")
         let done = sheet.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "direct-hermes.clarification.done.")).firstMatch
         reveal(done, in: app)
         XCTAssertTrue(done.isEnabled)
         done.tap()
-        let receipt = app.staticTexts["native-clarify-fixture.receipt"]
         XCTAssertTrue(wait { receipt.label == "q0=App Store; q1=Ship after review; submissions=0" })
         XCTAssertTrue(wait { !app.navigationBars["Needs attention"].exists })
         XCTAssertFalse(attention.exists)
@@ -93,11 +113,11 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
             "direct-hermes.clarification.question.\(question).choice.\(index).")).firstMatch
     }
 
-    private func customInput(_ app: XCUIElement, question: Int) -> XCUIElement {
+    private func customInput(_ app: XCUIElement) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(
             format: "(elementType == %d OR elementType == %d) AND identifier BEGINSWITH %@",
             XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue,
-            "direct-hermes.clarification.question.\(question).custom."
+            "direct-hermes.clarification.custom."
         )).firstMatch
     }
 
@@ -110,6 +130,18 @@ final class NativeClarificationAcceptanceUITests: BighelpUITestCase {
         for _ in 0..<5 {
             if element.exists && element.isHittable { return }
             app.swipeUp()
+        }
+    }
+
+    /// Small drags toward the element, so it lands between the chat header
+    /// (and the waiting bar) and the keyboard instead of overshooting under them.
+    private func revealInTimeline(_ element: XCUIElement, in app: XCUIApplication) {
+        let timeline = app.tables["chat.timeline"]
+        for _ in 0..<10 {
+            if element.exists && element.isHittable { return }
+            let start = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let step: CGFloat = element.frame.midY < timeline.frame.midY ? 90 : -90
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: step)))
         }
     }
 

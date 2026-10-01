@@ -170,6 +170,15 @@ extension DirectHermesConversationClient {
         }
         if !isReplayingActivity { onAdmittedActivity?(change, projection.turnID, turnFailed) }
         if event.type == "message.complete" {
+            // Hermes' saved rows for this turn; the reply is on screen by now.
+            if !isReplayingActivity, let receipt = event.payload["persisted_turn"]?.object {
+                if let row = receipt["user_row_id"]?.integer {
+                    model?.bindNewestUnsavedMessage(role: .human, toRow: row, from: self)
+                }
+                if let row = receipt["final_assistant_row_id"]?.integer {
+                    model?.bindNewestUnsavedMessage(role: .assistant, toRow: row, from: self)
+                }
+            }
             scheduleMessageMedia()
             scheduleDurableMessageReactionHydration(activation: [:])
         }

@@ -5,6 +5,7 @@ struct ToolsetManagementView: View {
     @Bindable var model: ToolsetManagementModel
     let hostName: String
     let profileName: String
+    @State private var search = ""
 
     var body: some View {
         List {
@@ -15,31 +16,39 @@ struct ToolsetManagementView: View {
                 retry: { Task { await model.load() } }
             )
             if let snapshot = model.snapshot {
-                Section {
-                    if snapshot.toolsets.isEmpty { Text("No configurable toolsets were reported.").foregroundStyle(.secondary) }
-                    ForEach(snapshot.toolsets) { toolset in
-                        NavigationLink {
-                            ToolsetDetailView(model: model, toolsetName: toolset.name)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                    Text(toolset.label)
-                                    Text("\(toolset.platformLabel) • \(toolset.isEnabled ? "Enabled" : "Disabled")")
-                                        .font(.caption).foregroundStyle(.secondary)
+                let toolsets = snapshot.toolsets.filter {
+                    ManagementSearch.matches(search, $0.label, $0.name, $0.summary, $0.platformLabel)
+                }
+                if ManagementSearch.isActive(search), toolsets.isEmpty {
+                    ManagementSearchEmptySection(search: search)
+                } else {
+                    Section {
+                        if snapshot.toolsets.isEmpty { Text("No configurable toolsets were reported.").foregroundStyle(.secondary) }
+                        ForEach(toolsets) { toolset in
+                            NavigationLink {
+                                ToolsetDetailView(model: model, toolsetName: toolset.name)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+                                        Text(toolset.label)
+                                        Text("\(toolset.platformLabel) • \(toolset.isEnabled ? "Enabled" : "Disabled")")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if toolset.isConfigured { Image(systemName: "checkmark.seal").accessibilityLabel("Configured") }
                                 }
-                                Spacer()
-                                if toolset.isConfigured { Image(systemName: "checkmark.seal").accessibilityLabel("Configured") }
+                                .frame(minHeight: BighelpTokens.hitTarget)
                             }
-                            .frame(minHeight: BighelpTokens.hitTarget)
                         }
+                    } header: { Text("Toolsets") }
+                      footer: {
+                        Text("Changes apply to new sessions in this profile; the current conversation and Hermes process are unchanged.")
                     }
-                } header: { Text("Toolsets") }
-                  footer: {
-                    Text("Changes apply to new sessions in this profile; the current conversation and Hermes process are unchanged.")
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .searchable(text: $search, prompt: "Search toolsets")
         .refreshable { await model.load() }
         .task { if model.snapshot == nil { await model.load() } }
     }

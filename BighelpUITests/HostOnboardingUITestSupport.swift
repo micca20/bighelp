@@ -9,12 +9,14 @@ extension BighelpUITestCase {
         start.tap()
         let field = app.textFields["host-setup.address"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
-        field.tap()
-        field.typeText(address)
+        // Before typing: with the keyboard up, the floating Continue button covers
+        // Advanced connection and the tap connects over HTTPS instead.
         app.buttons["Advanced connection"].firstMatch.tap()
         let http = app.switches["direct-hermes.private-http"]
         XCTAssertTrue(http.waitForExistence(timeout: 3))
         (http.switches.firstMatch.exists ? http.switches.firstMatch : http).tap()
+        field.tap()
+        field.typeText(address)
         // During onboarding the button reports the screen's identifier.
         let connect = app.buttons.matching(NSPredicate(
             format: "identifier IN %@ AND label IN %@",

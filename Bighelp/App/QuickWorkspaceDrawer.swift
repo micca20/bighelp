@@ -242,7 +242,8 @@ struct QuickWorkspaceDrawer: View {
     let onOpenSession: (SessionSummary) -> Void
     let onOpenAgents: () -> Void
     let onOpenScheduledTasks: () -> Void
-    let onOpenWorkspaceHub: () -> Void
+    var onOpenProjects: (() -> Void)? = nil
+    var onOpenKanban: (() -> Void)? = nil
     let onOpenWorkspaces: () -> Void
     let onSelectAgent: (AgentProfile) -> Void
     let onOpenMore: () -> Void
@@ -288,9 +289,10 @@ struct QuickWorkspaceDrawer: View {
             destinations: BighelpMenuDestinations(
                 onNewChat: onNewChat,
                 onAllChats: onOpenSessions,
+                onProjects: onOpenProjects,
                 onAgents: onOpenAgents,
                 onScheduledTasks: onOpenScheduledTasks,
-                onHermesTools: settings.nerdModeEnabled ? onOpenWorkspaceHub : nil,
+                onKanban: onOpenKanban,
                 folder: settings.nerdModeEnabled ? (name: activeWorkspaceName, open: onOpenWorkspaces) : nil,
                 onProviderUsage: providerUsage?.isAvailable == true ? { [providerUsage, isEmbedded, agents] in
                     Task { @MainActor in

@@ -112,8 +112,8 @@ enum ChatCanvasTranscriptProjection {
                 // expanded content projected as sibling native rows.
                 let header = ChatCompletedTurn(id: turn.id, entries: [], elapsedSeconds: turn.elapsedSeconds)
                 result.append(.transcript(.completed(header)))
-                if disclosures.isCompletedTurnExpanded(turn.id), let activity = turn.mergedActivity {
-                    append(activity)
+                if disclosures.isCompletedTurnExpanded(turn.id) {
+                    turn.expandedEntries.forEach(append)
                 }
             }
         }

@@ -215,14 +215,18 @@ final class BighelpLinkVoiceSpeechOutput: VoiceSpeechOutput {
 @MainActor
 final class AVAudioPlayerVoicePlayback: NSObject, VoiceAudioPlayback, AVAudioPlayerDelegate {
     private let sessionCoordinator: VoiceAudioSessionCoordinator
+    private let use: VoiceAudioUse
     private var player: AVAudioPlayer?
     private var continuation: CheckedContinuation<Void, Error>?
     private var sessionClaim: VoiceAudioSessionClaim?
     private var playbackEvent: (@MainActor (VoicePlaybackEvent) -> Void)?
     private var meterTask: Task<Void, Never>?
 
-    init(sessionCoordinator: VoiceAudioSessionCoordinator = .shared) {
+    /// `.playback` for samples nothing listens to; a voice chat's replies are
+    /// part of the conversation.
+    init(sessionCoordinator: VoiceAudioSessionCoordinator = .shared, use: VoiceAudioUse = .conversation) {
         self.sessionCoordinator = sessionCoordinator
+        self.use = use
         super.init()
     }
 
@@ -243,7 +247,7 @@ final class AVAudioPlayerVoicePlayback: NSObject, VoiceAudioPlayback, AVAudioPla
         playbackEvent = onPlayback
 
         do {
-            sessionClaim = try sessionCoordinator.acquire()
+            sessionClaim = try sessionCoordinator.acquire(for: use)
         } catch {
             playbackEvent?(.failed)
             playbackEvent = nil

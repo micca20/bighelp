@@ -31,6 +31,8 @@ final class ProjectsStore {
     private(set) var chats: [String: [Chat]] = [:]
     private(set) var loadingChats: Set<String> = []
     private(set) var errorMessage: String?
+    /// A project chat being looked up on the host; the page shows "Opening chat…".
+    var openingChatID: String?
 
     @ObservationIgnored private let source: any ProjectsSource
     @ObservationIgnored private let profileID: String

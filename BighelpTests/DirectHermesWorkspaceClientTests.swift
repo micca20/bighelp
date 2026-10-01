@@ -42,21 +42,22 @@ struct DirectHermesWorkspaceClientTests {
         let create: [String: BighelpJSONValue] = [
             "profile": .string("studio"), "title": .string("Bot Chat"),
             "hidden": .boolean(true), "follow_profile_config": .boolean(true),
+            "cwd": .string("/workspace/notes"), "cwd_explicit": .boolean(true), "source": .string("bighelp"),
         ]
         #expect(try DirectHermesWorkspaceClient.route(.sessionCreate, payload: create) == .rpc("session.create", create))
         let title: [String: BighelpJSONValue] = ["session_id": .string("live"), "title": .string("Bot Chat")]
         #expect(try DirectHermesWorkspaceClient.route(.sessionTitle, payload: title) == .rpc("session.title", title))
     }
 
-    @Test func canonicalResumeUsesNativeCoordinatesWithoutSourceOverride() throws {
+    @Test func canonicalResumeUsesNativeCoordinatesAndTheBighelpSource() throws {
         let payload: [String: BighelpJSONValue] = [
             "profile": .string("studio"), "session_id": .string("canonical"),
-            "defer_history": .boolean(true), "omit_messages": .boolean(true),
+            "defer_history": .boolean(true), "omit_messages": .boolean(true), "source": .string("bighelp"),
         ]
         #expect(try DirectHermesWorkspaceClient.route(.sessionResume, payload: payload) == .rpc("session.resume", payload))
         #expect(throws: WorkspaceClientError.invalidRequest) {
             try DirectHermesWorkspaceClient.route(.sessionResume,
-                payload: payload.merging(["source": .string("desktop")]) { _, value in value })
+                payload: payload.merging(["cwd": .string("/elsewhere")]) { _, value in value })
         }
     }
 
@@ -257,6 +258,48 @@ struct DirectHermesWorkspaceClientTests {
         #expect(model.commands[2].category == "Skills")
         #expect(model.index.suggestions(for: "/").map(\.name) == ["help", "lint", "calendar-sync"])
         #expect(model.index.suggestions(for: "/calendar").map(\.name) == ["calendar-sync"])
+    }
+
+    @Test func oneUnusableCatalogEntryDoesNotHideTheOtherCommands() async throws {
+        let authority = try WorkspaceAuthority.fixture(id: "test-host")
+        let owner = WorkspaceOwner(authority: authority, authenticationGeneration: UUID(), connectionGeneration: UUID())
+        let transport = WorkspaceTransportStub()
+        let longDescription = String(repeating: "Route work across several apps. ", count: 12)
+        transport.result = .object([
+            "pairs": .array([
+                .array([.string("/help"), .string("Show available commands")]),
+                // A skill whose author wrote a long description.
+                .array([.string("/wordy-skill"), .string(longDescription)]),
+                .array([.string("/multi-line"), .string("First line\nSecond line")]),
+                // Names the composer can't insert are left out.
+                .array([.string("no-slash"), .string("Missing its slash")]),
+                .array([.string("/has space"), .string("Space in the name")]),
+                .array([.string("/empty-description"), .string("")]),
+            ]),
+            "skills": .object([
+                "/wordy-skill": .object(["usage": .integer(0), "origin": .string("local")]),
+            ]),
+            "warning": .string(""),
+        ])
+        let workspace = DirectHermesWorkspaceClient(
+            rpc: transport, http: transport, owner: owner,
+            capabilities: .init(owner: owner), currentOwner: { owner }
+        )
+        let client = DirectHermesSlashCommandCatalogClient(
+            workspace: workspace, owner: owner, currentOwner: { owner }
+        )
+        let model = SlashCommandCatalogModel(sessionID: "visible-session", agentID: "studio", client: client)
+
+        await model.loadIfNeeded(for: "/")
+
+        #expect(model.errorMessage == nil)
+        #expect(model.commands.map(\.name) == ["help", "wordy-skill", "multi-line", "empty-description"])
+        let wordy = try #require(model.commands.first { $0.name == "wordy-skill" })
+        #expect(wordy.description.count == DirectHermesSlashCommandCatalogClient.maximumDescriptionLength)
+        #expect(wordy.description.hasSuffix("…"))
+        #expect(wordy.source == .skill)
+        #expect(model.commands.first { $0.name == "multi-line" }?.description == "First line Second line")
+        #expect(model.commands.first { $0.name == "empty-description" }?.description == "Command")
     }
 
     @Test func replacedOwnerCannotCommitOrRetryAnOldResult() async throws {

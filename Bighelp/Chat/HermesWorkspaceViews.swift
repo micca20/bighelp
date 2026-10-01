@@ -306,17 +306,20 @@ struct HermesWorkspaceCreateView: View {
             Form {
                 Section {
                     // Focusing writes back the same text; only a real edit stops auto-naming.
-                    TextField("Name", text: Binding(get: { name }, set: { if $0 != name { name = $0; nameFollowsFolder = false } }))
+                    TextField("Name", text: Binding(get: { name }, set: { if $0 != name { name = $0; nameFollowsFolder = false } }),
+                              prompt: Text("Name").bighelpFieldHint(theme))
                         .textInputAutocapitalization(.words)
                         .focused($focusedField, equals: .name)
                         .accessibilityIdentifier("hermes-workspaces.create.name")
                     if noun == "Project" {
-                        TextField("What it's for (optional)", text: $summary, axis: .vertical)
+                        TextField("What it's for (optional)", text: $summary,
+                                  prompt: Text("What it's for (optional)").bighelpFieldHint(theme), axis: .vertical)
                             .lineLimit(1...3)
                             .focused($focusedField, equals: .summary)
                             .accessibilityIdentifier("hermes-workspaces.create.summary")
                     }
-                    TextField("Folder, like ~/projects/app", text: $folderPath)
+                    TextField("Folder, like ~/projects/app", text: $folderPath,
+                              prompt: Text("Folder, like ~/projects/app").bighelpFieldHint(theme))
                         .font(.system(.body, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()

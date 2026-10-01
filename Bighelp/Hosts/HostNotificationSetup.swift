@@ -30,6 +30,7 @@ enum HostNotificationSetupResult: Sendable {
 enum HostNotificationState: String, Codable, Sendable {
     case notConfigured, checking, installing, installed, enabled, backendRestartRequired
     case verificationRequired, prerequisitesRequired, permissionDenied, managementRejected, unsupported, replacementRequired, outcomeUnknown
+    case releaseUnavailable
 
     var message: String {
         switch self {
@@ -46,6 +47,7 @@ enum HostNotificationState: String, Codable, Sendable {
         case .unsupported: "This Hermes version doesn't support in-app installation."
         case .replacementRequired: "Update the existing bighelp plugin on this computer."
         case .outcomeUnknown: "Couldn't confirm setup. Check again before reinstalling."
+        case .releaseUnavailable: "Couldn't reach GitHub for the newest bighelp plugin. Check the internet connection and try again."
         }
     }
 }
@@ -59,9 +61,10 @@ struct HostPluginIntent: Codable, Equatable, Sendable {
     var phase: Phase
 }
 
+/// One exact plugin commit: a release the app installs and then reads back.
 struct HostPluginPin: Equatable, Sendable {
-    /// Formerly promptclickrun/loopdy-plugin. The pinned revision's updater accepts
-    /// both names (bighelp-plugin #51 onward), and GitHub redirects the old one.
+    /// Formerly promptclickrun/loopdy-plugin. The plugin's updater accepts both
+    /// names (bighelp-plugin #51 onward), and GitHub redirects the old one.
     let identifier = "promptclickrun/bighelp-plugin"
     let revision: String
     init(revision: String) throws {
@@ -71,17 +74,6 @@ struct HostPluginPin: Equatable, Sendable {
         }
         self.revision = revision
     }
-    static var bundled: HostPluginPin? {
-        guard let revision = Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginRevision") as? String else { return nil }
-        return try? HostPluginPin(revision: revision)
-    }
-
-    /// The plugin version at the bundled revision: the latest this app build installs.
-    static var bundledVersion: String? {
-        (Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginVersion") as? String)
-            .flatMap { validVersion($0) ? $0 : nil }
-    }
-
     static func validVersion(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 32 && value.allSatisfy { $0.isASCII && ($0.isNumber || $0 == ".") }
     }
@@ -99,9 +91,9 @@ struct HostPluginPin: Equatable, Sendable {
         ["action": .string("install"), "identifier": .string(identifier), "catalog_name": .null,
          "ref": .string(revision), "enable": .boolean(true), "force": .boolean(false)]
     }
-    /// The stock manager has no custom-ref update verb. An explicit reviewed
-    /// replacement uses its install API with force=true; the host kill list and
-    /// scanner still run and the exact pinned revision is read back afterward.
+    /// The stock manager has no custom-ref update verb. Replacing an older plugin
+    /// uses its install API with force=true; the host kill list and scanner still
+    /// run, and the exact revision is read back afterward.
     var updateParameters: [String: BighelpJSONValue] {
         ["action": .string("install"), "identifier": .string(identifier), "catalog_name": .null,
          "ref": .string(revision), "enable": .boolean(true), "force": .boolean(true)]
@@ -151,19 +143,25 @@ final class HostNotificationSetupModel {
     private(set) var state: HostNotificationState
     private(set) var isWorking = false
     private(set) var providerFailure: BighelpManagedNotificationSetupError?
-    let pin: HostPluginPin?
+    /// The commit an install uses: the newest release, looked up only when one is needed.
+    private(set) var pin: HostPluginPin?
+    private(set) var release: PluginRelease?
     let hostID: UUID
     let enrollNotifications: Bool
     @ObservationIgnored private let registry: BighelpHostRegistry
     @ObservationIgnored private let management: any HostPluginManagementServing
+    @ObservationIgnored private let releases: any PluginReleaseResolving
     @ObservationIgnored private var operation: UUID?
 
-    init(host: BighelpConfiguredHost, registry: BighelpHostRegistry, pin: HostPluginPin? = .bundled,
+    /// `pin` fixes the commit up front (tests); otherwise the newest release is used.
+    init(host: BighelpConfiguredHost, registry: BighelpHostRegistry, pin: HostPluginPin? = nil,
+         releases: (any PluginReleaseResolving)? = nil,
          management: (any HostPluginManagementServing)? = nil, enrollNotifications: Bool = true) {
         hostID = host.id
         self.registry = registry
         self.management = management ?? registry.workspace(for: host)
         self.pin = pin
+        self.releases = releases ?? GitHubPluginReleaseSource.shared
         self.enrollNotifications = enrollNotifications
         // Preserve the user's saved opt-in without prompting on every visit.
         // Actual grant and delivery authority still belong to the service ledger.
@@ -212,6 +210,8 @@ final class HostNotificationSetupModel {
             "Check Host Support Again"
         case .replacementRequired:
             "Check Installed Plugin Again"
+        case .releaseUnavailable:
+            "Try Again"
         case .prerequisitesRequired:
             enrollNotifications ? "Try Notification Setup Again" : "Check Plugin Requirements Again"
         }
@@ -307,7 +307,11 @@ final class HostNotificationSetupModel {
             var matches = rows.filter { $0.name == "loopdy" }
             guard matches.count <= 1 else { try finish(.replacementRequired, host: &host); return }
             if let installed = matches.first {
-                if !enrollNotifications, let pin, installed.pinnedSHA != pin.revision {
+                // A newer or equal plugin stays; GitHub being unreachable doesn't block enabling it.
+                var target: HostPluginPin?
+                if !enrollNotifications { target = try? await installTarget(for: host) }
+                guard owns() else { return }
+                if let pin = target, installed.pinnedSHA != pin.revision, isOlderThanRelease(installed) {
                     host.pluginIntent = HostPluginIntent(
                         identifier: pin.identifier, revision: pin.revision,
                         profile: nil, phase: .installRequested
@@ -364,8 +368,18 @@ final class HostNotificationSetupModel {
                 try await enrollInstalled(host: &host, connection: workspace.savedConnection, isCurrent: { owns() })
                 return
             }
-            guard let pin else { try finish(.prerequisitesRequired, host: &host); return }
-            if let intent = host.pluginIntent,
+            let pin: HostPluginPin
+            do {
+                pin = try await installTarget(for: host)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard owns() else { return }
+                try finish(.releaseUnavailable, host: &host)
+                return
+            }
+            guard owns() else { return }
+            if let intent = host.pluginIntent, Self.isUnfinished(intent),
                intent.profile != nil || intent.identifier != pin.identifier || intent.revision != pin.revision {
                 try finish(.replacementRequired, host: &host)
                 return
@@ -463,6 +477,40 @@ final class HostNotificationSetupModel {
             if enrollNotifications { host.notificationState = state }
             try? registry.update(host)
         }
+    }
+
+    /// Shows the newest release before someone confirms an install.
+    func loadRelease() async {
+        guard pin == nil else { return }
+        if let latest = try? await releases.latest(refresh: false) {
+            release = latest
+            pin = latest.pin
+        }
+    }
+
+    /// An install that may still be running on the host is finished with the same
+    /// commit it asked for; anything else uses the newest release.
+    private func installTarget(for host: BighelpConfiguredHost) async throws -> HostPluginPin {
+        if let intent = host.pluginIntent, Self.isUnfinished(intent), intent.profile == nil,
+           let requested = try? HostPluginPin(revision: intent.revision), intent.identifier == requested.identifier {
+            return requested
+        }
+        if let pin { return pin }
+        let latest = try await releases.latest(refresh: false)
+        release = latest
+        pin = latest.pin
+        return latest.pin
+    }
+
+    private static func isUnfinished(_ intent: HostPluginIntent) -> Bool {
+        intent.phase == .installRequested || intent.phase == .toggleRequested
+    }
+
+    /// Never replaces a plugin with an older or equal release. Without a release
+    /// version (a fixed pin) any different commit is replaced, as before.
+    private func isOlderThanRelease(_ installed: HostInstalledPlugin) -> Bool {
+        guard let latest = release?.version, let current = installed.version else { return true }
+        return HostPluginPin.compare(current, latest) == .orderedAscending
     }
 
     private func enrollInstalled(host: inout BighelpConfiguredHost, connection: DirectHermesSavedConnection?,

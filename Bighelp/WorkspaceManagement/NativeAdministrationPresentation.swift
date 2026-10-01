@@ -167,7 +167,13 @@ final class NativeAdministrationPresentation: Identifiable {
         )
         providerAccounts = ProviderAccountsStore(
             hostName: hostName, profileID: profileID,
-            servingProfileID: servingProfileID, client: providerClient
+            servingProfileID: servingProfileID, client: providerClient,
+            hostSignIn: ProviderHostSignInStore(
+                profileID: profileID, hostName: hostName,
+                client: DirectHermesHostSignInClient(owner: owner, currentWorkspace: { [weak connections] in
+                    currentOwner() == owner ? connections?.workspace : nil
+                })
+            )
         )
         models = DirectHermesModelAdministrationClient(rpc: rpc, http: http, owner: owner, currentOwner: currentOwner)
         hostOperations = HostOperationsStore(hostName: hostName, profileID: profileID,
@@ -249,28 +255,25 @@ struct NativeAdministrationDestination: View {
                 case .memory:
                     MemoryManagementView(store: presentation.memory)
                 case .system:
-                    HostOperationsView(store: presentation.hostOperations)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Menu("Host Features") {
-                                    Section("Operations") {
-                                        NavigationLink("Tool Backends") {
-                                            HostToolBackendsView(store: presentation.toolBackends)
-                                        }
-                                    }
-                                    Section("Features") {
-                                        NavigationLink("Extensions") {
-                                            HostExtensionsView(kanban: presentation.kanban, achievements: presentation.achievements)
-                                        }
-                                        if let voice = presentation.voice {
-                                            NavigationLink("Host Voice") {
-                                                VoiceConfigurationView(store: voice, permissionCenter: permissionCenter)
-                                            }
-                                        }
-                                    }
-                                }
+                    HostOperationsView(store: presentation.hostOperations) {
+                        NavigationLink {
+                            HostToolBackendsView(store: presentation.toolBackends)
+                        } label: {
+                            Label("Tool Backends", systemImage: "wrench.and.screwdriver")
+                        }
+                        NavigationLink {
+                            HostExtensionsView(kanban: presentation.kanban, achievements: presentation.achievements)
+                        } label: {
+                            Label("Extensions", systemImage: "puzzlepiece.extension")
+                        }
+                        if let voice = presentation.voice {
+                            NavigationLink {
+                                VoiceConfigurationView(store: voice, permissionCenter: permissionCenter)
+                            } label: {
+                                Label("Host Voice", systemImage: "waveform")
                             }
                         }
+                    }
                 case .files:
                     WorkspaceFileTransferView(store: presentation.files)
                 case .projects:

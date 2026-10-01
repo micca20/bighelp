@@ -5,6 +5,7 @@ struct PluginLifecycleManagementView: View {
     @Bindable var model: PluginLifecycleManagementModel
     let hostName: String
     @State private var installCandidate: PluginCatalogEntry?
+    @State private var search = ""
 
     var body: some View {
         List {
@@ -15,61 +16,72 @@ struct PluginLifecycleManagementView: View {
                 retry: { Task { await model.load() } }
             )
             if let snapshot = model.snapshot {
-                Section {
-                    if snapshot.installed.isEmpty { Text("No installed plugins were reported.").foregroundStyle(.secondary) }
-                    ForEach(snapshot.installed) { plugin in
-                        NavigationLink {
-                            InstalledPluginDetailView(model: model, pluginName: plugin.name)
-                        } label: {
-                            VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                Text(plugin.name)
-                                Text("\(plugin.source) • \(plugin.runtimeStatus.capitalized)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            .frame(minHeight: BighelpTokens.hitTarget)
-                        }
-                    }
-                    Button("Rescan installed plugins", systemImage: "arrow.clockwise") {
-                        Task { await model.rescan() }
-                    }
-                    .disabled(model.isBusy)
-                    .frame(minHeight: BighelpTokens.hitTarget)
-                } header: { Text("Installed") }
-                  footer: { Text("Rescan refreshes discovery only; it does not install, enable, or restart plugins.") }
-
-                Section {
-                    ForEach(snapshot.catalog) { entry in
-                        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                            HStack {
-                                Text(entry.name).font(.headline)
-                                Spacer()
-                                Text(entry.tier.capitalized).font(.caption).foregroundStyle(.secondary)
-                            }
-                            if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
-                            LabeledContent("Capabilities", value: capabilitySummary(entry.capabilities))
-                            if entry.isInstalled {
-                                Label(entry.updateAvailable ? "Update available" : "Installed", systemImage: "checkmark.circle")
-                            } else {
-                                Button("Review pinned installation") { installCandidate = entry }
-                                    .buttonStyle(.bordered)
-                                    .disabled(model.isBusy)
-                            }
-                        }
-                        .padding(.vertical, BighelpTokens.space4)
-                    }
-                } header: { Text("Available plugins") }
-                  footer: {
-                    Text("Review the pinned source and declared access before installing. bighelp never force-installs plugins.")
+                let installed = snapshot.installed.filter {
+                    ManagementSearch.matches(search, $0.name, $0.source, $0.runtimeStatus)
                 }
+                let catalog = snapshot.catalog.filter {
+                    ManagementSearch.matches(search, $0.name, $0.summary, $0.tier, $0.maintainer)
+                }
+                if ManagementSearch.isActive(search), installed.isEmpty, catalog.isEmpty {
+                    ManagementSearchEmptySection(search: search)
+                } else {
+                    Section {
+                        if snapshot.installed.isEmpty { Text("No installed plugins were reported.").foregroundStyle(.secondary) }
+                        ForEach(installed) { plugin in
+                            NavigationLink {
+                                InstalledPluginDetailView(model: model, pluginName: plugin.name)
+                            } label: {
+                                VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+                                    Text(plugin.name)
+                                    Text("\(plugin.source) • \(plugin.runtimeStatus.capitalized)")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                .frame(minHeight: BighelpTokens.hitTarget)
+                            }
+                        }
+                        Button("Rescan installed plugins", systemImage: "arrow.clockwise") {
+                            Task { await model.rescan() }
+                        }
+                        .disabled(model.isBusy)
+                        .frame(minHeight: BighelpTokens.hitTarget)
+                    } header: { Text("Installed") }
+                      footer: { Text("Rescan refreshes discovery only; it does not install, enable, or restart plugins.") }
 
-                if !snapshot.removedCatalogEntries.isEmpty {
-                    Section("Advanced · Removed from catalog") {
-                        ForEach(snapshot.removedCatalogEntries, id: \.self) { Text($0).font(.footnote) }
+                    Section {
+                        ForEach(catalog) { entry in
+                            VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                                HStack {
+                                    Text(entry.name).font(.headline)
+                                    Spacer()
+                                    Text(entry.tier.capitalized).font(.caption).foregroundStyle(.secondary)
+                                }
+                                if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
+                                LabeledContent("Capabilities", value: capabilitySummary(entry.capabilities))
+                                if entry.isInstalled {
+                                    Label(entry.updateAvailable ? "Update available" : "Installed", systemImage: "checkmark.circle")
+                                } else {
+                                    Button("Review pinned installation") { installCandidate = entry }
+                                        .buttonStyle(.bordered)
+                                        .disabled(model.isBusy)
+                                }
+                            }
+                            .padding(.vertical, BighelpTokens.space4)
+                        }
+                    } header: { Text("Available plugins") }
+                      footer: {
+                        Text("Review the pinned source and declared access before installing. bighelp never force-installs plugins.")
+                    }
+
+                    if !snapshot.removedCatalogEntries.isEmpty, !ManagementSearch.isActive(search) {
+                        Section("Advanced · Removed from catalog") {
+                            ForEach(snapshot.removedCatalogEntries, id: \.self) { Text($0).font(.footnote) }
+                        }
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .searchable(text: $search, prompt: "Search plugins")
         .refreshable { await model.load() }
         .task { if model.snapshot == nil { await model.load() } }
         .sheet(item: $installCandidate) { entry in

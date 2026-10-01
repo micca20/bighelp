@@ -786,11 +786,15 @@ final class DirectHermesKanbanClient {
         guard let row = value.object, let id = row["id"]?.integer, id > 0 else {
             throw HermesKanbanError.invalidResponse
         }
+        // Only the parts the activity list shows; anything malformed is left out.
+        let payload = row["payload"]?.object
         return .init(
             id: id, taskID: try responseText(row["task_id"], maximum: 240),
             runID: try optionalInteger(row["run_id"], minimum: 1),
             kind: try responseText(row["kind"], maximum: 120),
-            createdAt: try date(row["created_at"])
+            createdAt: try date(row["created_at"]),
+            reason: (try? optionalResponseText(payload?["reason"], maximum: 4_000)) ?? nil,
+            failures: payload?["failures"]?.integer.flatMap { (1...1_000).contains($0) ? $0 : nil }
         )
     }
 
@@ -822,7 +826,9 @@ final class DirectHermesKanbanClient {
             endedAt: try optionalDate(row["ended_at"]),
             outcome: try optionalResponseText(row["outcome"], maximum: 120),
             summary: try optionalResponseText(row["summary"], maximum: maximumTextBytes),
-            error: row["error"] == nil || row["error"] == .null ? nil : "Hermes reported that this run failed.",
+            // The real error: it says why the task stopped (`KanbanFailure` puts it in plain words).
+            error: row["error"] == nil || row["error"] == .null ? nil
+                : (try? optionalResponseText(row["error"], maximum: maximumTextBytes)) ?? "Hermes reported that this run failed.",
             lastHeartbeatAt: try optionalDate(row["last_heartbeat_at"]),
             maxRuntimeSeconds: try optionalInteger(row["max_runtime_seconds"], minimum: 1)
         )

@@ -1,38 +1,6 @@
 import SwiftUI
 import UIKit
 
-enum BighelpLogoColor: Equatable, Sendable {
-    case assetOriginal
-    case themePrimaryText
-    case fixedHex(String)
-}
-
-struct BighelpLogoPresentation: Equatable, Sendable {
-    let mark: BighelpLogoColor
-    let wordmark: BighelpLogoColor
-    let usesReflectiveMaterial: Bool
-
-    static func resolve(
-        themeID: BighelpThemeID,
-        colorScheme: ColorScheme
-    ) -> Self {
-        guard themeID == .nous || themeID == .superpilot else {
-            return BighelpLogoPresentation(
-                mark: .assetOriginal,
-                wordmark: .themePrimaryText,
-                usesReflectiveMaterial: true
-            )
-        }
-
-        let monochromeHex = colorScheme == .dark ? "FFFFFF" : "000000"
-        return BighelpLogoPresentation(
-            mark: .fixedHex(monochromeHex),
-            wordmark: .fixedHex(monochromeHex),
-            usesReflectiveMaterial: false
-        )
-    }
-}
-
 struct BighelpLogo: View {
     enum Presentation {
         case full
@@ -41,90 +9,26 @@ struct BighelpLogo: View {
 
     let presentation: Presentation
     let height: CGFloat
-    let usesMonochromeMark: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.appAppearance) private var appAppearance
-
-    init(presentation: Presentation = .full, height: CGFloat = 32, usesMonochromeMark: Bool = false) {
+    init(presentation: Presentation = .full, height: CGFloat = 32) {
         self.presentation = presentation
         self.height = height
-        self.usesMonochromeMark = usesMonochromeMark
     }
 
     var body: some View {
         Group {
-            if let customLogoImage {
-                Image(uiImage: customLogoImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: height)
-            } else {
-                // The Ember identity replaces the legacy infinity artwork.
-                switch presentation {
-                case .full:
-                    EmberLockup(markSize: height)
-                case .mark:
-                    EmberMark(size: height)
-                }
+            switch presentation {
+            case .full:
+                EmberLockup(markSize: height)
+            case .mark:
+                EmberMark(size: height)
             }
         }
         .fixedSize(horizontal: true, vertical: true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(EmberBrand.appName)
-        .accessibilityIdentifier(
-            customLogoImage == nil ? "loopdy.brand-logo" : "loopdy.custom-theme-logo"
-        )
+        .accessibilityIdentifier("loopdy.brand-logo")
     }
-
-    @ViewBuilder
-    private var mark: some View {
-        switch logoPresentation.mark {
-        case .assetOriginal:
-            Image("BighelpMarkColor")
-                .resizable()
-                .renderingMode(usesMonochromeMark ? .template : .original)
-                .foregroundStyle(color(for: .themePrimaryText))
-                .scaledToFit()
-        case .themePrimaryText, .fixedHex:
-            Image("BighelpMarkColor")
-                .resizable()
-                .renderingMode(.template)
-                .foregroundStyle(color(for: logoPresentation.mark))
-                .scaledToFit()
-        }
-    }
-
-    private var wordmark: some View {
-        Image("BighelpWordmarkMask")
-            .resizable()
-            .renderingMode(.template)
-            .foregroundStyle(color(for: logoPresentation.wordmark))
-            .scaledToFit()
-    }
-
-    private var logoPresentation: BighelpLogoPresentation {
-        .resolve(themeID: theme.themeID, colorScheme: colorScheme)
-    }
-
-    private var customLogoImage: UIImage? {
-        let url = colorScheme == .dark
-            ? appAppearance.customDarkLogoURL
-            : appAppearance.customLightLogoURL
-        guard let url else { return nil }
-        return UIImage(contentsOfFile: url.path)
-    }
-
-    private func color(for role: BighelpLogoColor) -> Color {
-        switch role {
-        case .assetOriginal, .themePrimaryText:
-            theme.primaryText
-        case .fixedHex(let hex):
-            Color(hex: hex)
-        }
-    }
-
-    @BighelpThemeReader private var theme
 }
 
 enum BighelpAnimatedMarkPolicy {

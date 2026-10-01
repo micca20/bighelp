@@ -6,7 +6,7 @@ final class ScratchpadExportUITests: BighelpUITestCase {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-enable-project-changes", "-use-project-changes-markdown-fixture", "-start-chat", "-preview-ui-v3"]
         app.launch()
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         changes.tap()
         let open = app.buttons["project-changes.scratchpad"]

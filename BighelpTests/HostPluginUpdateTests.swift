@@ -42,13 +42,13 @@ struct HostPluginUpdateTests {
         #expect(Model.state(installed: "2.17.0", running: "2.17.0", latest: "2.16.1") == .upToDate)
         // Unknown running version (older plugins without native context) doesn't block.
         #expect(Model.state(installed: "2.16.1", running: nil, latest: "2.16.1") == .upToDate)
-        // An app build without a bundled version never nags.
+        // Until GitHub names the newest release, nothing is offered.
         #expect(Model.state(installed: "1.0.0", running: "1.0.0", latest: nil) == .upToDate)
     }
 
-    @Test func theAppBuildShipsTheVersionItInstalls() throws {
-        let version = try #require(HostPluginPin.bundledVersion)
-        #expect(HostPluginPin.validVersion(version))
-        #expect(HostPluginPin.bundled != nil)
+    /// Plugin releases reach hosts without an app build, so the app pins none.
+    @Test func theAppBuildPinsNoPluginVersion() {
+        #expect(Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginRevision") == nil)
+        #expect(Bundle.main.object(forInfoDictionaryKey: "BighelpNotificationPluginVersion") == nil)
     }
 }

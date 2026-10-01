@@ -30,6 +30,34 @@ struct NativeWorkspaceSessionBridgeTests {
         ))
     }
 
+    /// "Resolve or save the pending work in 1 profile session(s)" blocked deleting
+    /// an agent over a leftover draft. A rename keeps the agent's chats, so a
+    /// draft still holds it; a delete removes them, drafts included.
+    @Test func aLeftoverDraftBlocksRenameButNotDelete() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "bridge-delete-\(UUID().uuidString)")
+        let suite = "bridge-delete-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let hosts = BighelpHostRegistry(root: root.appending(path: "hosts"), keychainService: suite,
+                                        independentRoot: root.appending(path: "independent"), defaults: defaults)
+        let authority = try WorkspaceAuthority.fixture(id: "bridge-delete")
+        let bridge = try NativeWorkspaceSessionBridge(connections: WorkspaceConnectionStore(hosts: hosts),
+                                                      authority: authority, directory: root.appending(path: "sessions"))
+        var record = DirectHermesDraftStore.Record()
+        record.draft = "Half a thought"
+        record.owner = .init(hostIdentity: authority.cacheScopeID, profile: "sage", storedID: "stored-1", title: "Chat")
+        try bridge.drafts.save(record, scope: "sage-stored-1")
+
+        #expect(throws: NativeWorkspaceLifecycleError.protectedProfileState(profileID: "sage", sessionIDs: ["stored-1"])) {
+            _ = try bridge.retireProfileSessions(profileID: "sage")
+        }
+        _ = try bridge.retireProfileSessions(profileID: "sage", discardingLocalWork: true)
+        #expect(try bridge.profileSessionOwnership(profileID: "sage").isEmpty)
+    }
+
     @Test func retainedStreamMayAttemptDurableResumeAcrossACompactionSuccessor() throws {
         let authority = try WorkspaceAuthority.fixture(id: "bridge-lineage")
         let authentication = UUID()

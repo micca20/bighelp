@@ -350,9 +350,36 @@ final class BighelpShortcutService: @unchecked Sendable {
     /// failing; the running turn still finishes and notifies.
     var responseWait: Duration = .seconds(25)
 
-    /// True while a Shortcut is sending or waiting. Backgrounding the scene
-    /// must not retire the host socket underneath it.
+    /// True while a Shortcut or the Watch is sending or waiting. Backgrounding
+    /// the scene must not retire the host socket underneath it.
     static private(set) var holdsHostConnection = 0
+
+    /// Keeps the host socket open until the returned closure runs, without
+    /// background time: CarPlay keeps bighelp running while it's connected.
+    static func holdHostConnection() -> @MainActor () -> Void {
+        holdsHostConnection += 1
+        var released = false
+        return {
+            guard !released else { return }
+            released = true
+            holdsHostConnection -= 1
+        }
+    }
+
+    /// Keeps the host socket open, and asks iOS for background time, while
+    /// work started outside the app (a Shortcut, the Watch) runs.
+    static func holdingHostConnection<Value>(
+        named name: String,
+        _ work: @MainActor () async throws -> Value
+    ) async rethrows -> Value {
+        holdsHostConnection += 1
+        let backgroundTask = UIApplication.shared.beginBackgroundTask(withName: name)
+        defer {
+            holdsHostConnection -= 1
+            if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask) }
+        }
+        return try await work()
+    }
 
     static func awaitTransportReady(_ model: ChatModel, timeout: Duration = .seconds(30)) async throws {
         let deadline = ContinuousClock.now + timeout

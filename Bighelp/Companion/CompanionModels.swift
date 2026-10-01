@@ -617,7 +617,11 @@ final class CompanionStore {
             pattern: appearance.pattern,
             vibe: appearance.vibe,
             colorway: appearance.colorway,
-            usesCharacterColors: appearance.usesCharacterColors
+            usesCharacterColors: appearance.usesCharacterColors,
+            bitEyes: appearance.bitEyes,
+            bitMouth: appearance.bitMouth,
+            bitAccessory: appearance.bitAccessory,
+            showsCheeks: appearance.showsCheeks
         )
     }
 

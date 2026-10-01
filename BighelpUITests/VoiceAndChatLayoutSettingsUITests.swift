@@ -87,6 +87,34 @@ final class VoiceAndChatLayoutSettingsUITests: BighelpUITestCase {
         self.save("06-gpt-live-1", app)
     }
 
+    /// TTS voice mode: speech to text on this device or with Hermes' provider.
+    @MainActor
+    func testSpeechToTextChoiceForTTSVoice() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-voice-settings-fixture",
+                               "-loopdy.voice.conversation-mode", "turnBased"]
+        app.launch()
+        openSettings(in: app)
+        let voiceSettings = settingsRow("settings.chat.voice-settings", in: app)
+        XCTAssertTrue(voiceSettings.waitForExistence(timeout: 5))
+        voiceSettings.tap()
+
+        let choice = app.buttons["voice.settings.transcription"]
+        for _ in 0..<6 where !(choice.exists && choice.isHittable) { app.swipeUp() }
+        XCTAssertTrue(choice.waitForExistence(timeout: 3))
+        XCTAssertTrue(choice.label.contains("This device"), choice.label)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@",
+            "waits longer the longer you talk")).firstMatch.exists, "Hands-free explains it waits for pauses")
+        choice.tap()
+        let hermes = app.buttons["Hermes"]
+        XCTAssertTrue(hermes.waitForExistence(timeout: 3))
+        hermes.tap()
+        XCTAssertTrue(choice.label.contains("Hermes"), choice.label)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@",
+            "speech-to-text provider set up in Hermes")).firstMatch.waitForExistence(timeout: 3))
+        save("07-speech-to-text", app)
+    }
+
     @MainActor
     func testChatLayoutOptionsLiveUnderAppearance() throws {
         let app = makeApp()

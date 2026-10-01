@@ -21,7 +21,11 @@ struct VoiceModelTests {
         settings.setLiveVoice("bossa", for: .apiKey)
         settings.setLiveVoice("maple", for: .codexSubscription)
 
+        #expect(settings.voiceTranscription == .onDevice)
+        settings.voiceTranscription = .hermes
+
         let restored = SettingsStore(defaults: defaults)
+        #expect(restored.voiceTranscription == .hermes)
         #expect(restored.voiceConversationMode == .turnBased)
         #expect(restored.liveVoiceProvider == .apiKey)
         #expect(restored.liveVoice(for: .apiKey) == "bossa")
@@ -570,6 +574,89 @@ private extension UIView {
         }
         return matches
     }
+
+    // MARK: Long turns and where they're transcribed
+
+    @Test func hermesTranscriptionHandsTheSourceTheHostTranscriberOnlyForThePersonsTurns() async throws {
+        let source = ControlledVoiceInputLevelSource()
+        let client = HostTranscribingVoiceClient(text: "Book a table for four")
+        let model = VoiceModel(conversationID: "c1", transcription: .hermes, client: client, inputLevelSource: source)
+        await model.startMonitoring()
+        #expect(source.transcription == .hermes)
+        let transcriber = try #require(source.hostTranscriber)
+        let text = try await transcriber(Data([1, 2, 3]))
+        #expect(text == "Book a table for four")
+        #expect(client.audio == [Data([1, 2, 3])])
+
+        model.stopMonitoring()
+        model.selectStatus(.speaking)
+        await model.startMonitoring()
+        #expect(source.transcription == .onDevice, "Interruptions are caught on this device")
+        #expect(source.hostTranscriber == nil)
+    }
+
+    @Test func onDeviceTranscriptionNeverSendsAudioToTheHost() async {
+        let source = ControlledVoiceInputLevelSource()
+        let model = VoiceModel(conversationID: "c1", client: HostTranscribingVoiceClient(text: "x"),
+                               inputLevelSource: source)
+        await model.startMonitoring()
+        #expect(source.transcription == .onDevice)
+        #expect(source.hostTranscriber == nil)
+    }
+
+    @Test func sendNowEndsTheTurnWithoutWaitingForAPause() async {
+        let source = ControlledVoiceInputLevelSource()
+        let model = VoiceModel(conversationID: "c1", client: CapturingVoiceSessionClient(), inputLevelSource: source)
+        await model.startMonitoring()
+        #expect(!model.canSendNow, "Nothing said yet")
+        source.emitTranscript("I want to plan a trip and", isFinal: false, generation: source.latestGeneration)
+        #expect(model.canSendNow)
+        model.sendNow()
+        #expect(source.finishNowCount == 1)
+    }
+
+    @Test func aTurnThatHeardNothingListensAgain() async {
+        let source = ControlledVoiceInputLevelSource()
+        let client = CapturingVoiceSessionClient()
+        let model = VoiceModel(conversationID: "c1", client: client, inputLevelSource: source)
+        await model.startMonitoring()
+        let starts = source.startCount
+        source.emitTranscript("", isFinal: true, generation: source.latestGeneration)
+        await model.waitForMonitoringStart()
+        for _ in 0..<50 where source.startCount == starts { await Task.yield() }
+        #expect(source.startCount == starts + 1)
+        #expect(model.status == .listening)
+        #expect(client.transcripts.isEmpty)
+    }
+
+    @Test func aFailedHostTranscriptionSaysSoAndKeepsListening() async {
+        let source = ControlledVoiceInputLevelSource()
+        let model = VoiceModel(conversationID: "c1", transcription: .hermes,
+                               client: HostTranscribingVoiceClient(text: "x"), inputLevelSource: source)
+        await model.startMonitoring()
+        let starts = source.startCount
+        source.emitUnavailable(.hostTranscriptionFailed, generation: source.latestGeneration)
+        #expect(model.turnErrorMessage?.contains("couldn't turn that into text") == true)
+        for _ in 0..<50 where source.startCount == starts { await Task.yield() }
+        #expect(source.startCount == starts + 1)
+        #expect(model.meterState != .unavailable)
+    }
+
+    @Test func walkieTalkieWithHermesSendsTheComputersTranscriptAfterRelease() async {
+        let source = ControlledVoiceInputLevelSource()
+        let client = CapturingVoiceSessionClient()
+        let model = VoiceModel(conversationID: "c1", mode: .walkieTalkie, transcription: .hermes,
+                               client: client, inputLevelSource: source)
+        #expect(await model.beginWalkieTalkieCapture())
+        source.emitTranscript("remind me to", isFinal: false, generation: source.latestGeneration)
+        #expect(model.endWalkieTalkieCapture(submit: true))
+        #expect(source.finishNowCount == 1, "The recording goes to the computer first")
+        #expect(client.transcripts.isEmpty)
+        source.emitTranscript("Remind me to call Sam tomorrow.", isFinal: true, generation: source.latestGeneration)
+        await model.waitUntilTurnSettles()
+        #expect(client.transcripts == ["Remind me to call Sam tomorrow."])
+    }
+
 }
 
 @MainActor
@@ -626,7 +713,11 @@ private final class ControlledVoiceInputLevelSource: VoiceInputLevelSource {
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var latestGeneration: UInt64 = 0
+    private(set) var finishNowCount = 0
     var endsAfterSilence = true
+    var onTranscribing: ((Bool, UInt64) -> Void)?
+    var transcription: VoiceTranscriptionSource = .onDevice
+    var hostTranscriber: (@MainActor (Data) async throws -> String)?
     private let startError: StartError?
 
     init(startError: StartError? = nil) {
@@ -643,6 +734,10 @@ private final class ControlledVoiceInputLevelSource: VoiceInputLevelSource {
         stopCount += 1
     }
 
+    func finishNow() {
+        finishNowCount += 1
+    }
+
     func emit(_ level: Float, generation: UInt64) {
         onLevel?(level, generation)
     }
@@ -654,6 +749,22 @@ private final class ControlledVoiceInputLevelSource: VoiceInputLevelSource {
     func emitUnavailable(_ error: VoiceInputLevelError, generation: UInt64) {
         onUnavailable?(error, generation)
     }
+}
+
+@MainActor
+private final class HostTranscribingVoiceClient: VoiceSessionClient {
+    let text: String
+    private(set) var audio: [Data] = []
+
+    init(text: String) { self.text = text }
+
+    func transcribe(_ audio: Data) async throws -> String {
+        self.audio.append(audio)
+        return text
+    }
+
+    func speak(_ text: String) async throws {}
+    func endSession(conversationID _: String) async throws {}
 }
 
 @MainActor

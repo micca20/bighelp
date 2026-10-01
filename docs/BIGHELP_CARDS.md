@@ -212,7 +212,8 @@ A template bundle is declarative data with `id`, `version`, `name`, `summary`,
    `cards.templates.list` and `cards.templates.remove`.
 5. The plugin stores templates per profile and exposes generic search, detail,
    and render tools. Template rendering still ends at the same
-   `loopdy_render_card` validation boundary.
+   `bighelp_render_card` validation boundary (named `loopdy_render_card` before
+   plugin 2.20.0).
 6. Parameters can replace declared literal slots only. They cannot replace a
    component type, element ID, binding, operation, or renderer-owned field.
 7. Removing a template deletes its install state and synchronization record. It
@@ -228,7 +229,7 @@ signing-key custody, and an explicit open-source license.
 `loopdy.card` version 1 is a new schema alongside `loopdy.generative_ui`
 versions 1 and 2. Existing generated cards and forms remain on the legacy
 renderer. bighelp Cards do not reinterpret or silently upgrade those envelopes,
-and version 1 remains display-only. Existing `loopdy_render_form` continues to
+and version 1 remains display-only. Existing `bighelp_render_form` continues to
 own user input and request-bound form submissions.
 
 Version 1 is not:

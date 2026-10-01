@@ -73,6 +73,7 @@ extension RootShellView {
             onProfile: { profileAgentID = $0 },
             onSwitchAgent: { isAgentSwitcherPresented = true },
             onNewChat: { presentNewChatPicker(seed: $0) },
+            onStartChat: { startHomeChat(with: $0) },
             tabSelection: tabSelection,
             unreadTabs: boardUnreadTabs
         )
@@ -215,16 +216,12 @@ extension RootShellView {
     }
 
     func appsTools(for agent: AgentProfile) -> [(title: String, systemImage: String, action: () -> Void)] {
-        var tools: [(title: String, systemImage: String, action: () -> Void)] = [
+        [
             ("Files", "folder", { openWorkspaceDestination(.files) }),
             ("Memory", "brain", { openWorkspaceDestination(.memory) }),
             ("Skills & tools", "wrench.and.screwdriver", { openWorkspaceDestination(.skills) }),
             ("Scheduled tasks", "calendar.badge.clock", { openScheduledTasks(filteredTo: agent.id) }),
         ]
-        if settings.nerdModeEnabled {
-            tools.append(("Workspace", "square.grid.2x2", { appState.select(.workspace) }))
-        }
-        return tools
     }
 
     @ViewBuilder
@@ -262,18 +259,31 @@ extension RootShellView {
                                    fixtures: usesWorkspaceFixtures && workspaceConnections?.isDirectSelected != true)
     }
 
+    /// Keyed by sign-in, not connection: a reconnect keeps the usage on screen,
+    /// and the client picks up the new connection itself.
+    struct ProviderUsageKey: Equatable {
+        let signIn: WorkspaceSignIn?
+        let fixtures: Bool
+    }
+
+    var providerUsageKey: ProviderUsageKey {
+        ProviderUsageKey(signIn: currentWorkspaceOwner?.signIn ?? workspaceSignIn,
+                         fixtures: usesWorkspaceFixtures && workspaceConnections?.isDirectSelected != true)
+    }
+
     /// The plugin route reports whether it's there; the overlay explains an older plugin.
-    func configureProviderUsage(_ key: AgentBoardClientKey) {
+    func configureProviderUsage(_ key: ProviderUsageKey) {
         if key.fixtures {
-            providerUsage.configure(client: DemoProviderUsageClient())
+            providerUsage.configure(client: DemoProviderUsageClient(), scope: "fixtures")
             return
         }
-        guard let owner = key.owner else { providerUsage.configure(client: nil); return }
-        if let workspace = workspaceConnections?.workspace {
-            providerUsage.configure(client: DirectHermesProviderUsageClient(workspace: workspace, owner: owner))
-        } else {
+        guard let signIn = key.signIn, let connections = workspaceConnections else {
             providerUsage.configure(client: nil)
+            return
         }
+        providerUsage.configure(client: DirectHermesProviderUsageClient(
+            signIn: signIn, currentWorkspace: { [weak connections] in connections?.workspace }
+        ), scope: signIn)
     }
 
     func configureAgentBoard(_ key: AgentBoardClientKey) {
@@ -362,10 +372,9 @@ extension RootShellView {
 
     func agentHomeSheets<Content: View>(_ content: Content) -> some View {
         content
-            .task(id: agentBoardClientKey) {
-                configureAgentBoard(agentBoardClientKey)
-                configureProviderUsage(agentBoardClientKey)
-            }
+            .task(id: agentBoardClientKey) { configureAgentBoard(agentBoardClientKey) }
+            .task(id: providerUsageKey) { configureProviderUsage(providerUsageKey) }
+            .task(id: agentBoardClientKey) { await configureKanban(agentBoardClientKey) }
             // Loads the home agent's board up front, so new Feed, Ideas and Goals
             // items show as dots on the tab bar before the tab is opened.
             .task(id: BoardPreloadKey(client: agentBoardClientKey, agentID: homeAgent?.id)) {
@@ -418,6 +427,10 @@ extension RootShellView {
     private func agentProfileSheet(_ agent: AgentProfile) -> some View {
         let owner = currentWorkspaceOwner
         let canEdit = owner.map { currentWorkspaceCapabilities.supports(.profilesEdit, owner: $0, profileID: agent.id) } ?? false
+        // From a chat with this agent: that chat's model and reasoning.
+        let chat: ChatModel? = if case .chat(let id)? = appState.path.last,
+                                  let model = featureStore.preparedChatModel(id: id),
+                                  !model.isBotMode, model.memberIDs.first == agent.id { model } else { nil }
         return AgentProfileSheet(
             agent: agent, imageURL: agents.avatarURL(for: agent), activity: homeActivity,
             isConnected: owner != nil, store: agentBoard,
@@ -429,10 +442,12 @@ extension RootShellView {
                 }
                 afterClosingHomeSheets {
                     workspaceProfileEditor = .editing(agent, store: agents, processor: AvatarImageProcessor(),
-                                                      isCurrent: { currentWorkspaceOwner == owner })
+                                                      isCurrent: { currentWorkspaceOwner?.signIn == owner.signIn })
                 }
             },
-            onOpenSchedule: { task in afterClosingHomeSheets { openScheduledTask(task) } }
+            onOpenSchedule: { task in afterClosingHomeSheets { openScheduledTask(task) } },
+            chatControls: chat?.runtimeControls,
+            onChangeModel: chat.map { chat in { afterClosingHomeSheets { chat.requestSessionControls() } } }
         )
     }
 
@@ -484,7 +499,7 @@ extension RootShellView {
             onProjects: canOpenProjects ? { afterClosingHomeSheets { openProjects() } } : nil,
             onAgents: { afterClosingHomeSheets { appState.select(.agents) } },
             onScheduledTasks: { afterClosingHomeSheets { openScheduledTasks(filteredTo: nil) } },
-            onHermesTools: settings.nerdModeEnabled ? { afterClosingHomeSheets { appState.select(.workspace) } } : nil,
+            onKanban: canOpenKanban ? { afterClosingHomeSheets { openKanban() } } : nil,
             folder: settings.nerdModeEnabled
                 ? (name: activeHermesWorkspaceName, open: { afterClosingHomeSheets { presentHermesWorkspaces() } })
                 : nil,
@@ -554,7 +569,18 @@ extension RootShellView {
             openSessionSelection(record.summary)
             return
         }
+        // Usually the chat is already in the list: open it at once. Looking it
+        // up on the host reloads every chat first, which took seconds.
+        if let record = sessionCatalog.records.first(where: {
+            $0.kind == .direct && $0.agentIDs == [chat.profileID] && $0.remoteStoredID == chat.id
+        }) {
+            openSession(record.summary)
+            return
+        }
+        guard projectsStore?.openingChatID == nil else { return }
+        projectsStore?.openingChatID = chat.id
         Task { @MainActor in
+            defer { projectsStore?.openingChatID = nil }
             do {
                 let record = try await sessionCatalog.resolveStoredSession(profileID: chat.profileID,
                                                                             storedSessionID: chat.id)

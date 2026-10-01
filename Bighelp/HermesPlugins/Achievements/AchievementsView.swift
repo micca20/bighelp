@@ -53,7 +53,7 @@ struct HermesAchievementsView: View {
                             Picker("Show", selection: $filter) {
                                 ForEach(Filter.allCases) { value in Text(value.rawValue).tag(value) }
                             }
-                            .pickerStyle(.segmented)
+                            .bighelpSegmentedPicker()
                         }
                         ForEach(categories(in: catalog), id: \.self) { category in
                             Section(category) {

@@ -19,7 +19,7 @@ final class RootChromeCanvasUITests: BighelpUITestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-ui-v3",
-                               "-test-root-chrome-canvas", "-loopdy.demo.appearance", appearance]
+                               "-loopdy.demo.appearance", appearance]
         app.launch()
         let tabs = ["tab.agents", "tab.sessions", "tab.scheduled-tasks", "tab.profile"]
         for tab in tabs {

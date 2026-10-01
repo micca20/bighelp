@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Testing
+import UIKit
 @testable import Bighelp
 
 /// Settings › Colors: the page and bubble picks reach the live theme and the
@@ -11,7 +12,7 @@ struct AppearanceChoicesTests {
                        dark: BighelpDarkBackground = .graphite, bubble: BighelpBubbleColor? = nil,
                        contrast: ColorSchemeContrast = .standard) -> BighelpTheme {
         BighelpTheme.resolve(
-            appearance: BighelpAppearanceContext(appearance: scheme == .dark ? .dark : .light, themeID: .bighelp,
+            appearance: BighelpAppearanceContext(appearance: scheme == .dark ? .dark : .light,
                                                 lightBackground: light, darkBackground: dark, bubbleColor: bubble),
             colorScheme: scheme, contrast: contrast)
     }
@@ -36,6 +37,59 @@ struct AppearanceChoicesTests {
         }
     }
 
+    /// Your own messages in chat used bighelp's purple whatever you picked.
+    @Test func yourChatBubblesUseThePickedColor() {
+        for scheme in [ColorScheme.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
+            let purple = UIColor(theme(scheme).outgoingMessageBackground).resolvedColor(with: traits)
+            for bubble in [BighelpBubbleColor.ocean, .mint, .rose, .tangerine, .graphite] {
+                let mine = UIColor(theme(scheme, bubble: bubble).outgoingMessageBackground).resolvedColor(with: traits)
+                #expect(!mine.isEqual(purple), "\(bubble) bubbles in \(scheme) mode")
+                if bubble != .graphite {
+                    #expect(Self.hueDistance(mine, UIColor(Color(hex: bubble.hex!))) < 0.03, "\(bubble) in \(scheme) mode")
+                }
+            }
+        }
+        // Lavender, the default, keeps bighelp's own purple.
+        #expect(theme(.light, bubble: .lavender).outgoingMessageBackground == theme(.light).outgoingMessageBackground)
+    }
+
+    @Test func aCustomColorWorksLikeTheBuiltInOnes() {
+        func resolve(_ scheme: ColorScheme, bubble: BighelpBubbleColor? = nil, custom: String?) -> BighelpTheme {
+            BighelpTheme.resolve(appearance: BighelpAppearanceContext(appearance: scheme == .dark ? .dark : .light,
+                                                                     bubbleColor: bubble, customBubbleHex: custom),
+                                 colorScheme: scheme, contrast: .standard)
+        }
+        for scheme in [ColorScheme.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light)
+            let custom = resolve(scheme, custom: "0E7C66")
+            #expect(custom.actionHex != theme(scheme).actionHex)
+            let bubble = UIColor(custom.outgoingMessageBackground).resolvedColor(with: traits)
+            #expect(Self.hueDistance(bubble, UIColor(Color(hex: "0E7C66"))) < 0.03)
+            // The custom color wins over an older preset pick.
+            #expect(resolve(scheme, bubble: .rose, custom: "0E7C66") == custom)
+        }
+        let extras = BighelpWidgetExtras()
+        extras.update(appearance: BighelpAppearanceContext(appearance: .system, customBubbleHex: "0E7C66"))
+        #expect(extras.lightPalette?.accentHex == resolve(.light, custom: "0E7C66").actionHex)
+    }
+
+    @Test func pickedColorsBecomeSixDigitHex() {
+        #expect(BighelpCustomBubbleColor.hex(from: Color(hex: "12AB34")) == "12AB34")
+        #expect(BighelpCustomBubbleColor.hex(from: Color(red: 1.2, green: -0.1, blue: 0.5)) == "FF0080")
+        #expect(BighelpCustomBubbleColor.validated("#12ab34") == "12AB34")
+        #expect(BighelpCustomBubbleColor.validated("12AB3") == nil)
+        #expect(BighelpCustomBubbleColor.validated("GGGGGG") == nil)
+    }
+
+    private static func hueDistance(_ a: UIColor, _ b: UIColor) -> CGFloat {
+        var (ha, hb): (CGFloat, CGFloat) = (0, 0)
+        a.getHue(&ha, saturation: nil, brightness: nil, alpha: nil)
+        b.getHue(&hb, saturation: nil, brightness: nil, alpha: nil)
+        let distance = abs(ha - hb)
+        return min(distance, 1 - distance)
+    }
+
     @Test func highContrastKeepsItsOwnPages() {
         #expect(theme(.light, light: .cream, contrast: .increased).canvasHex
                 == theme(.light, light: .paper, contrast: .increased).canvasHex)
@@ -43,7 +97,7 @@ struct AppearanceChoicesTests {
 
     @Test func widgetsGetTheSameColors() {
         let extras = BighelpWidgetExtras()
-        extras.update(appearance: BighelpAppearanceContext(appearance: .system, themeID: .bighelp,
+        extras.update(appearance: BighelpAppearanceContext(appearance: .system,
                                                           lightBackground: .paper, darkBackground: .black,
                                                           bubbleColor: .teal))
         #expect(extras.lightPalette?.canvasHex.uppercased() == "FFFFFF")

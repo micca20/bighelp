@@ -1,10 +1,18 @@
 import AVFoundation
 import Foundation
 
+/// What a claim needs the shared audio session for.
+enum VoiceAudioUse: Equatable, Sendable {
+    /// Playing with nothing listening, like a voice sample in Settings.
+    case playback
+    /// A voice chat: the microphone, and the agent's replies around it.
+    case conversation
+}
+
 /// Seam over the process-wide audio session so ownership can be observed in
 /// tests without real audio hardware.
 protocol VoiceAudioSessionControlling: AnyObject, Sendable {
-    func configurePlayAndRecord() throws
+    func configure(for use: VoiceAudioUse) throws
     func setActive(_ active: Bool) throws
 }
 
@@ -15,12 +23,18 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling, @unchecked Se
         self.session = session
     }
 
-    func configurePlayAndRecord() throws {
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.duckOthers, .defaultToSpeaker]
-        )
+    func configure(for use: VoiceAudioUse) throws {
+        switch use {
+        case .playback:
+            // Nothing listens, so it plays at the phone's normal media volume.
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        case .conversation:
+            // Voice-chat mode is tuned for holding the phone to your ear: on
+            // the speaker, replies were close to inaudible. Video-chat mode is
+            // the speakerphone tuning: the same voice-tuned microphone, with
+            // replies at speaker volume.
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.duckOthers, .defaultToSpeaker])
+        }
     }
 
     func setActive(_ active: Bool) throws {
@@ -43,7 +57,7 @@ final class VoiceAudioSessionCoordinator: @unchecked Sendable {
 
     private let session: any VoiceAudioSessionControlling
     private let lock = NSLock()
-    private var activeClaims: Set<UUID> = []
+    private var activeClaims: [UUID: VoiceAudioUse] = [:]
 
     init(session: any VoiceAudioSessionControlling = SystemVoiceAudioSession()) {
         self.session = session
@@ -64,16 +78,19 @@ final class VoiceAudioSessionCoordinator: @unchecked Sendable {
     /// Activates the shared session if it is not already owned. The claim is
     /// only recorded once activation succeeds, so a throwing activation cannot
     /// strand a claim that would pin the session active forever.
-    func acquire() throws -> VoiceAudioSessionClaim {
+    func acquire(for use: VoiceAudioUse) throws -> VoiceAudioSessionClaim {
         lock.lock()
         defer { lock.unlock() }
 
         if activeClaims.isEmpty {
-            try session.configurePlayAndRecord()
+            try session.configure(for: use)
             try session.setActive(true)
+        } else if use == .conversation, !activeClaims.values.contains(.conversation) {
+            // Something was only playing; the microphone needs the chat setup.
+            try session.configure(for: .conversation)
         }
         let id = UUID()
-        activeClaims.insert(id)
+        activeClaims[id] = use
         return VoiceAudioSessionClaim(id: id, coordinator: self)
     }
 
@@ -81,7 +98,7 @@ final class VoiceAudioSessionCoordinator: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        guard activeClaims.remove(id) != nil else { return }
+        guard activeClaims.removeValue(forKey: id) != nil else { return }
         guard activeClaims.isEmpty else { return }
         try? session.setActive(false)
     }

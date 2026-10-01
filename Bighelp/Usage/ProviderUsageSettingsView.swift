@@ -67,10 +67,11 @@ struct ProviderUsageSettingsView: View {
 
     private func shown(_ id: String) -> Binding<Bool> {
         Binding(
-            get: { !hidden.contains(id) },
+            get: { !ProviderUsagePreferences.isHidden(id, in: hidden) },
             set: { isShown in
                 var next = hidden
-                if isShown { next.remove(id) } else { next.insert(id) }
+                let key = ProviderUsagePreferences.key(for: id)
+                if isShown { next.remove(key) } else { next.insert(key) }
                 hiddenRaw = ProviderUsagePreferences.raw(next)
             }
         )

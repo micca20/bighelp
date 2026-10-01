@@ -8,8 +8,13 @@ enum BighelpIncomingURLRoute: Equatable, Sendable {
     case scheduledTasks
     case scheduledTask(id: String)
     case sessions
-    /// "loopdy://agent/feed": a tab of the agent home (chat, feed, ideas, goals, apps).
-    case agent(tab: String)
+    /// "loopdy://agent/feed?agent=…": a tab of the agent home (chat, feed, ideas,
+    /// goals, apps), optionally for one agent.
+    case agent(tab: String, agentID: String? = nil)
+    /// "loopdy://approval/<id>": one approval, from the Watch.
+    case approval(id: String)
+    /// "loopdy://kanban?board=…&task=…": Kanban, a board, or one card.
+    case kanban(board: String?, task: String?)
     case pairBighelpLink(BighelpLinkPairingReference)
 
     static func parse(_ url: URL) -> BighelpIncomingURLRoute? {
@@ -42,9 +47,23 @@ enum BighelpIncomingURLRoute: Equatable, Sendable {
             return .scheduledTask(id: id)
         }
         if url.host?.lowercased() == "sessions", url.pathComponents.count <= 1 { return .sessions }
+        if url.host?.lowercased() == "kanban", url.pathComponents.count <= 1 {
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            func value(_ name: String) -> String? {
+                items.first { $0.name == name }?.value.flatMap { $0.isEmpty || $0.utf8.count > 240 ? nil : $0 }
+            }
+            return .kanban(board: value("board"), task: value("task"))
+        }
         if url.host?.lowercased() == "agent", url.pathComponents.count <= 2 {
             let tab = url.pathComponents.dropFirst().first?.lowercased() ?? "chat"
-            return ["chat", "feed", "ideas", "goals", "apps"].contains(tab) ? .agent(tab: tab) : .agent(tab: "chat")
+            let agent = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "agent" })?.value
+                .flatMap { $0.isEmpty || $0.utf8.count > 96 ? nil : $0 }
+            return .agent(tab: ["chat", "feed", "ideas", "goals", "apps"].contains(tab) ? tab : "chat", agentID: agent)
+        }
+        if url.host?.lowercased() == "approval", url.pathComponents.count == 2,
+           let id = url.pathComponents.last, !id.isEmpty, id.utf8.count <= 240 {
+            return .approval(id: id)
         }
         guard
             url.host?.lowercased() == "chat",

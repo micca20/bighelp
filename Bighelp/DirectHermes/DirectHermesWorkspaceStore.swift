@@ -484,10 +484,10 @@ final class DirectHermesWorkspaceStore {
             if let summary {
                 value = try await client.request("session.resume", params: [
                     "session_id": .string(summary.storedID), "profile": .string(profile),
-                    "source": .string("desktop"), "close_on_disconnect": .boolean(false)])
+                    "source": .string(DirectHermesReleaseContract.sessionSource), "close_on_disconnect": .boolean(false)])
             } else {
                 value = try await client.request("session.create", params: [
-                    "profile": .string(profile), "source": .string("desktop"), "close_on_disconnect": .boolean(false)])
+                    "profile": .string(profile), "source": .string(DirectHermesReleaseContract.sessionSource), "close_on_disconnect": .boolean(false)])
             }
             guard owner == generation, navigation == navigationGeneration, profile == selectedProfile else { return }
             guard let object = value.object, let runtime = object["session_id"]?.string,
@@ -827,7 +827,7 @@ struct DirectHermesSessionSummary: Identifiable {
     let preview: String
     let source: String
     var id: String { storedID }
-    var supportsNativeResume: Bool { ["desktop", "tui", "cli"].contains(source) }
+    var supportsNativeResume: Bool { [DirectHermesReleaseContract.sessionSource, "desktop", "tui", "cli"].contains(source) }
     init?(_ value: BighelpJSONValue, profile: String) {
         guard let object = value.object, let id = object["id"]?.string, !id.isEmpty else { return nil }
         storedID = object["resolved_id"]?.string ?? id

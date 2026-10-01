@@ -643,7 +643,10 @@ private final class LiveVoicePeerResources: @unchecked Sendable {
         audio.isAudioEnabled = false
         do {
             if captureEnabled {
-                try audio.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+                // Speakerphone tuning (see SystemVoiceAudioSession): voice-chat
+                // mode played the agent at earpiece-call volume on the speaker.
+                // Echo cancellation is WebRTC's own and stays on.
+                try audio.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth, .defaultToSpeaker])
                 try audio.setActive(true)
                 activated = true
             }

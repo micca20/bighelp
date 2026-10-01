@@ -57,9 +57,11 @@ final class ProjectsAndBoardUITests: BighelpUITestCase {
             XCTAssertTrue(feedTab.waitForExistence(timeout: 10))
             XCTAssertEqual(feedTab.value as? String, "New", "Unseen Feed posts show on the tab")
             feedTab.tap()
+            // Checked first: posts count as seen a moment after the Feed opens.
+            XCTAssertTrue(app.descendants(matching: .any)["board.unread.feed-1"].waitForExistence(timeout: 5),
+                          "A new post has a dot")
             let post = app.descendants(matching: .any)["board.feed.post.feed-2"]
             XCTAssertTrue(post.waitForExistence(timeout: 10))
-            XCTAssertTrue(app.descendants(matching: .any)["board.unread.feed-1"].exists, "A new post has a dot")
             save("board-1-feed-\(appearance)", app)
             guard appearance == "light" else { app.terminate(); continue }
 

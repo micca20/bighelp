@@ -17,7 +17,14 @@ struct BighelpLinkAccountProfile: Codable, Equatable, Sendable {
 
 struct UserIdentity: Codable, Equatable, Sendable {
     static let stableID = "local-user"
+    /// Names reach agents too, so they stay short: 40 visible characters fits
+    /// nearly any full name, including two given names or two surnames.
+    static let maximumNameLength = 40
+    /// Shown on your own messages and avatar before you save a name. Never
+    /// sent to a host, so an agent can't mistake it for your name.
+    static let placeholderName = "You"
 
+    /// The name you saved, or empty.
     var name: String
     var avatarFileName: String?
     var accountAvatar: UserProfileAvatar? = nil
@@ -25,6 +32,18 @@ struct UserIdentity: Codable, Equatable, Sendable {
 }
 
 extension UserIdentity {
+    /// What the app shows for you: your name, or "You" before you've saved one.
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? Self.placeholderName : trimmed
+    }
+
+    /// A name as it's saved: trimmed and at most `maximumNameLength` characters.
+    static func savedName(_ name: String) -> String {
+        String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maximumNameLength))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case name
         case avatarFileName
@@ -34,7 +53,10 @@ extension UserIdentity {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
+        let saved = try container.decode(String.self, forKey: .name)
+        // Before names reached agents, a new install was saved as "You". That was
+        // never a name anyone typed, so it reads as no name.
+        name = saved == Self.placeholderName ? "" : saved
         avatarFileName = try container.decodeIfPresent(String.self, forKey: .avatarFileName)
         accountAvatar = try container.decodeIfPresent(
             UserProfileAvatar.self,
@@ -92,12 +114,14 @@ final class UserIdentityStore {
 
     func resetForAccountBoundary() {
         profileWriteID = nil
-        identity = UserIdentity(name: "You", avatarFileName: nil)
+        identity = UserIdentity(name: "", avatarFileName: nil)
     }
 
+    /// Saves your name. An empty name removes it, except on a retired Link
+    /// account, which requires one.
     func saveDisplayName(_ name: String, to linkAccount: BighelpLinkAccountStore?) async throws {
-        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw ProfileSaveError.blankName }
+        let name = UserIdentity.savedName(name)
+        guard !name.isEmpty || linkAccount?.credentials == nil else { throw ProfileSaveError.blankName }
         var updatedIdentity = identity
         updatedIdentity.name = name
         try await saveProfile(updatedIdentity, to: linkAccount)
@@ -216,7 +240,7 @@ final class UserIdentityStore {
             let data = defaults.data(forKey: Keys.identity),
             let identity = try? JSONDecoder().decode(UserIdentity.self, from: data)
         else {
-            return UserIdentity(name: "You", avatarFileName: nil)
+            return UserIdentity(name: "", avatarFileName: nil)
         }
         return identity
     }

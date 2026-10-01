@@ -101,6 +101,7 @@ struct ChatLayoutSettingsView: View {
     @AppStorage(ChatLayoutPreferences.showsAgentNameKey) private var showsAgentName = true
     @AppStorage(ChatLayoutPreferences.textSizeKey) private var textSize: ChatTextSize = .standard
     @AppStorage(ChatLayoutPreferences.densityKey) private var density: ChatDensity = .comfortable
+    @AppStorage(LinkPreviewPreferences.enabledKey) private var showsLinkPreviews = true
     @BighelpThemeReader private var theme
 
     var body: some View {
@@ -116,7 +117,7 @@ struct ChatLayoutSettingsView: View {
                 Picker("Avatar size", selection: $avatarSize) {
                     ForEach(ChatAvatarSize.allCases) { Text($0.title).tag($0) }
                 }
-                .pickerStyle(.segmented)
+                .bighelpSegmentedPicker()
                 .frame(minHeight: BighelpTokens.hitTarget)
                 .accessibilityIdentifier("chat-layout.avatar-size")
                 Toggle("Show agent name", isOn: $showsAgentName)
@@ -144,10 +145,14 @@ struct ChatLayoutSettingsView: View {
                     ForEach(ChatDensity.allCases) { Text($0.title).tag($0) }
                 }
                 .accessibilityIdentifier("chat-layout.density")
+                Toggle("Link previews", isOn: $showsLinkPreviews)
+                    .accessibilityIdentifier("chat-layout.link-previews")
             } header: {
                 Text("Messages")
             } footer: {
-                Text("Text size: \(textSize.title). It adds to your iPhone's own text size setting.")
+                Text("Text size: \(textSize.title). It adds to your iPhone's own text size setting. Link previews "
+                    + "show a web link's picture, title and summary in chats and the Feed. To make one, your "
+                    + "iPhone opens that page, without cookies.")
             }
             .listRowBackground(theme.surface)
 
@@ -157,6 +162,7 @@ struct ChatLayoutSettingsView: View {
                     showsAgentName = true
                     textSize = .standard
                     density = .comfortable
+                    showsLinkPreviews = true
                 }
                 .accessibilityIdentifier("chat-layout.reset")
             }

@@ -277,7 +277,7 @@ struct BighelpLinkAccountStoreTests {
             try await save.value
             Issue.record("Reset must invalidate the old save")
         } catch {}
-        #expect(identity.identity.name == "You")
+        #expect(identity.identity.name.isEmpty)
         #expect(identity.identity.accountProfileRevision == 0)
     }
 

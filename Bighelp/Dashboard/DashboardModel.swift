@@ -3,22 +3,14 @@ import Observation
 
 @MainActor @Observable
 final class DashboardClarificationDraft {
-    // Retained for source compatibility with the single-question fixture API.
-    // Production rendering uses the index-keyed state below so equal labels in
-    // different questions never share one selection bucket.
+    /// The card's one answer in your own words; it answers every question
+    /// without a picked choice (`ClarificationAnswers`).
     var customResponse = ""
+    // Retained for source compatibility with the single-question fixture API.
+    // Rendering uses the index-keyed state below so equal labels in different
+    // questions never share one selection bucket.
     var selectedChoices: Set<String> = []
-    var customResponses: [Int: String] = [:]
     var selectedChoiceIndices: [Int: Set<Int>] = [:]
-
-    func customResponse(questionIndex: Int) -> String {
-        questionIndex == 0 ? (customResponses[0] ?? customResponse) : (customResponses[questionIndex] ?? "")
-    }
-
-    func setCustomResponse(_ value: String, questionIndex: Int) {
-        customResponses[questionIndex] = value
-        if questionIndex == 0 { customResponse = value }
-    }
 
     func selectedIndices(questionIndex: Int) -> Set<Int> {
         selectedChoiceIndices[questionIndex] ?? []

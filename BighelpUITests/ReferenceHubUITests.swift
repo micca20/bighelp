@@ -49,17 +49,6 @@ class BighelpUITestCase: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier IN %@", ["agent.hero.avatar", "chat.identity"])).firstMatch
     }
 
-    /// Settings › Colors › More themes: built-in and custom themes, import
-    /// and export. (Colors itself is the simple bubble and page picker.)
-    @MainActor
-    func openThemeList(in app: XCUIApplication) {
-        app.buttons["settings.themes"].firstMatch.tap()
-        let more = app.buttons["appearance.more-themes"].firstMatch
-        guard more.waitForExistence(timeout: 5) else { return }
-        for _ in 0..<4 where !more.isHittable { app.swipeUp() }
-        more.tap()
-    }
-
     /// The chat header's New chat button (the big-avatar header on iPhone,
     /// the name-chip header on iPad).
     @MainActor
@@ -87,15 +76,23 @@ class BighelpUITestCase: XCTestCase {
     @MainActor
     @discardableResult
     func openChatInfo(in app: XCUIApplication, timeout: TimeInterval = 8) -> Bool {
+        // Group chats open their details from the header; one-agent chats keep
+        // files, appearance and session tools in the ⋯ menu instead.
         let identity = app.buttons["chat.identity"].firstMatch
-        if identity.exists, identity.isHittable { identity.tap(); return true }
-        let options = app.buttons["chat.options"].firstMatch
-        guard options.waitForExistence(timeout: timeout) else { return false }
-        options.tap()
-        let people = app.buttons["chat.open-people"].firstMatch
-        guard people.waitForExistence(timeout: 4) else { return false }
-        people.tap()
+        guard identity.waitForExistence(timeout: timeout), identity.isHittable else { return false }
+        identity.tap()
         return true
+    }
+
+    /// Opens the chat's ⋯ menu when it's closed and returns one of its items.
+    @MainActor
+    func chatMenuItem(_ identifier: String, in app: XCUIApplication, timeout: TimeInterval = 5) -> XCUIElement {
+        let item = app.buttons[identifier].firstMatch
+        if item.exists, item.isHittable { return item }
+        let options = app.buttons["chat.options"].firstMatch
+        if options.waitForExistence(timeout: timeout) { options.tap() }
+        _ = item.waitForExistence(timeout: timeout)
+        return item
     }
 
     @MainActor
@@ -246,11 +243,14 @@ final class ReferenceHubUITests: BighelpUITestCase {
         captureFailureEvidence(app, checkpoint: "after-workspace-tap")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertTrue(drawer.waitForNonExistence(timeout: 5))
-        let tools = app.buttons["menu.hermes-tools"].firstMatch
-        let toolsExist = tools.waitForExistence(timeout: 5)
-        if !toolsExist { captureFailureEvidence(app, checkpoint: "workspace-tools-missing") }
-        XCTAssertTrue(toolsExist)
-        guard toolsExist else { return }
+        let settingsRowInMenu = app.buttons["menu.settings"].firstMatch
+        let settingsExist = settingsRowInMenu.waitForExistence(timeout: 5)
+        if !settingsExist { captureFailureEvidence(app, checkpoint: "menu-settings-missing") }
+        XCTAssertTrue(settingsExist)
+        guard settingsExist else { return }
+        settingsRowInMenu.tap()
+        let tools = settingsRow("settings.hermes-tools", in: app)
+        guard tools.exists else { return }
         tools.tap()
         let activity = app.buttons["workspace.open.activity"].firstMatch
         XCTAssertTrue(activity.waitForExistence(timeout: 5))
@@ -352,7 +352,7 @@ final class ReferenceHubUITests: BighelpUITestCase {
             ("first-command", app.buttons.matching(NSPredicate(
                 format: "identifier BEGINSWITH %@", "reference-hub.command.")).firstMatch),
             ("options", app.buttons["chat.options"]),
-            ("workspace-tools", app.buttons["menu.hermes-tools"].firstMatch),
+            ("hermes-tools", app.buttons["settings.hermes-tools"].firstMatch),
         ]
         var details = "Checkpoint: \(checkpoint)\nApp state: \(app.state.rawValue)\nApp frame: \(app.frame)\n"
         for (name, element) in elements {

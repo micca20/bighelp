@@ -4,18 +4,31 @@ import UIKit
 
 extension SettingsView {
     var localIdentity: some View {
-        let avatarTitle = isImportingAvatar ? "Saving avatar…" : "Choose avatar"
-        return Section {
+        Section {
             HStack(spacing: BighelpTokens.space12) {
-                AvatarView(
-                    stableID: UserIdentity.stableID,
-                    displayName: userIdentity.identity.name,
-                    imageURL: userIdentity.avatarURL(),
-                    size: 52,
-                    kind: .person
-                )
-                .accessibilityHidden(true)
-                TextField("Display name", text: $displayNameDraft)
+                // Your photo is the button that changes it.
+                PhotosPicker(selection: $photoSelection, matching: .images) {
+                    AvatarView(
+                        stableID: UserIdentity.stableID,
+                        displayName: userIdentity.identity.displayName,
+                        imageURL: userIdentity.avatarURL(),
+                        size: 52,
+                        kind: .person
+                    )
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: isImportingAvatar ? "hourglass" : "camera.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(theme.actionForeground)
+                            .frame(width: 20, height: 20)
+                            .background(theme.action, in: .circle)
+                            .overlay(Circle().strokeBorder(theme.surface, lineWidth: 2))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isSavingName || isImportingAvatar)
+                .accessibilityLabel(isImportingAvatar ? "Saving photo" : "Change your photo")
+                .accessibilityIdentifier("profile.choose-avatar")
+                TextField("Your name", text: $displayNameDraft)
                     .textContentType(.name)
                     .focused($isDisplayNameFocused)
                     .submitLabel(.done)
@@ -25,7 +38,7 @@ extension SettingsView {
             if canSaveDisplayName || isSavingName {
                 Button(action: saveDisplayName) {
                     HStack(spacing: BighelpTokens.space8) {
-                        Text(isSavingName ? "Saving name…" : "Save name")
+                        Text(isSavingName ? "Saving name…" : (isRemovingName ? "Remove name" : "Save name"))
                         if isSavingName {
                             ProgressView()
                                 .accessibilityHidden(true)
@@ -34,7 +47,7 @@ extension SettingsView {
                     .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
                 }
                 .disabled(!canSaveDisplayName)
-                .accessibilityLabel("Save name")
+                .accessibilityLabel(isRemovingName ? "Remove name" : "Save name")
                 .accessibilityValue(isSavingName ? "Saving" : "")
                 .accessibilityIdentifier("profile.save-name")
             }
@@ -51,22 +64,14 @@ extension SettingsView {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("profile.name-save-status")
             }
-            PhotosPicker(selection: $photoSelection, matching: .images) {
-                Label(avatarTitle, systemImage: "photo")
-                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-            }
-            .disabled(isSavingName || isImportingAvatar)
-            .accessibilityIdentifier("profile.choose-avatar")
             if let avatarError {
                 Text(avatarError)
                     .bighelpFont(.metadata)
                     .foregroundStyle(theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } header: {
-            Text("Your profile")
         } footer: {
-            Text("Your name and photo appear on your messages.")
+            Text("Your name and photo show on your messages. Your agents see your name, so they know who they're talking with.")
                 .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
@@ -84,6 +89,11 @@ extension SettingsView {
             avatarError = nil
         }
         .onChange(of: displayNameDraft) { _, name in
+            // Counts what you see, so accented and emoji names get the full length.
+            if name.count > UserIdentity.maximumNameLength {
+                displayNameDraft = String(name.prefix(UserIdentity.maximumNameLength))
+                return
+            }
             if name != displayNameBaseline {
                 nameSaveError = nil
                 nameSaveStatus = nil
@@ -96,9 +106,14 @@ extension SettingsView {
     }
 
     private var canSaveDisplayName: Bool {
-        !isSavingName && !isImportingAvatar
-            && !displayNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && displayNameDraft != userIdentity.identity.name
+        let draft = UserIdentity.savedName(displayNameDraft)
+        return !isSavingName && !isImportingAvatar && draft != userIdentity.identity.name
+            && (!draft.isEmpty || linkAccount?.credentials == nil)
+    }
+
+    /// Clearing the field and saving removes your name, so agents no longer get one.
+    private var isRemovingName: Bool {
+        UserIdentity.savedName(displayNameDraft).isEmpty && !userIdentity.identity.name.isEmpty
     }
 
     private func saveDisplayName() {
@@ -124,8 +139,9 @@ extension SettingsView {
                 if displayNameDraft == submittedName {
                     displayNameDraft = displayNameBaseline
                 }
+                let removed = userIdentity.identity.name.isEmpty
                 nameSaveStatus = displayNameDraft == displayNameBaseline
-                    ? "Name saved."
+                    ? (removed ? "Name removed." : "Name saved.")
                     : "Name saved. You have unsaved changes."
             } catch {
                 guard linkAccount?.accountGeneration == accountGeneration,

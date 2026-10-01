@@ -75,12 +75,11 @@ final class SimplifiedShellUITests: BighelpUITestCase {
         menu.tap()
         let agents = app.buttons["menu.agents"]
         let tasks = app.buttons["menu.scheduled-tasks"]
-        let tools = app.buttons["menu.hermes-tools"]
         let settings = app.buttons["menu.settings"]
-        for row in [agents, tasks, tools, settings] { XCTAssertTrue(row.isHittable) }
+        for row in [agents, tasks, settings] { XCTAssertTrue(row.isHittable) }
         XCTAssertLessThan(agents.frame.maxY, tasks.frame.midY)
-        XCTAssertLessThan(tasks.frame.maxY, tools.frame.midY)
-        XCTAssertLessThan(tools.frame.maxY, settings.frame.midY)
+        XCTAssertLessThan(tasks.frame.maxY, settings.frame.midY)
+        XCTAssertFalse(app.buttons["menu.hermes-tools"].exists, "Hermes tools live in Settings.")
         XCTAssertFalse(app.buttons["quick-workspace.menu.scratchpad"].exists)
         XCTAssertFalse(app.buttons["quick-workspace.wiki"].exists)
         XCTAssertTrue(app.buttons["menu.new-chat"].exists)

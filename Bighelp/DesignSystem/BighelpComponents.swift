@@ -912,9 +912,16 @@ struct SessionContextTokenPopover: View {
     let snapshot: SessionContextSnapshot
     /// Opens Provider Usage (the plans and limits behind this context).
     var onShowProviderUsage: (() -> Void)? = nil
+    /// The chat's model and reasoning, first: what this context belongs to.
+    var runtimeControls: SessionRuntimeControlModel? = nil
+    var onChangeModel: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
+            if let runtimeControls {
+                ChatModelSummaryRow(controls: runtimeControls, onChange: onChangeModel)
+                Divider()
+            }
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Context window")
@@ -1075,19 +1082,21 @@ struct BighelpIconTile: View {
     let systemName: String
     var tint: Color?
 
-    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 32
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: side * 0.52, weight: .semibold))
-            // Accent tiles use the accent's own ink (ink on after-dark lavender).
-            .foregroundStyle(tint == nil ? theme.actionForeground : .white)
+        let color = tint ?? theme.action
+        let solid = colorSchemeContrast == .increased
+        let shape = RoundedRectangle(cornerRadius: side * 0.3, style: .continuous)
+        BighelpSymbolImage(systemName: systemName)
+            .frame(width: side * 0.72, height: side * 0.72)
+            // A soft wash of the accent with the icon in the accent itself.
+            // Increased Contrast keeps a solid tile with the accent's own ink.
+            .foregroundStyle(solid ? (tint == nil ? theme.actionForeground : .white) : color)
             .frame(width: side, height: side)
-            .background(
-                (tint ?? theme.action).opacity(colorSchemeContrast == .increased ? 1 : 0.92),
-                in: .rect(cornerRadius: side * 0.24, style: .continuous)
-            )
+            .background(color.opacity(solid ? 1 : (theme.isDarkPalette ? 0.26 : 0.13)), in: shape)
+            .overlay { if !solid { shape.strokeBorder(color.opacity(theme.isDarkPalette ? 0.22 : 0.16), lineWidth: 1) } }
             .accessibilityHidden(true)
     }
 

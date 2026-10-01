@@ -194,6 +194,10 @@ struct HermesKanbanEvent: Identifiable, Equatable, Sendable {
     let runID: Int?
     let kind: String
     let createdAt: Date
+    /// Why it was blocked, when the agent said.
+    var reason: String? = nil
+    /// Failed starts in a row, when Hermes gave up.
+    var failures: Int? = nil
 }
 
 struct HermesKanbanAttachment: Identifiable, Equatable, Sendable {

@@ -40,6 +40,9 @@ struct SettingsView: View {
     var onOpenRoute: ((AppRoute) -> Void)?
     @Environment(\.bighelpNotificationContext) private var notificationContext
     @State private var pluginUpdates: PluginUpdateStore?
+    /// Held in state so this screen redraws when the check finishes; the shared
+    /// per-host models live in a plain dictionary SwiftUI can't observe.
+    @State private var hostPluginUpdate: HostPluginUpdateModel?
     @State var photoSelection: PhotosPickerItem?
     @State var avatarError: String?
     @FocusState var isDisplayNameFocused: Bool
@@ -143,27 +146,23 @@ struct SettingsView: View {
     private var menuPage: some View {
         // Each section is deferred and type-erased: inlined together they overflow
         // the device's main-thread stack in Release builds (see BighelpDeferredSection).
+        // Every row opens one page, so the first screen stays a short list.
         Form {
             BighelpDeferredSection { localIdentity }
             BighelpDeferredSection { assistantBasics }
-            BighelpDeferredSection { appearance }
-            BighelpDeferredSection { chatExperience }
-            BighelpDeferredSection { voiceExperience }
+            BighelpDeferredSection {
+                settingsMenuGroup(sections: [.appearance, .chat, .voice, .notifications, .providerUsage])
+            }
             #if os(visionOS)
             BighelpDeferredSection { SpatialAvatarSettingsSection(settings: settings) }
             #endif
-            BighelpDeferredSection { providerUsageSection }
             BighelpDeferredSection {
-                settingsMenuGroup("Notifications & Access", sections: [.notifications, .permissions])
-            }
-            BighelpDeferredSection { settingsMenuGroup("Connection", sections: [.connectivityAndNotifications]) }
-            BighelpDeferredSection { settingsMenuGroup("Help & about", sections: [.help, .watch]) }
-            if let companionStore {
-                BighelpDeferredSection { companionExtras(companionStore) }
+                settingsMenuGroup(sections: [.connectivityAndNotifications, .permissions, .watch]
+                                  + (companionStore == nil ? [] : [.companion]) + [.help])
             }
             BighelpDeferredSection { nerdModeToggle }
             if settings.nerdModeEnabled {
-                BighelpDeferredSection { nerdModeSections }
+                BighelpDeferredSection { hermesSection }
             }
         }
         .animation(.snappy(duration: BighelpTokens.transitionDuration), value: settings.nerdModeEnabled)
@@ -194,7 +193,9 @@ struct SettingsView: View {
             // One quiet check per host per app session, once it's connected.
             guard hostRegistry?.selectedWorkspace?.isConnected == true,
                   let hostRegistry, let hostID = hostRegistry.selectedHostID else { return }
-            await HostPluginUpdateModel.model(for: hostID, registry: hostRegistry).checkIfNeeded()
+            let model = HostPluginUpdateModel.model(for: hostID, registry: hostRegistry)
+            hostPluginUpdate = model
+            await model.checkIfNeeded()
         }
         .task {
             if hostRegistry?.connectionMode != .independent,
@@ -206,41 +207,19 @@ struct SettingsView: View {
         }
     }
 
-    private func companionExtras(_ companionStore: CompanionStore) -> some View {
-        Section("Extras") {
-            NavigationLink {
-                CompanionSettingsView(
-                    store: companionStore,
-                    agents: agents,
-                    agentScope: companionAgentScope
-                )
-            } label: {
-                HStack(spacing: BighelpTokens.space12) {
-                    BighelpIconTile(systemName: "pawprint.fill")
-                    VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text("Companion Pet")
-                            .bighelpFont(.body)
-                            .foregroundStyle(theme.primaryText)
-                        Text("Character, motion, and agent")
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                }
-                .frame(minHeight: 52)
-            }
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-            .accessibilityIdentifier("companion-settings-entry")
-                }
-        .listRowBackground(theme.surface)
-    }
-
     @ViewBuilder
     private func focusedPage(_ destination: WorkspaceDestination) -> some View {
+        if destination == .appearance {
+            appearancePage
+                .accessibilityIdentifier("settings.detail.appearance")
+        } else {
+            focusedFormPage(destination)
+        }
+    }
+
+    private func focusedFormPage(_ destination: WorkspaceDestination) -> some View {
         settingsPage(title: destination.title) {
             switch destination {
-            case .appearance:
-                appearance
-                advancedAppearance
             case .tabBar:
                 Section("Bottom menu") {
                     Label("Chats", systemImage: "bubble.left.and.bubble.right")
@@ -266,12 +245,49 @@ struct SettingsView: View {
     }
 
     private var currentConnection: some View {
-        Section("Current connection") {
-            if let hostRegistry, let saved = hostRegistry.selectedWorkspace?.savedConnection {
-                LabeledContent("Computer", value: saved.endpoint.identity)
+        Section {
+            if let hostRegistry, let workspace = hostRegistry.selectedWorkspace, let saved = workspace.savedConnection {
+                LabeledContent("Address", value: saved.endpoint.identity)
                 LabeledContent("Sign-in", value: authenticationTitle(saved.authentication))
+                Text(workspace.status)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings.connection.status")
             } else { Text("No host is connected.").foregroundStyle(.secondary) }
-            Text("Connection credentials are kept in the iOS Keychain. The host controls which sign-in methods it accepts.").font(.footnote).foregroundStyle(.secondary)
+        } header: {
+            Text("Connection details")
+        } footer: {
+            Text("Sign-ins stay in this device's Keychain.")
+        }
+    }
+
+    /// Settings › Hosts: your computers, then the selected one's plugin with
+    /// Update as the obvious button. Connection details are for Nerd Mode.
+    private var hostsPage: some View {
+        let pluginUpdate = selectedHostPluginUpdate.flatMap { $0.state == .notInstalled ? nil : $0 }
+        return settingsPage(title: SettingsMenuSection.connectivityAndNotifications.title) {
+            if let hostRegistry {
+                BighelpConfiguredHostsSection(registry: hostRegistry)
+                if let pluginUpdate {
+                    HostPluginUpdateSection(model: pluginUpdate)
+                }
+                if settings.nerdModeEnabled, hostRegistry.selectedHostID != nil {
+                    currentConnection
+                }
+            } else {
+                HostRuntimeSection(store: hostRuntime, connectionState: linkConnectionState,
+                                   agents: agentDirectory, theme: theme)
+                PluginUpdateSection(store: pluginUpdates, theme: theme)
+                connectivity
+            }
+            BighelpPluginCapabilitiesSection(
+                connections: workspaceConnections,
+                permissionCenter: permissionCenter,
+                showsPluginSummary: pluginUpdate == nil
+            )
+            if settings.nerdModeEnabled {
+                localCache
+            }
         }
     }
 
@@ -302,8 +318,8 @@ struct SettingsView: View {
         }
     }
 
-    private func settingsMenuGroup(_ title: String, sections: [SettingsMenuSection]) -> some View {
-        Section(title) {
+    private func settingsMenuGroup(sections: [SettingsMenuSection]) -> some View {
+        Section {
             ForEach(sections) { section in
                 NavigationLink {
                     destination(for: section)
@@ -311,14 +327,32 @@ struct SettingsView: View {
                     settingsMenuRow(section)
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                .accessibilityIdentifier("settings.menu.\(section.rawValue)")
+                .accessibilityValue(section == .appearance ? appearanceSummary : "")
+                .accessibilityIdentifier(section.accessibilityIdentifier)
             }
         }
         .listRowBackground(theme.surface)
     }
 
+    /// "Lavender bubbles · Cream · Graphite"
+    var appearanceSummary: String {
+        "\(settings.bubbleColorName) bubbles · "
+            + "\(settings.lightBackground.name) · \(settings.darkBackground.name)"
+    }
+
+    private func menuDetail(_ section: SettingsMenuSection) -> String {
+        switch section {
+        case .appearance: appearanceSummary
+        case .voice: settings.voiceConversationMode == .codexLive
+            ? "GPT Live 1 · a live conversation" : "TTS · reads replies aloud"
+        default: section.detail
+        }
+    }
+
     private var selectedHostPluginUpdate: HostPluginUpdateModel? {
-        hostRegistry?.selectedHostID.flatMap(HostPluginUpdateModel.existingModel(for:))
+        guard let hostID = hostRegistry?.selectedHostID else { return nil }
+        if let hostPluginUpdate, hostPluginUpdate.hostID == hostID { return hostPluginUpdate }
+        return HostPluginUpdateModel.existingModel(for: hostID)
     }
 
     private var selectedHostPluginCheckKey: String {
@@ -327,8 +361,8 @@ struct SettingsView: View {
 
     private func settingsMenuRow(_ section: SettingsMenuSection) -> some View {
         HStack(spacing: BighelpTokens.space12) {
-            BighelpIconTile(systemName: section.systemImage)
-            VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+            BighelpIconTile(systemName: section.systemImage, tint: section.tintHex.map { Color(hex: $0) })
+            VStack(alignment: .leading, spacing: 2) {
                 Text(section.title)
                     .bighelpFont(.body)
                     .foregroundStyle(theme.primaryText)
@@ -338,9 +372,10 @@ struct SettingsView: View {
                         .foregroundStyle(theme.action)
                         .accessibilityIdentifier("settings.menu.plugin-update")
                 } else {
-                    Text(section.detail)
+                    Text(menuDetail(section))
                         .bighelpFont(.metadata)
                         .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: BighelpTokens.space8)
@@ -363,16 +398,21 @@ struct SettingsView: View {
                 agentBehavior
             }
         case .chat:
-            settingsPage(title: section.title) {
-                chatExperience
-                voiceExperience
-                advancedChat
+            chatPage
+        case .voice:
+            VoiceSettingsView(settings: settings, agents: agents,
+                              selectedAgentID: agentDirectory?.selectedAgentID,
+                              client: voiceSettingsClient, scope: voiceSettingsScope,
+                              isCurrent: voiceSettingsIsCurrent)
+        case .providerUsage:
+            // Pushed screens don't reliably inherit the store; hand it over.
+            ProviderUsageSettingsView().environment(\.providerUsage, providerUsage)
+        case .companion:
+            if let companionStore {
+                CompanionSettingsView(store: companionStore, agents: agents, agentScope: companionAgentScope)
             }
         case .appearance:
-            settingsPage(title: section.title) {
-                appearance
-                advancedAppearance
-            }
+            appearancePage
         case .notifications:
             BighelpNotificationSettingsView(
                 permissionCenter: permissionCenter,
@@ -391,27 +431,7 @@ struct SettingsView: View {
         case .watch:
             settingsPage(title: section.title) { appleWatch }
         case .connectivityAndNotifications:
-            settingsPage(title: section.title) {
-                if let hostRegistry {
-                    BighelpConfiguredHostsSection(registry: hostRegistry)
-                    if let update = selectedHostPluginUpdate, update.needsAttention || update.isWorking {
-                        HostPluginUpdateSection(model: update)
-                    }
-                    if hostRegistry.selectedHostID != nil {
-                        Section { Text(hostRegistry.selectedWorkspace?.status ?? "Not connected") }
-                        currentConnection
-                    }
-                } else {
-                    HostRuntimeSection(store: hostRuntime, connectionState: linkConnectionState,
-                                       agents: agentDirectory, theme: theme)
-                    PluginUpdateSection(store: pluginUpdates, theme: theme)
-                    connectivity
-                }
-                BighelpPluginCapabilitiesSection(
-                    connections: workspaceConnections,
-                    permissionCenter: permissionCenter
-                )
-            }
+            hostsPage
         }
     }
 

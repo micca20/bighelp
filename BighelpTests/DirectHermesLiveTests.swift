@@ -237,7 +237,7 @@ final class DirectHermesLiveTests: XCTestCase {
             }
         }
         let runtime = try NativeWorkspaceRuntime(connections: connections, authority: owner.authority,
-            settings: SettingsStore(defaults: preferences, customThemeLogoDirectory: root.appending(path: "logos")),
+            settings: SettingsStore(defaults: preferences, legacyThemeLogoDirectory: root.appending(path: "logos")),
             userIdentity: UserIdentityStore(defaults: preferences, avatarDirectory: root.appending(path: "avatars")),
             directory: root.appending(path: "runtime"))
         defer { runtime.retire() }

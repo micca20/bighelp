@@ -143,10 +143,11 @@ struct DirectHermesEndpoint: Codable, Equatable, Sendable {
     }
 
     /// Names that only resolve inside a private network (mDNS, home routers,
-    /// ICANN's reserved .internal, company intranets). Public DNS never serves them.
-    /// `.localhost` names always mean this device (RFC 6761).
+    /// ICANN's reserved .internal, company intranets, Tailscale's MagicDNS).
+    /// Public DNS never serves them to a plain-HTTP port: a Tailscale Funnel name
+    /// is public only over HTTPS. `.localhost` names always mean this device (RFC 6761).
     static let privateNameSuffixes = ["local", "lan", "internal", "home.arpa", "intranet", "corp", "localdomain", "private",
-                                      "localhost"]
+                                      "localhost", "ts.net", "beta.tailscale.net"]
 
     /// Plain HTTP stays on a network the person controls: this device, home or
     /// office Wi-Fi, a VPN or Tailscale. Public names and addresses need HTTPS.
@@ -344,7 +345,7 @@ enum DirectHermesError: Error, LocalizedError, Sendable, Equatable {
         case .tooManyRequests: "Too many host requests are pending. Wait before trying again."
         case .notConnected: "The host is not connected. Reconnect before continuing."
         case .connectionFailed: "Could not connect to the host. Check its address, your VPN or Tailscale, and that Hermes is running."
-        case .tlsRequired: "The secure connection could not be verified. Check the host's HTTPS certificate."
+        case .tlsRequired: "The secure connection could not be verified. Check the host's HTTPS certificate. If it serves plain HTTP on your home network, a VPN or Tailscale, turn on Allow HTTP under Advanced connection."
         case .rateLimited: "The host is limiting sign-in attempts. Wait before trying again."
         case .serverUnavailable: "The host authentication service is unavailable. Try again later."
         case .browserAuthenticationUnavailable: "Browser sign-in could not start on this device. Keep bighelp in the foreground, or use a password or provider-issued access token."

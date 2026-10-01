@@ -51,8 +51,8 @@ struct BighelpMenuDestinations {
     var onProjects: (() -> Void)? = nil
     var onAgents: () -> Void
     var onScheduledTasks: () -> Void
-    /// Nerd Mode: the host's tools.
-    var onHermesTools: (() -> Void)?
+    /// Kanban, when the host has Hermes' Kanban plugin.
+    var onKanban: (() -> Void)? = nil
     /// Nerd Mode: the Hermes project folder chats run in.
     var folder: (name: String, open: () -> Void)?
     /// Plans and limits of the AI providers on the host.
@@ -60,9 +60,10 @@ struct BighelpMenuDestinations {
     var onSettings: () -> Void
 }
 
-/// bighelp's one menu (☰): switch hosts, start or find a chat, and go anywhere
-/// else. Settings holds everything you configure; Hermes Tools (Nerd Mode) holds
-/// the host's own tools.
+/// bighelp's one menu (☰). The first screen is short on purpose: New chat,
+/// Agents, Projects, Kanban, Scheduled tasks and Settings, then recent chats
+/// with See all. The host switcher is one compact row on top; the rest
+/// (provider usage, Nerd Mode's folder) waits below the chats.
 struct BighelpMenu<Recent: View>: View {
 
     let hosts: BighelpMenuHosts
@@ -78,91 +79,170 @@ struct BighelpMenu<Recent: View>: View {
 
     var body: some View {
         List {
-            if !hosts.hosts.isEmpty || hosts.add != nil || destinations.folder != nil {
-                hostsSection
-            }
-            chatsSection
-            goToSection
-            if hasRecent {
-                Section("Recent") { recent() }
-                    .listRowBackground(theme.surface)
-            }
+            mainSection
+            recentSection
+            moreSection
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(16)
+        .environment(\.defaultMinListRowHeight, BighelpTokens.hitTarget)
         .scrollContentBackground(.hidden)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
         .tint(theme.action)
         .accessibilityIdentifier("navigation.menu")
     }
 
-    private var hostsSection: some View {
-        Section("Hosts") {
-            ForEach(hosts.hosts) { host in
-                Button { choose { hosts.select(host.id) } } label: {
-                    BighelpMenuRowLabel(title: host.name, symbol: "desktopcomputer",
-                                        trailing: host.isSelected ? .selected : .none)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(host.isSelected ? .isSelected : [])
-                .accessibilityIdentifier("menu.host.\(host.id)")
-            }
-            if let add = hosts.add {
-                row("Add host", symbol: "plus", id: "menu.host.add", trailing: .none, action: add)
-            }
-            if let folder = destinations.folder {
-                row("Folder", detail: folder.name, symbol: "folder", id: "menu.folder", action: folder.open)
-            }
-        }
-        .listRowBackground(theme.surface)
-    }
+    // MARK: Main
 
-    private var chatsSection: some View {
-        Section("Chats") {
-            row(destinations.newChatTitle, symbol: "square.and.pencil", id: "menu.new-chat", trailing: .none,
-                action: destinations.onNewChat)
-            if let onNewGroup = destinations.onNewGroup {
-                row("New group chat", symbol: "person.3", id: "menu.new-group", trailing: .none, action: onNewGroup)
-            }
-            row("All chats", symbol: "bubble.left.and.bubble.right", id: "menu.chats", action: destinations.onAllChats)
+    private var mainSection: some View {
+        Section {
+            newChatRow
+            row("Agents", symbol: "person.2", id: "menu.agents", action: destinations.onAgents)
             if let onProjects = destinations.onProjects {
                 row("Projects", symbol: "folder", id: "menu.projects", action: onProjects)
             }
+            if let onKanban = destinations.onKanban {
+                row("Kanban", symbol: "rectangle.split.3x1", id: "menu.kanban", action: onKanban)
+            }
+            row("Scheduled tasks", symbol: "calendar.badge.clock", id: "menu.scheduled-tasks",
+                action: destinations.onScheduledTasks)
+            row("Settings", symbol: "gearshape", id: "menu.settings", action: destinations.onSettings)
+        } header: {
+            if !hosts.hosts.isEmpty || hosts.add != nil { hostSwitcher }
         }
         .listRowBackground(theme.surface)
     }
 
-    private var goToSection: some View {
-        Section("Go to") {
-            #if os(visionOS)
-            row("Simple mode", detail: "Just your agent in the room", symbol: "figure.stand",
-                id: "menu.simple-mode", trailing: .none) {
-                SpatialSimpleMode.enter(spatialAvatar, openWindow: openWindow)
+    /// Compact rows, so the whole first screen fits without scrolling.
+    private static var rowInsets: EdgeInsets { EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16) }
+
+    /// New chat, with New group beside it rather than on its own row.
+    private var newChatRow: some View {
+        HStack(spacing: BighelpTokens.space8) {
+            Button { choose(destinations.onNewChat) } label: {
+                BighelpMenuRowLabel(title: destinations.newChatTitle, symbol: "square.and.pencil", trailing: .none)
             }
-            #endif
-            row("Agents", detail: "Create, edit and pin your agents", symbol: "person.2", id: "menu.agents",
-                action: destinations.onAgents)
-            row("Scheduled tasks", detail: "Work that runs on its own", symbol: "calendar.badge.clock",
-                id: "menu.scheduled-tasks", action: destinations.onScheduledTasks)
-            if let onProviderUsage = destinations.onProviderUsage {
-                row("Provider usage", detail: "Plans and limits on your computer", symbol: "gauge.with.dots.needle.50percent",
-                    id: "menu.usage", action: onProviderUsage)
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("menu.new-chat")
+            if let onNewGroup = destinations.onNewGroup {
+                Button { choose(onNewGroup) } label: {
+                    Label("Group", systemImage: "person.3")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, BighelpTokens.space12)
+                        .frame(minHeight: 34)
+                        .background(theme.action.opacity(0.12), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(theme.action)
+                .accessibilityLabel("New group chat")
+                .accessibilityIdentifier("menu.new-group")
             }
-            if let onHermesTools = destinations.onHermesTools {
-                row("Hermes Tools", detail: "Activity, files, skills, models and more", symbol: "square.grid.2x2",
-                    id: "menu.hermes-tools", action: onHermesTools)
+        }
+        .listRowInsets(Self.rowInsets)
+    }
+
+    /// The host you're on, as one row. Hosts and Add host are one tap away.
+    private var hostSwitcher: some View {
+        Menu {
+            Section("Switch host") {
+                ForEach(hosts.hosts) { host in
+                    Button { choose { hosts.select(host.id) } } label: {
+                        if host.isSelected { Label(host.name, systemImage: "checkmark") } else { Text(host.name) }
+                    }
+                    .accessibilityIdentifier("menu.host.\(host.id)")
+                }
             }
-            row("Settings", detail: "Profile, look, notifications and hosts", symbol: "gearshape",
-                id: "menu.settings", action: destinations.onSettings)
+            if let add = hosts.add {
+                Button { choose(add) } label: { Label("Add host", systemImage: "plus") }
+                    .accessibilityIdentifier("menu.host.add")
+            }
+        } label: {
+            HStack(spacing: BighelpTokens.space8) {
+                Image(systemName: "desktopcomputer")
+                Text(hosts.hosts.first(where: \.isSelected)?.name ?? "Choose a host")
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(theme.primaryText)
+            .padding(.horizontal, BighelpTokens.space12)
+            .frame(minHeight: 34)
+            .background(theme.surface, in: .capsule)
+            .contentShape(.capsule)
+        }
+        .textCase(nil)
+        .padding(.bottom, BighelpTokens.space4)
+        .accessibilityLabel("Host: \(hosts.hosts.first(where: \.isSelected)?.name ?? "none")")
+        .accessibilityHint("Switch hosts or add one.")
+        .accessibilityIdentifier("menu.hosts")
+    }
+
+    // MARK: Recent
+
+    private var recentSection: some View {
+        Section {
+            if hasRecent {
+                recent()
+            } else {
+                Text("Your chats show up here.")
+                    .bighelpFont(.metadata)
+                    .foregroundStyle(theme.secondaryText)
+            }
+        } header: {
+            HStack {
+                Text("Recent chats")
+                Spacer()
+                Button("See all") { choose(destinations.onAllChats) }
+                    .font(.subheadline.weight(.semibold))
+                    .textCase(nil)
+                    .accessibilityLabel("See all chats")
+                    .accessibilityIdentifier("menu.chats")
+            }
         }
         .listRowBackground(theme.surface)
+    }
+
+    // MARK: More
+
+    @ViewBuilder
+    private var moreSection: some View {
+        if destinations.onProviderUsage != nil || destinations.folder != nil || isVision {
+            Section("More") {
+                #if os(visionOS)
+                row("Simple mode", symbol: "figure.stand", id: "menu.simple-mode") {
+                    SpatialSimpleMode.enter(spatialAvatar, openWindow: openWindow)
+                }
+                #endif
+                if let onProviderUsage = destinations.onProviderUsage {
+                    row("Provider usage", symbol: "gauge.with.dots.needle.50percent", id: "menu.usage",
+                        action: onProviderUsage)
+                }
+                if let folder = destinations.folder {
+                    row("Folder", detail: folder.name, symbol: "folder.badge.gearshape", id: "menu.folder",
+                        action: folder.open)
+                }
+            }
+            .listRowBackground(theme.surface)
+        }
+    }
+
+    private var isVision: Bool {
+        #if os(visionOS)
+        true
+        #else
+        false
+        #endif
     }
 
     private func row(_ title: String, detail: String? = nil, symbol: String, id: String,
-                     trailing: BighelpMenuRowLabel.Trailing = .chevron, action: @escaping () -> Void) -> some View {
+                     action: @escaping () -> Void) -> some View {
         Button { choose(action) } label: {
-            BighelpMenuRowLabel(title: title, detail: detail, symbol: symbol, trailing: trailing)
+            BighelpMenuRowLabel(title: title, detail: detail, symbol: symbol, trailing: .none)
         }
         .buttonStyle(.plain)
+        .listRowInsets(Self.rowInsets)
         .accessibilityIdentifier(id)
     }
 
@@ -214,7 +294,7 @@ struct BighelpMenuRowLabel: View {
                 EmptyView()
             }
         }
-        .frame(minHeight: 48)
+        .frame(minHeight: BighelpTokens.hitTarget)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }

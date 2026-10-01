@@ -18,31 +18,36 @@ struct SkillsHubManagementView: View {
                 retry: { Task { await model.load() } }
             )
             if let snapshot = model.snapshot {
-                Section {
-                    if snapshot.installedSkills.isEmpty {
-                        Text("No active skills were reported.").foregroundStyle(.secondary)
-                    }
-                    ForEach(snapshot.installedSkills) { skill in
-                        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                    Text(skill.name).font(.headline)
-                                    Text([skill.category, skill.provenance].filter { !$0.isEmpty }.joined(separator: " • "))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text(skill.isEnabled ? "Enabled" : "Disabled").font(.caption)
-                            }
-                            if !skill.summary.isEmpty { Text(skill.summary).font(.subheadline) }
-                            Button(skill.isEnabled ? "Disable this skill" : "Enable this skill") {
-                                toggleCandidate = skill
-                            }
-                            .buttonStyle(.bordered)
+                let installed = snapshot.installedSkills.filter {
+                    ManagementSearch.matches(model.query, $0.name, $0.summary, $0.category)
+                }
+                if !ManagementSearch.isActive(model.query) || !installed.isEmpty {
+                    Section {
+                        if snapshot.installedSkills.isEmpty {
+                            Text("No active skills were reported.").foregroundStyle(.secondary)
                         }
+                        ForEach(installed) { skill in
+                            VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+                                        Text(skill.name).font(.headline)
+                                        Text([skill.category, skill.provenance].filter { !$0.isEmpty }.joined(separator: " • "))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text(skill.isEnabled ? "Enabled" : "Disabled").font(.caption)
+                                }
+                                if !skill.summary.isEmpty { Text(skill.summary).font(.subheadline) }
+                                Button(skill.isEnabled ? "Disable this skill" : "Enable this skill") {
+                                    toggleCandidate = skill
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    } header: { Text("Your skills") }
+                      footer: {
+                        Text("A disabled skill stays visible here only after Hermes confirms it is absent, so you can turn it back on.")
                     }
-                } header: { Text("Your skills") }
-                  footer: {
-                    Text("A disabled skill stays visible here only after Hermes confirms it is absent, so you can turn it back on.")
                 }
 
                 Section {
@@ -52,9 +57,10 @@ struct SkillsHubManagementView: View {
                             Text(source.label).tag(source.id)
                         }
                     }
-                    Button("Search", systemImage: "magnifyingglass") { Task { await model.search() } }
+                    Button("Search the Skills Hub", systemImage: "magnifyingglass") { Task { await model.search() } }
                         .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isBusy)
                         .frame(minHeight: BighelpTokens.hitTarget)
+                        .accessibilityIdentifier("skills.hub.search")
                 } header: { Text("Find skills") }
                   footer: { Text("Results come from this host’s configured sources and are scanned before installation.") }
 
@@ -65,12 +71,17 @@ struct SkillsHubManagementView: View {
                             Text(result.timedOutSources.joined(separator: ", ")).foregroundStyle(.secondary)
                         }
                     }
-                } else if !snapshot.featured.isEmpty {
+                } else if !snapshot.featured.isEmpty, !ManagementSearch.isActive(model.query) {
                     skillRows(title: "Featured", items: snapshot.featured)
                 }
 
-                skillRows(title: "Official skills", items: Array(snapshot.official.prefix(visibleLimit)))
-                if snapshot.official.count > visibleLimit {
+                let official = snapshot.official.filter {
+                    ManagementSearch.matches(model.query, $0.name, $0.summary, $0.category)
+                }
+                if !ManagementSearch.isActive(model.query) || !official.isEmpty {
+                    skillRows(title: "Official skills", items: Array(official.prefix(visibleLimit)))
+                }
+                if official.count > visibleLimit {
                     Section {
                         Button("Show more official skills") { visibleLimit += 40 }
                             .frame(minHeight: BighelpTokens.hitTarget)
@@ -89,10 +100,14 @@ struct SkillsHubManagementView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .searchable(text: $model.query, prompt: "Search the Skills Hub")
+        // Typing narrows your skills and the official list; Return also searches the Hub.
+        .searchable(text: $model.query, prompt: "Search skills")
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .onSubmit(of: .search) { Task { await model.search() } }
+        .onChange(of: model.query) { _, query in
+            if !ManagementSearch.isActive(query) { model.clearSearch() }
+        }
         .refreshable { await model.load() }
         .task { if model.snapshot == nil { await model.load() } }
         .sheet(item: Binding(

@@ -16,7 +16,7 @@ struct SavedAgentTemplate: Identifiable, Codable, Equatable, Sendable {
     let createdAt: Date
 }
 
-/// Saved on this iPhone, so a template works with any of the person's computers.
+/// Saved on this device, so a template works with any of the person's computers.
 @MainActor @Observable
 final class AgentTemplateLibrary {
     static let shared = AgentTemplateLibrary()
@@ -80,92 +80,5 @@ final class AgentTemplateLibrary {
         } catch {
             // A failed write keeps the in-memory list; the next change retries.
         }
-    }
-}
-
-/// Pick a saved template to start a new agent from. Swipe to delete, hold to rename.
-struct AgentTemplatePickerView: View {
-    @Bindable var library: AgentTemplateLibrary
-    let onBlank: () -> Void
-    let onPick: (SavedAgentTemplate) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var renaming: SavedAgentTemplate?
-    @State private var renameText = ""
-    @BighelpThemeReader private var theme
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Button {
-                        dismiss()
-                        onBlank()
-                    } label: {
-                        Label("Blank agent", systemImage: "plus")
-                    }
-                    .accessibilityIdentifier("agent-templates.blank")
-                }
-                .listRowBackground(theme.surface)
-                Section {
-                    ForEach(library.templates) { template in
-                        Button {
-                            dismiss()
-                            onPick(template)
-                        } label: {
-                            row(template)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("agent-templates.\(template.id.uuidString)")
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button("Delete", systemImage: "trash", role: .destructive) { library.delete(template.id) }
-                        }
-                        .contextMenu {
-                            Button("Rename", systemImage: "pencil") { renameText = template.title; renaming = template }
-                            Button("Delete", systemImage: "trash", role: .destructive) { library.delete(template.id) }
-                        }
-                    }
-                } header: {
-                    Text("Templates")
-                } footer: {
-                    Text("Templates are saved on this iPhone. Each keeps an agent's role, description, instructions and look. Save one from an agent's Edit screen or by holding it in Agents.")
-                }
-                .listRowBackground(theme.surface)
-            }
-            .scrollContentBackground(.hidden)
-            .background(theme.canvas.ignoresSafeArea())
-            .navigationTitle("New agent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            }
-            .alert("Rename template", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-                TextField("Name", text: $renameText)
-                Button("Cancel", role: .cancel) { renaming = nil }
-                Button("Rename") {
-                    if let template = renaming { library.rename(template.id, to: renameText) }
-                    renaming = nil
-                }
-            }
-        }
-    }
-
-    private func row(_ template: SavedAgentTemplate) -> some View {
-        HStack(spacing: BighelpTokens.space12) {
-            Image(systemName: "person.crop.square")
-                .font(.title3)
-                .foregroundStyle(theme.action)
-                .frame(width: 32)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(template.title).foregroundStyle(theme.primaryText)
-                Text(template.role.isEmpty ? "From \(template.sourceAgentName)" : template.role)
-                    .font(.footnote)
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: BighelpTokens.hitTarget)
-        .contentShape(.rect)
     }
 }

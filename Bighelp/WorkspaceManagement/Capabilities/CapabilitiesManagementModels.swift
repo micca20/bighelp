@@ -269,11 +269,42 @@ struct MCPProbeTool: Identifiable, Equatable, Sendable {
 }
 
 struct MCPProbeResult: Equatable, Sendable {
+    /// Some servers (a whole cloud provider's API) offer thousands of tools; Hermes
+    /// keeps the ones its include list names. The screen lists the first few.
+    static let displayedToolLimit = 200
+    static let summaryCharacterLimit = 400
+    /// Sanity bound on a host's answer, far above any real server.
+    static let maximumToolCount = 50_000
+
     let succeeded: Bool
     let error: String?
+    /// The first `displayedToolLimit` tools.
     let tools: [MCPProbeTool]
+    /// Every tool the server offers.
+    let toolCount: Int
     let promptCount: Int
     let resourceCount: Int
+
+    /// Reads a host's tool rows leniently: all of them are counted, the first
+    /// few are kept, and long descriptions are shortened rather than refused.
+    static func displayedTools(_ value: BighelpJSONValue?) throws -> (tools: [MCPProbeTool], count: Int) {
+        let rows = try CapabilitiesPayload.array(value, maximum: maximumToolCount)
+        let tools = try rows.prefix(displayedToolLimit).map { value in
+            let row = try CapabilitiesPayload.object(value)
+            let schemaCharacters = row["schema_chars"]?.integer
+            if let schemaCharacters, !(0...2_000_000).contains(schemaCharacters) {
+                throw CapabilitiesManagementError.invalidResponse
+            }
+            let summary = row["description"]?.string ?? ""
+            return MCPProbeTool(
+                name: try CapabilitiesPayload.text(row["name"], maximumBytes: 256),
+                summary: summary.count > summaryCharacterLimit
+                    ? String(summary.prefix(summaryCharacterLimit)) + "…" : summary,
+                schemaCharacterCount: schemaCharacters
+            )
+        }
+        return (tools, rows.count)
+    }
 }
 
 struct MCPOAuthFlow: Identifiable, Equatable, Sendable {

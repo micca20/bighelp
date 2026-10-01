@@ -20,8 +20,6 @@ struct BighelpThemeID: RawRepresentable, Codable, Hashable, Identifiable, Sendab
     var id: String { rawValue }
 
     static let bighelp = BighelpThemeID(rawValue: "loopdy")
-    static let nous = BighelpThemeID(rawValue: "nous")
-    static let superpilot = BighelpThemeID(rawValue: "superpilot")
 }
 
 enum BighelpThemeTypeface: String, Codable, Equatable, Sendable {
@@ -99,487 +97,10 @@ struct BighelpThemeTypography: Codable, Equatable, Sendable {
     let brandFontNames: [String]
 
     // Empty candidates select Apple's system font, preserving Dynamic Type.
-    // Other built-in themes and user-created themes keep their explicit faces.
     static let bighelp = BighelpThemeTypography(
         displayFontNames: [], bodyFontNames: [], emphasizedBodyFontNames: [],
         codeFontNames: [], brandFontNames: []
     )
-
-    static let nous = BighelpThemeTypography(
-        displayFontNames: ["Sigurd Variable", "SigurdVariable", "Sigurd-Variable"],
-        bodyFontNames: ["Rules Variable", "RulesVariable", "Rules-Variable"],
-        emphasizedBodyFontNames: ["Rules Variable", "RulesVariable", "Rules-Variable"],
-        codeFontNames: [],
-        brandFontNames: ["Rules Variable", "RulesVariable", "Rules-Variable"]
-    )
-
-    static let superpilot = BighelpThemeTypography(
-        displayFontNames: ["Segoe UI Semibold", "SegoeUI-Semibold"],
-        bodyFontNames: ["Segoe UI", "SegoeUI", "SegoeUI-Regular"],
-        emphasizedBodyFontNames: ["Segoe UI Semibold", "SegoeUI-Semibold"],
-        codeFontNames: ["Segoe UI Mono", "SegoeUIMono-Regular"],
-        brandFontNames: ["Segoe UI Semibold", "SegoeUI-Semibold"]
-    )
-}
-
-enum CustomThemeFontChoice: String, CaseIterable, Identifiable, Codable, Equatable, Sendable {
-    case system
-    case rounded
-    case serif
-    case monospaced
-    case notoSans
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .system: "System"
-        case .rounded: "Rounded"
-        case .serif: "Serif"
-        case .monospaced: "Monospaced"
-        case .notoSans: "Noto Sans"
-        }
-    }
-
-    fileprivate var typeface: BighelpThemeTypeface {
-        switch self {
-        case .system, .notoSans: .system
-        case .rounded: .rounded
-        case .serif: .serif
-        case .monospaced: .monospaced
-        }
-    }
-
-    fileprivate var typography: BighelpThemeTypography {
-        switch self {
-        case .notoSans:
-            BighelpThemeTypography(
-                displayFontNames: ["Noto Sans SemiBold"],
-                bodyFontNames: ["Noto Sans"],
-                emphasizedBodyFontNames: ["Noto Sans SemiBold"],
-                codeFontNames: ["Noto Sans"],
-                brandFontNames: ["Noto Sans SemiBold"]
-            )
-        case .system, .rounded, .serif, .monospaced:
-            BighelpThemeTypography(
-                displayFontNames: [],
-                bodyFontNames: [],
-                emphasizedBodyFontNames: [],
-                codeFontNames: [],
-                brandFontNames: []
-            )
-        }
-    }
-}
-
-enum CustomThemeColorField: String, Equatable, Sendable {
-    case accent
-    case lightBackground
-    case lightPrimaryText
-    case lightSecondaryText
-    case lightTertiaryText
-    case darkBackground
-    case darkPrimaryText
-    case darkSecondaryText
-    case darkTertiaryText
-}
-
-enum CustomThemeValidationError: Error, Equatable, Sendable {
-    case invalidName
-    case invalidDescription
-    case invalidColor(CustomThemeColorField)
-    case insufficientContrast(CustomThemeColorField)
-    case invalidLogoMetadata
-}
-
-enum CustomThemeLogoFormat: String, Codable, Equatable, Sendable {
-    case png
-    case jpeg
-    case heic
-
-    var fileExtension: String {
-        switch self {
-        case .png: "png"
-        case .jpeg: "jpg"
-        case .heic: "heic"
-        }
-    }
-}
-
-struct CustomThemeLogo: Codable, Equatable, Sendable {
-    let id: UUID
-    let format: CustomThemeLogoFormat
-    let pixelWidth: Int
-    let pixelHeight: Int
-    let byteCount: Int
-
-    var fileName: String {
-        "custom-theme-logo-\(id.uuidString.lowercased()).\(format.fileExtension)"
-    }
-}
-
-enum CustomThemeLogoVariant: String, CaseIterable, Identifiable, Sendable {
-    case light
-    case dark
-
-    var id: Self { self }
-    var title: String { rawValue.capitalized }
-}
-
-struct CustomThemePalette: Codable, Equatable, Sendable {
-    let backgroundHex: String
-    let primaryTextHex: String
-    let secondaryTextHex: String
-    let tertiaryTextHex: String
-}
-
-struct CustomTheme: Codable, Equatable, Identifiable, Sendable {
-    static let maximumNameLength = 40
-    static let maximumDescriptionLength = 120
-    static let minimumTextContrast = 4.5
-
-    let id: UUID
-    let name: String
-    let description: String?
-    let font: CustomThemeFontChoice
-    let accentHex: String
-    let light: CustomThemePalette
-    let dark: CustomThemePalette
-    let lightLogo: CustomThemeLogo?
-    let darkLogo: CustomThemeLogo?
-
-    /// Compatibility alias for themes created before separate appearance logos.
-    var logo: CustomThemeLogo? { lightLogo ?? darkLogo }
-
-    init(
-        id: UUID = UUID(),
-        name: String,
-        description: String? = nil,
-        font: CustomThemeFontChoice,
-        accentHex: String,
-        light: CustomThemePalette,
-        dark: CustomThemePalette,
-        logo: CustomThemeLogo? = nil,
-        lightLogo: CustomThemeLogo? = nil,
-        darkLogo: CustomThemeLogo? = nil
-    ) throws {
-        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedName.isEmpty,
-              normalizedName.count <= Self.maximumNameLength,
-              normalizedName.unicodeScalars.allSatisfy({
-                  !CharacterSet.controlCharacters.contains($0)
-              })
-        else {
-            throw CustomThemeValidationError.invalidName
-        }
-
-        self.id = id
-        self.name = normalizedName
-        if let description {
-            let normalizedDescription = description
-                .split(whereSeparator: \Character.isWhitespace)
-                .joined(separator: " ")
-            guard normalizedDescription.count <= Self.maximumDescriptionLength,
-                  normalizedDescription.unicodeScalars.allSatisfy({
-                      !CharacterSet.controlCharacters.contains($0)
-                  })
-            else { throw CustomThemeValidationError.invalidDescription }
-            self.description = normalizedDescription.isEmpty ? nil : normalizedDescription
-        } else {
-            self.description = nil
-        }
-        self.font = font
-        self.accentHex = try Self.normalize(accentHex, field: .accent)
-        self.light = try Self.normalized(
-            light,
-            fields: (
-                background: .lightBackground,
-                primary: .lightPrimaryText,
-                secondary: .lightSecondaryText,
-                tertiary: .lightTertiaryText
-            )
-        )
-        self.dark = try Self.normalized(
-            dark,
-            fields: (
-                background: .darkBackground,
-                primary: .darkPrimaryText,
-                secondary: .darkSecondaryText,
-                tertiary: .darkTertiaryText
-            )
-        )
-        let resolvedLightLogo = lightLogo ?? logo
-        let resolvedDarkLogo = darkLogo ?? logo
-        for logo in [resolvedLightLogo, resolvedDarkLogo].compactMap({ $0 }) {
-            let (pixelCount, overflow) = logo.pixelWidth.multipliedReportingOverflow(
-                by: logo.pixelHeight
-            )
-            guard logo.pixelWidth > 0,
-                  logo.pixelHeight > 0,
-                  logo.byteCount > 0,
-                  logo.byteCount <= CustomThemeLogoStore.maximumByteCount,
-                  logo.pixelWidth <= CustomThemeLogoStore.maximumDimension,
-                  logo.pixelHeight <= CustomThemeLogoStore.maximumDimension,
-                  !overflow,
-                  pixelCount <= CustomThemeLogoStore.maximumPixelCount
-            else { throw CustomThemeValidationError.invalidLogoMetadata }
-        }
-        self.lightLogo = resolvedLightLogo
-        self.darkLogo = resolvedDarkLogo
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case description
-        case font
-        case accentHex
-        case light
-        case dark
-        case logo
-        case lightLogo
-        case darkLogo
-    }
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        do {
-            try self.init(
-                id: container.decode(UUID.self, forKey: .id),
-                name: container.decode(String.self, forKey: .name),
-                description: container.decodeIfPresent(String.self, forKey: .description),
-                font: container.decode(CustomThemeFontChoice.self, forKey: .font),
-                accentHex: container.decode(String.self, forKey: .accentHex),
-                light: container.decode(CustomThemePalette.self, forKey: .light),
-                dark: container.decode(CustomThemePalette.self, forKey: .dark),
-                logo: container.decodeIfPresent(CustomThemeLogo.self, forKey: .logo),
-                lightLogo: container.decodeIfPresent(CustomThemeLogo.self, forKey: .lightLogo),
-                darkLogo: container.decodeIfPresent(CustomThemeLogo.self, forKey: .darkLogo)
-            )
-        } catch let error as CustomThemeValidationError {
-            throw DecodingError.dataCorruptedError(
-                forKey: .name,
-                in: container,
-                debugDescription: "Invalid custom theme: \(error)"
-            )
-        }
-    }
-
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encodeIfPresent(description, forKey: .description)
-        try container.encode(font, forKey: .font)
-        try container.encode(accentHex, forKey: .accentHex)
-        try container.encode(light, forKey: .light)
-        try container.encode(dark, forKey: .dark)
-        try container.encodeIfPresent(lightLogo, forKey: .lightLogo)
-        try container.encodeIfPresent(darkLogo, forKey: .darkLogo)
-    }
-
-    var themeID: BighelpThemeID {
-        BighelpThemeID(rawValue: "custom.\(id.uuidString.lowercased())")
-    }
-
-    func replacingLogo(
-        _ logo: CustomThemeLogo?,
-        variant: CustomThemeLogoVariant? = nil
-    ) throws -> CustomTheme {
-        try CustomTheme(
-            id: id,
-            name: name,
-            description: description,
-            font: font,
-            accentHex: accentHex,
-            light: light,
-            dark: dark,
-            lightLogo: variant == .dark ? lightLogo : logo,
-            darkLogo: variant == .light ? darkLogo : logo
-        )
-    }
-
-    var definition: BighelpThemeDefinition {
-        let lightTheme = Self.makeTheme(palette: light, isDark: false, themeID: themeID, font: font, accentHex: accentHex)
-        let darkTheme = Self.makeTheme(palette: dark, isDark: true, themeID: themeID, font: font, accentHex: accentHex)
-        return BighelpThemeDefinition(
-            id: themeID,
-            name: name,
-            summary: description ?? "Custom theme using \(font.title).",
-            light: lightTheme,
-            lightHighContrast: lightTheme,
-            dark: darkTheme,
-            darkHighContrast: darkTheme
-        )
-    }
-
-    /// A non-persistable editor preview. Syntax is checked, but low-contrast
-    /// drafts remain visible so people can understand and correct them. Saving
-    /// still goes through CustomTheme's full contrast and metadata validation.
-    static func previewPalette(
-        palette: CustomThemePalette,
-        accentHex: String,
-        font: CustomThemeFontChoice,
-        isDark: Bool
-    ) throws -> BighelpTheme {
-        let normalizedPalette = try CustomThemePalette(
-            backgroundHex: normalize(palette.backgroundHex, field: isDark ? .darkBackground : .lightBackground),
-            primaryTextHex: normalize(palette.primaryTextHex, field: isDark ? .darkPrimaryText : .lightPrimaryText),
-            secondaryTextHex: normalize(palette.secondaryTextHex, field: isDark ? .darkSecondaryText : .lightSecondaryText),
-            tertiaryTextHex: normalize(palette.tertiaryTextHex, field: isDark ? .darkTertiaryText : .lightTertiaryText)
-        )
-        return try makeTheme(
-            palette: normalizedPalette, isDark: isDark,
-            themeID: BighelpThemeID(rawValue: "custom-editor-preview"),
-            font: font, accentHex: normalize(accentHex, field: .accent)
-        )
-    }
-
-    private static func makeTheme(
-        palette: CustomThemePalette,
-        isDark: Bool,
-        themeID: BighelpThemeID,
-        font: CustomThemeFontChoice,
-        accentHex: String
-    ) -> BighelpTheme {
-        BighelpTheme(
-            themeID: themeID,
-            typeface: font.typeface,
-            typography: font.typography,
-            iconStyle: .soft,
-            cornerScale: 1,
-            backgroundAccentHexes: [accentHex, palette.backgroundHex],
-            canvasHex: palette.backgroundHex,
-            surfaceHex: Self.blend(
-                palette.backgroundHex,
-                toward: palette.primaryTextHex,
-                fraction: 0.04
-            ),
-            raisedSurfaceHex: Self.blend(
-                palette.backgroundHex,
-                toward: palette.primaryTextHex,
-                fraction: 0.08
-            ),
-            primaryTextHex: palette.primaryTextHex,
-            secondaryTextHex: palette.secondaryTextHex,
-            tertiaryTextHex: palette.tertiaryTextHex,
-            borderHex: Self.blend(
-                palette.backgroundHex,
-                toward: palette.primaryTextHex,
-                fraction: 0.18
-            ),
-            separatorHex: Self.blend(
-                palette.backgroundHex,
-                toward: palette.primaryTextHex,
-                fraction: 0.12
-            ),
-            actionHex: accentHex,
-            actionForegroundHex: Self.contrastingForeground(for: accentHex),
-            actionGlowHex: accentHex,
-            elevationShadowHex: "000000",
-            actionGlowOpacity: isDark ? 0.34 : 0.24,
-            cardShadowOpacity: isDark ? 0.24 : 0.07,
-            navigationShadowOpacity: isDark ? 0.34 : 0.14,
-            successHex: isDark ? "63C982" : "176B37",
-            warningHex: isDark ? "F3B24F" : "A85D00",
-            dangerHex: isDark ? "FF7A70" : "B42318",
-            informationHex: accentHex,
-            focusHex: accentHex
-        )
-    }
-
-    private static func normalized(
-        _ palette: CustomThemePalette,
-        fields: (
-            background: CustomThemeColorField,
-            primary: CustomThemeColorField,
-            secondary: CustomThemeColorField,
-            tertiary: CustomThemeColorField
-        )
-    ) throws -> CustomThemePalette {
-        let background = try normalize(palette.backgroundHex, field: fields.background)
-        let primary = try normalize(palette.primaryTextHex, field: fields.primary)
-        let secondary = try normalize(palette.secondaryTextHex, field: fields.secondary)
-        let tertiary = try normalize(palette.tertiaryTextHex, field: fields.tertiary)
-
-        for (text, field) in [
-            (primary, fields.primary),
-            (secondary, fields.secondary),
-            (tertiary, fields.tertiary),
-        ] where contrastRatio(text, background) < minimumTextContrast {
-            throw CustomThemeValidationError.insufficientContrast(field)
-        }
-
-        return CustomThemePalette(
-            backgroundHex: background,
-            primaryTextHex: primary,
-            secondaryTextHex: secondary,
-            tertiaryTextHex: tertiary
-        )
-    }
-
-    private static func normalize(
-        _ value: String,
-        field: CustomThemeColorField
-    ) throws -> String {
-        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.hasPrefix("#") {
-            normalized.removeFirst()
-        }
-        normalized = normalized.uppercased()
-        let hexadecimalCharacters = CharacterSet(charactersIn: "0123456789ABCDEF")
-        guard normalized.count == 6,
-              normalized.unicodeScalars.allSatisfy({ hexadecimalCharacters.contains($0) })
-        else {
-            throw CustomThemeValidationError.invalidColor(field)
-        }
-        return normalized
-    }
-
-    private static func contrastRatio(_ firstHex: String, _ secondHex: String) -> Double {
-        let first = luminance(firstHex)
-        let second = luminance(secondHex)
-        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
-    }
-
-    private static func luminance(_ hex: String) -> Double {
-        let channels = rgb(hex).map { channel -> Double in
-            let component = Double(channel) / 255
-            return component <= 0.04045
-                ? component / 12.92
-                : pow((component + 0.055) / 1.055, 2.4)
-        }
-        return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2])
-    }
-
-    private static func contrastingForeground(for backgroundHex: String) -> String {
-        contrastRatio("FFFFFF", backgroundHex) >= contrastRatio("000000", backgroundHex)
-            ? "FFFFFF"
-            : "000000"
-    }
-
-    private static func blend(
-        _ sourceHex: String,
-        toward targetHex: String,
-        fraction: Double
-    ) -> String {
-        let source = rgb(sourceHex)
-        let target = rgb(targetHex)
-        return zip(source, target).map { sourceChannel, targetChannel in
-            let value = Double(sourceChannel)
-                + ((Double(targetChannel) - Double(sourceChannel)) * fraction)
-            return String(format: "%02X", Int(value.rounded()))
-        }.joined()
-    }
-
-    private static func rgb(_ hex: String) -> [Int] {
-        let value = Int(hex, radix: 16) ?? 0
-        return [
-            (value >> 16) & 0xFF,
-            (value >> 8) & 0xFF,
-            value & 0xFF,
-        ]
-    }
 }
 
 struct BighelpTheme: Codable, Equatable, Sendable {
@@ -612,6 +133,14 @@ struct BighelpTheme: Codable, Equatable, Sendable {
     // Raw theme definitions remain exact, Codable design documents. Only
     // values returned by `resolve` opt into the shared live visual system.
     private var resolvesLiveSemantics = false
+    /// Vision Pro: how strongly the theme color tints the window's glass. Set
+    /// from Settings › Colors › Transparency; never part of a theme document.
+    var visionCanvasOpacity = BighelpVisionGlass.canvasOpacity(forTransparency: BighelpVisionGlass.defaultTransparency)
+    /// Vision Pro in light mode: grey text over a see-through window needs to be darker.
+    var visionIsLight = false
+    /// The bubble color picked in Settings › Appearance, before any contrast
+    /// adjustment; nil is bighelp's own. Never part of a theme document.
+    var chosenBubbleHex: String?
 
     private enum CodingKeys: String, CodingKey {
         case themeID
@@ -705,9 +234,9 @@ struct BighelpTheme: Codable, Equatable, Sendable {
 
     var canvas: Color {
         #if os(visionOS)
-        // Vision Pro windows are glass. A light tint keeps the room visible
-        // behind the window and the theme's text readable on it.
-        Color(hex: canvasHex).opacity(0.5)
+        // Vision Pro windows are glass. The tint keeps the theme's text
+        // readable; how much of the room shows through is the person's call.
+        Color(hex: canvasHex).opacity(visionCanvasOpacity)
         #else
         usesNativeSystemPalette ? Color(uiColor: .systemBackground) : Color(hex: canvasHex)
         #endif
@@ -722,10 +251,16 @@ struct BighelpTheme: Codable, Equatable, Sendable {
         usesNativeSystemPalette ? Color(uiColor: .label) : Color(hex: primaryTextHex)
     }
     var secondaryText: Color {
-        usesNativeSystemPalette ? Color(uiColor: .secondaryLabel) : Color(hex: secondaryTextHex)
+        #if os(visionOS)
+        if visionIsLight { return Color(hex: secondaryTextHex).mix(with: Color(hex: primaryTextHex), by: 0.45) }
+        #endif
+        return usesNativeSystemPalette ? Color(uiColor: .secondaryLabel) : Color(hex: secondaryTextHex)
     }
     var tertiaryText: Color {
-        usesNativeSystemPalette ? Color(uiColor: .tertiaryLabel) : Color(hex: tertiaryTextHex)
+        #if os(visionOS)
+        if visionIsLight { return Color(hex: tertiaryTextHex).mix(with: Color(hex: primaryTextHex), by: 0.5) }
+        #endif
+        return usesNativeSystemPalette ? Color(uiColor: .tertiaryLabel) : Color(hex: tertiaryTextHex)
     }
     var border: Color {
         usesNativeSystemPalette ? Color(uiColor: .separator) : Color(hex: borderHex)
@@ -748,7 +283,11 @@ struct BighelpTheme: Codable, Equatable, Sendable {
     /// stored theme documents and the shared action API remain unchanged.
     var outgoingMessageForeground: Color { .white }
     var outgoingMessageBackground: Color {
-        if themeID == .bighelp { return Color(hex: Self.emberOutgoingHex) }
+        if themeID == .bighelp {
+            // Lavender is bighelp's own purple; any other pick is darkened only as white text needs.
+            guard let chosenBubbleHex else { return Color(hex: Self.emberOutgoingHex) }
+            return accessibleOutgoingMessageBackground(accent: Self.uiColor(hex: chosenBubbleHex))
+        }
         return accessibleOutgoingMessageBackground(
             accent: resolvesLiveSemantics ? liveActionUIColor : Self.uiColor(hex: actionHex)
         )
@@ -1034,132 +573,13 @@ struct BighelpTheme: Codable, Equatable, Sendable {
         focusHex: "DCCFFF"
     )
 
-    static let nousLight = BighelpTheme(
-        themeID: .nous,
-        typeface: .monospaced,
-        typography: .nous,
-        iconStyle: .technical,
-        cornerScale: 0.72,
-        backgroundAccentHexes: ["0071A9", "DFF5FF", "FFFFFF"],
-        canvasHex: "FFFFFF",
-        surfaceHex: "F7F7F7",
-        raisedSurfaceHex: "FFFFFF",
-        primaryTextHex: "061B27",
-        secondaryTextHex: "34515F",
-        tertiaryTextHex: "607C89",
-        borderHex: "A8D8E8",
-        separatorHex: "D2EAF3",
-        actionHex: "0071A9",
-        actionForegroundHex: "FFFFFF",
-        actionGlowHex: "22A7E3",
-        elevationShadowHex: "003B59",
-        actionGlowOpacity: 0.24,
-        cardShadowOpacity: 0.07,
-        navigationShadowOpacity: 0.14,
-        successHex: "087A67",
-        warningHex: "9A5A00",
-        dangerHex: "B3263D",
-        informationHex: "0071A9",
-        focusHex: "00A7E8"
-    )
-
-    static let nousDark = BighelpTheme(
-        themeID: .nous,
-        typeface: .monospaced,
-        typography: .nous,
-        iconStyle: .technical,
-        cornerScale: 0.72,
-        backgroundAccentHexes: ["00A7E8", "003E5F", "EAF9FF"],
-        canvasHex: "000000",
-        surfaceHex: "121212",
-        raisedSurfaceHex: "1C1C1C",
-        primaryTextHex: "F5FCFF",
-        secondaryTextHex: "BEDCE8",
-        tertiaryTextHex: "82A9B9",
-        borderHex: "23576B",
-        separatorHex: "173F50",
-        actionHex: "35B8F2",
-        actionForegroundHex: "00141F",
-        actionGlowHex: "35B8F2",
-        elevationShadowHex: "000000",
-        actionGlowOpacity: 0.34,
-        cardShadowOpacity: 0.24,
-        navigationShadowOpacity: 0.34,
-        successHex: "65D5B9",
-        warningHex: "FFC568",
-        dangerHex: "FF7C8F",
-        informationHex: "70D0FA",
-        focusHex: "35B8F2"
-    )
-
-    static let superpilotLight = BighelpTheme(
-        themeID: .superpilot,
-        typeface: .rounded,
-        typography: .superpilot,
-        iconStyle: .crisp,
-        cornerScale: 1.24,
-        backgroundAccentHexes: ["A9C9FF", "F5B6E7", "FFCCA8"],
-        canvasHex: "FFFFFF",
-        surfaceHex: "F7F7F7",
-        raisedSurfaceHex: "FFFFFF",
-        primaryTextHex: "11162B",
-        secondaryTextHex: "5F6272",
-        tertiaryTextHex: "888A98",
-        borderHex: "E2DEE8",
-        separatorHex: "ECE8F0",
-        actionHex: "6552D9",
-        actionForegroundHex: "FFFFFF",
-        actionGlowHex: "8F7DF1",
-        elevationShadowHex: "3B315E",
-        actionGlowOpacity: 0.22,
-        cardShadowOpacity: 0.07,
-        navigationShadowOpacity: 0.12,
-        successHex: "247B48",
-        warningHex: "BD6A14",
-        dangerHex: "C43E5C",
-        informationHex: "3568D4",
-        focusHex: "6552D9"
-    )
-
-    static let superpilotDark = BighelpTheme(
-        themeID: .superpilot,
-        typeface: .rounded,
-        typography: .superpilot,
-        iconStyle: .crisp,
-        cornerScale: 1.24,
-        backgroundAccentHexes: ["375B9D", "6F356F", "8F4B39"],
-        canvasHex: "000000",
-        surfaceHex: "121212",
-        raisedSurfaceHex: "1C1C1C",
-        primaryTextHex: "FAF8FF",
-        secondaryTextHex: "CAC6D5",
-        tertiaryTextHex: "95909F",
-        borderHex: "3A3746",
-        separatorHex: "2B2934",
-        actionHex: "9B8CFF",
-        actionForegroundHex: "100D20",
-        actionGlowHex: "9B8CFF",
-        elevationShadowHex: "000000",
-        actionGlowOpacity: 0.34,
-        cardShadowOpacity: 0.26,
-        navigationShadowOpacity: 0.36,
-        successHex: "69D590",
-        warningHex: "F0B66B",
-        dangerHex: "FF8098",
-        informationHex: "86AFFF",
-        focusHex: "B1A5FF"
-    )
-
     static func resolve(
-        themeID: BighelpThemeID = .bighelp,
         appearance: AppAppearance,
         colorScheme: ColorScheme,
         contrast: ColorSchemeContrast
     ) -> BighelpTheme {
-        let definition = BighelpThemeRegistry.definition(for: themeID)
-            ?? BighelpThemeRegistry.definition(for: .bighelp)!
-        return resolve(
-            definition: definition,
+        resolve(
+            definition: BighelpThemeRegistry.ember,
             appearance: appearance,
             colorScheme: colorScheme,
             contrast: contrast
@@ -1281,78 +701,47 @@ struct BighelpThemeDefinition: Codable, Equatable, Identifiable, Sendable {
     let darkHighContrast: BighelpTheme
 }
 
+/// bighelp's one look. Your bubble color and light and dark backgrounds
+/// (Settings › Appearance) are applied on top of it.
 enum BighelpThemeRegistry {
-    static let builtIns: [BighelpThemeDefinition] = [
-        BighelpThemeDefinition(
-            id: .bighelp,
-            name: "Ember",
-            summary: "Warm cream by day, after dark at night, with lavender actions.",
-            light: .light,
-            lightHighContrast: .lightHighContrast,
-            dark: .dark,
-            darkHighContrast: .darkHighContrast
-        ),
-        BighelpThemeDefinition(
-            id: .nous,
-            name: "Nous",
-            summary: "Native neutrals with the Nous blue action accent.",
-            light: .nousLight,
-            lightHighContrast: .nousLight,
-            dark: .nousDark,
-            darkHighContrast: .nousDark
-        ),
-        BighelpThemeDefinition(
-            id: .superpilot,
-            name: "Superpilot",
-            summary: "Native neutrals with the Superpilot violet action accent.",
-            light: .superpilotLight,
-            lightHighContrast: .superpilotLight,
-            dark: .superpilotDark,
-            darkHighContrast: .superpilotDark
-        ),
-    ]
-
-    static func definition(for id: BighelpThemeID) -> BighelpThemeDefinition? {
-        builtIns.first { $0.id == id }
-    }
-
-    static func contains(_ id: BighelpThemeID) -> Bool {
-        definition(for: id) != nil
-    }
+    static let ember = BighelpThemeDefinition(
+        id: .bighelp,
+        name: "Ember",
+        summary: "Warm cream by day, after dark at night, with lavender actions.",
+        light: .light,
+        lightHighContrast: .lightHighContrast,
+        dark: .dark,
+        darkHighContrast: .darkHighContrast
+    )
 }
 
 struct BighelpAppearanceContext: Equatable, Sendable {
     let appearance: AppAppearance
-    let themeID: BighelpThemeID
-    let customTheme: CustomTheme?
-    let customLightLogoURL: URL?
-    let customDarkLogoURL: URL?
     var lightBackground: BighelpLightBackground = .cream
     var darkBackground: BighelpDarkBackground = .graphite
-    /// Overrides the theme's accent for bubbles and buttons.
+    /// Your bubbles and buttons. Nil is bighelp's own lavender.
     var bubbleColor: BighelpBubbleColor?
-
-    var customLogoURL: URL? { customLightLogoURL ?? customDarkLogoURL }
+    /// A color you picked yourself; wins over `bubbleColor`.
+    var customBubbleHex: String?
+    /// The color your bubbles start from, or nil for bighelp's own.
+    var bubbleHex: String? { customBubbleHex ?? bubbleColor?.hex }
+    /// Vision Pro: 0 is a solid window, 1 shows the room through the glass.
+    var windowTransparency = BighelpVisionGlass.defaultTransparency
 
     init(
         appearance: AppAppearance,
-        themeID: BighelpThemeID,
-        customTheme: CustomTheme? = nil,
-        customLogoURL: URL? = nil,
-        customLightLogoURL: URL? = nil,
-        customDarkLogoURL: URL? = nil,
         lightBackground: BighelpLightBackground = .cream,
         darkBackground: BighelpDarkBackground = .graphite,
-        bubbleColor: BighelpBubbleColor? = nil
+        bubbleColor: BighelpBubbleColor? = nil,
+        customBubbleHex: String? = nil,
+        windowTransparency: Double = BighelpVisionGlass.defaultTransparency
     ) {
         self.appearance = appearance
-        self.themeID = themeID
-        self.customTheme = customTheme
-        self.customLightLogoURL = customLightLogoURL ?? customLogoURL
-        self.customDarkLogoURL = customDarkLogoURL ?? customLogoURL
         self.lightBackground = lightBackground
         self.darkBackground = darkBackground
         self.bubbleColor = bubbleColor
+        self.customBubbleHex = BighelpCustomBubbleColor.validated(customBubbleHex)
+        self.windowTransparency = windowTransparency
     }
 }
 
@@ -1362,13 +751,7 @@ extension BighelpTheme {
         colorScheme: ColorScheme,
         contrast: ColorSchemeContrast
     ) -> BighelpTheme {
-        let definition: BighelpThemeDefinition
-        if let customTheme = context.customTheme, customTheme.themeID == context.themeID {
-            definition = customTheme.definition
-        } else {
-            definition = BighelpThemeRegistry.definition(for: context.themeID)
-                ?? BighelpThemeRegistry.definition(for: .bighelp)!
-        }
+        let definition = BighelpThemeRegistry.ember
         let dark = context.appearance == .dark || (context.appearance == .system && colorScheme == .dark)
         let selected = switch (dark, contrast) {
         case (false, .standard): definition.light
@@ -1377,10 +760,15 @@ extension BighelpTheme {
         case (true, .increased): definition.darkHighContrast
         @unknown default: dark ? definition.dark : definition.light
         }
-        return selected.resolvedForLivePresentation(
+        var theme = selected.resolvedForLivePresentation(
             colorScheme: dark ? .dark : .light, contrast: contrast,
             lightBackground: context.lightBackground, darkBackground: context.darkBackground,
-            bubbleColor: context.bubbleColor)
+            bubbleColor: context.bubbleColor, customBubbleHex: context.customBubbleHex)
+        theme.chosenBubbleHex = context.bubbleHex
+        theme.visionCanvasOpacity = BighelpVisionGlass.canvasOpacity(forTransparency: context.windowTransparency,
+                                                                     dark: dark)
+        theme.visionIsLight = !dark
+        return theme
     }
 
     static func resolve(
@@ -1405,10 +793,10 @@ extension BighelpTheme {
     func resolvedForLivePresentation(
         colorScheme: ColorScheme, contrast: ColorSchemeContrast,
         lightBackground: BighelpLightBackground = .cream, darkBackground: BighelpDarkBackground = .graphite,
-        bubbleColor: BighelpBubbleColor? = nil
+        bubbleColor: BighelpBubbleColor? = nil, customBubbleHex: String? = nil
     ) -> BighelpTheme {
         let dark = colorScheme == .dark
-        let neutralDefinition = BighelpThemeRegistry.definition(for: .bighelp)!
+        let neutralDefinition = BighelpThemeRegistry.ember
         let neutral = switch (dark, contrast) {
         case (false, .standard): lightBackground.neutral
         case (false, .increased): neutralDefinition.lightHighContrast
@@ -1417,7 +805,7 @@ extension BighelpTheme {
         @unknown default: dark ? darkBackground.neutral : lightBackground.neutral
         }
         let increased = contrast == .increased
-        if let bubbleHex = bubbleColor?.hex {
+        if let bubbleHex = customBubbleHex ?? bubbleColor?.hex {
             let action = Self.readableAccentHex(bubbleHex, isDark: dark, increasedContrast: increased, on: neutral)
             return resolvedForLivePresentation(neutral: neutral, resolvedActionHex: action,
                                                actionForegroundHex: Self.readableForegroundHex(against: action))
@@ -1442,10 +830,7 @@ extension EnvironmentValues {
     @Entry var bighelpUIV2Enabled: Bool = false
     @Entry var bighelpUIV3Enabled: Bool = false
 
-    @Entry var appAppearance = BighelpAppearanceContext(
-        appearance: .system,
-        themeID: .bighelp
-    )
+    @Entry var appAppearance = BighelpAppearanceContext(appearance: .system)
 }
 
 enum BighelpFontRole: Sendable {
@@ -1714,5 +1099,20 @@ extension UIFont {
             : UIFont.systemFont(ofSize: pointSize, weight: traits.contains(.traitBold) ? .bold : .regular)
         guard let descriptor = base.fontDescriptor.withSymbolicTraits(base.fontDescriptor.symbolicTraits.union(.traitItalic)) else { return candidate }
         return UIFont(descriptor: descriptor, size: pointSize)
+    }
+}
+
+/// Vision Pro windows are glass with the theme's canvas color over it.
+enum BighelpVisionGlass {
+    /// A little more of the room than a half tint.
+    static let defaultTransparency = 0.6
+
+    /// Transparency 0 → nearly solid; 1 → as clear as stays readable. Dark
+    /// windows can go almost bare (the system glass blurs and dims the room).
+    /// Light windows keep a real tint: dark text on bare glass vanishes in a
+    /// dim room.
+    static func canvasOpacity(forTransparency transparency: Double, dark: Bool = true) -> Double {
+        let clamped = transparency.isFinite ? min(max(transparency, 0), 1) : defaultTransparency
+        return dark ? 0.92 - clamped * 0.88 : 0.97 - clamped * 0.52
     }
 }

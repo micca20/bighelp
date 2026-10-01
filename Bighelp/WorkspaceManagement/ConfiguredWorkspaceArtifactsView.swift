@@ -43,8 +43,8 @@ struct ConfiguredWorkspaceArtifactsView: View {
     static func message(for error: Error) -> String {
         switch error as? WorkspaceClientError {
         case .unavailable(.unsupportedOperation)?, .unavailable(.pluginRequired)?:
-            "This host's bighelp plugin doesn't share workspace files yet. Update the plugin on the host "
-                + "(hermes loopdy update --restart), then try again."
+            "This host's bighelp plugin doesn't share workspace files yet. Update it in Settings, under this "
+                + "computer's Plugin version, then try again."
         case let known?:
             known.localizedDescription + " No other folder was opened."
         case nil:

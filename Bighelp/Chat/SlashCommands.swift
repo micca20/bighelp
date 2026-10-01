@@ -198,17 +198,17 @@ final class DirectHermesSlashCommandCatalogClient: SlashCommandCatalogClient {
         let metadata = response["commands"]?.object ?? [:]
         let skills = response["skills"]?.object ?? [:]
 
-        return try pairs.map { pair in
+        // Skills, plugins and quick commands come from whatever the host has
+        // installed. One entry the composer can't show (an odd name, a long
+        // description) is skipped or trimmed so the rest of the menu still loads.
+        return pairs.compactMap { pair in
             guard let values = pair.array, values.count == 2,
                   let rawKey = values[0].string,
-                  let description = values[1].string else {
-                throw WorkspaceClientError.invalidResponse
+                  let rawDescription = values[1].string,
+                  let name = try? commandName(rawKey) else {
+                return nil
             }
-            let name = try commandName(rawKey)
-            guard (1...240).contains(description.count),
-                  !description.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
-                throw WorkspaceClientError.invalidResponse
-            }
+            let description = displayDescription(rawDescription)
 
             let isSkill = containsKey(skills, rawKey)
             let source: SlashCommandSource
@@ -223,7 +223,6 @@ final class DirectHermesSlashCommandCatalogClient: SlashCommandCatalogClient {
             }
             let category = categories[rawKey.lowercased()]
                 ?? (source == .skill ? "Skills" : "Commands")
-            let aliases = try aliases(for: rawKey, canonical: canonical)
             let argumentMode = metadataValue(metadata, for: rawKey)?["argument_mode"]?.string
                 .flatMap(SlashCommandArgumentMode.init(rawValue:)) ?? .none
 
@@ -232,12 +231,28 @@ final class DirectHermesSlashCommandCatalogClient: SlashCommandCatalogClient {
                 description: description,
                 category: category,
                 argsHint: "",
-                aliases: aliases,
+                aliases: aliases(for: rawKey, canonical: canonical),
                 argumentMode: argumentMode,
                 source: source,
                 requiresArguments: false
             )
         }
+    }
+
+    static let maximumDescriptionLength = 240
+
+    /// Flattens control characters to spaces and trims to the composer's
+    /// limit. Hermes passes skill descriptions through untouched, and skill
+    /// authors often write several sentences.
+    static func displayDescription(_ raw: String) -> String {
+        let flattened = String(String.UnicodeScalarView(raw.unicodeScalars.map {
+            CharacterSet.controlCharacters.contains($0) ? " " : $0
+        })).trimmingCharacters(in: .whitespaces)
+        guard !flattened.isEmpty else { return "Command" }
+        guard flattened.count > maximumDescriptionLength else { return flattened }
+        let kept = flattened.prefix(maximumDescriptionLength - 1)
+            .trimmingCharacters(in: .whitespaces)
+        return kept + "…"
     }
 
     private static func commandName(_ rawKey: String) throws -> String {
@@ -255,17 +270,16 @@ final class DirectHermesSlashCommandCatalogClient: SlashCommandCatalogClient {
     private static func aliases(
         for rawKey: String,
         canonical: [String: BighelpJSONValue]
-    ) throws -> [String] {
+    ) -> [String] {
         var result: [String] = []
         for (aliasKey, value) in canonical {
             guard aliasKey.lowercased() != rawKey.lowercased(),
-                  value.string?.lowercased() == rawKey.lowercased() else { continue }
-            let alias = try commandName(aliasKey)
-            guard !result.contains(alias) else { continue }
+                  value.string?.lowercased() == rawKey.lowercased(),
+                  let alias = try? commandName(aliasKey),
+                  !result.contains(alias) else { continue }
             result.append(alias)
-            guard result.count <= 32 else { throw WorkspaceClientError.invalidResponse }
         }
-        return result.sorted()
+        return Array(result.sorted().prefix(32))
     }
 
     private static func containsKey(_ object: [String: BighelpJSONValue], _ key: String) -> Bool {

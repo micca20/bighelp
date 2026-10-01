@@ -642,7 +642,7 @@ final class DirectHermesVoiceConfigurationClient {
         relayMediaHTTP: (any DirectHermesVoiceRelayMediaHTTP)? = nil,
         streamingPlayback: (any DirectHermesVoiceStreamingPlaybackTransport)? = nil,
         providerTransport: any DirectHermesClientVoiceProviderTransport = DirectHermesURLSessionVoiceProviderTransport(),
-        playback: any VoiceAudioPlayback = AVAudioPlayerVoicePlayback(),
+        playback: any VoiceAudioPlayback = AVAudioPlayerVoicePlayback(use: .playback),
         owner: WorkspaceOwner,
         currentOwner: @escaping @MainActor () -> WorkspaceOwner?
     ) {
@@ -1016,7 +1016,7 @@ final class DirectHermesVoiceConfigurationClient {
         ))
     }
 
-    private static func transcription(
+    static func transcription(
         _ value: BighelpJSONValue,
         clientDirect: Bool
     ) throws -> DirectHermesTranscription {

@@ -27,7 +27,7 @@ Saved theme document, unchanged
     └── Theme accent → outgoing messages and appropriate actions/links
 ```
 
-The same neutral system applies to default, partner and custom themes. Light/dark presentation adapts through semantic platform colors. Resolve outgoing text contrast against the actual displayed accent, including dynamic system colors, not only retained hex fields. Non-system accents minimally adjust brightness when needed for readable action/link ink on native canvas, card and incoming-bubble surfaces, including elevated surfaces; the default keeps native system blue. Preserve custom themes, partner identities, logos and import/export data. A legacy palette field retained for document compatibility must not be advertised as changing the live canvas if it no longer does.
+The same neutral system applies to every bubble color. Light/dark presentation adapts through semantic platform colors. Resolve outgoing text contrast against the actual displayed accent, including dynamic system colors, not only retained hex fields. Non-system accents minimally adjust brightness when needed for readable action/link ink on native canvas, card and incoming-bubble surfaces, including elevated surfaces; the default keeps native system blue. Partner and custom themes were removed; don't bring back a second theme system that can overwrite the bubble color.
 
 Use native navigation, toolbars, search, lists, forms, sections, menus, alerts, pickers, text inputs and system sheets. Custom content remains appropriate for message bubbles, agent artwork, inline artifacts and expressive media. Do not recreate native glass with decorative overlays around every control.
 

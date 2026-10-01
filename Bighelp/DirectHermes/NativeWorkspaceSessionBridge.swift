@@ -53,6 +53,7 @@ final class NativeWorkspaceSessionBridge: SessionCatalogClient {
 
     let authority: WorkspaceAuthority
     var attachmentResolver: (any AgentAttachmentResolving)?
+    var speakerNote: (any ChatSpeakerNoting)?
     var selectedFolderPath: (@MainActor (String) async throws -> String?)?
     let connections: WorkspaceConnectionStore
     let drafts: DirectHermesDraftStore

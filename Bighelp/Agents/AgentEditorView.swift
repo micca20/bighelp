@@ -15,6 +15,7 @@ struct AgentEditorView: View {
     @State private var photoSelection: PhotosPickerItem?
     @State private var avatarPreparationTask: Task<Void, Never>?
     @State private var avatarPreparationID: UUID?
+    @State private var expandsInstructions = false
     @State private var avatarPreparationLabel: String?
     @State private var isDiscardConfirmationPresented = false
     @State private var isModelConfirmationPresented = false
@@ -50,6 +51,7 @@ struct AgentEditorView: View {
     }
 
     @Environment(\.nerdModeEnabled) private var nerdModeEnabled
+    private var templateLibrary: AgentTemplateLibrary { .shared }
     @Environment(\.agentDeletion) private var agentDeletion
     @State private var isDeleteConfirmationPresented = false
     @State private var isDeleting = false
@@ -82,6 +84,7 @@ struct AgentEditorView: View {
                     summary: $model.draft.summary
                 )
                 instructionsSection(model: model, instructions: $model.draft.instructions)
+                    .onChange(of: model.draft.name) { _, _ in model.nameDidChange() }
                 if let defaults = runtimeDefaultsModel {
                     AgentRuntimeDefaultsSection(
                         model: defaults,
@@ -111,7 +114,7 @@ struct AgentEditorView: View {
                                 Text("Advanced")
                                     .foregroundStyle(theme.primaryText)
                                 Text(!model.isEditing
-                                     ? "Starting point, bundled skills, mention handle"
+                                     ? "Setup to copy, bundled skills, mention handle"
                                      : runtimeDefaultsModel == nil
                                         ? "Mention handle"
                                         : "Subagent and task models, mention handle")
@@ -137,12 +140,12 @@ struct AgentEditorView: View {
                 if let agent = model.editedProfile {
                     Section {
                         Button {
-                            let template = AgentTemplateLibrary.shared.save(from: AgentProfile(
+                            let template = templateLibrary.save(from: AgentProfile(
                                 id: agent.id, name: model.draft.name, role: model.draft.role,
                                 summary: model.draft.summary, instructions: model.draft.instructions,
                                 avatarFileName: model.draft.avatarFileName, avatar: model.draft.avatar,
                                 isDefault: agent.isDefault))
-                            templateNotice = "“\(template.title)” is saved on this iPhone. To use it, tap + in Agents and pick it."
+                            templateNotice = "“\(template.title)” is saved on this device. To use it, create an agent and choose My templates."
                         } label: {
                             Label("Save as Template", systemImage: "square.and.arrow.down.on.square")
                                 .frame(minHeight: BighelpTokens.hitTarget)
@@ -201,22 +204,7 @@ struct AgentEditorView: View {
                         .accessibilityIdentifier("agent.editor.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(model.isEditing ? "Save" : "Create") {
-                        Task {
-                            do {
-                                let profile = try await model.save()
-                                applyCompanionLook(to: profile)
-                                pendingCompletedProfile = profile
-                                try await runtimeDefaultsModel?.saveIfNeeded()
-                                guard model.isCurrentContext else { return }
-                                onCompleted(profile)
-                                pendingCompletedProfile = nil
-                                dismiss()
-                            } catch {
-                                // Each model owns precise, recoverable inline error copy.
-                            }
-                        }
-                    }
+                    Button(model.isEditing ? "Save" : "Create", action: saveAgent)
                     .fontWeight(.semibold)
                     .bighelpProminentButtonStyle()
                     .buttonBorderShape(.capsule)
@@ -239,6 +227,14 @@ struct AgentEditorView: View {
         // Starts once for the whole editor, including Advanced. See loadIfNeeded().
         .task { await runtimeDefaultsModel?.loadIfNeeded() }
         .interactiveDismissDisabled(hasUnsavedChanges || isSaving)
+        .focusedTextEditor(
+            isPresented: $expandsInstructions,
+            title: "Instructions",
+            text: $model.draft.instructions,
+            placeholder: instructionsPlaceholder,
+            identifier: "agent.editor.instructions.expand",
+            onSave: canSaveAgent ? { saveAgent() } : nil
+        )
         .onChange(of: photoSelection) { _, selection in
             guard let selection else { return }
             preparePhotoAvatar(selection)
@@ -248,6 +244,10 @@ struct AgentEditorView: View {
                 prepareCompanionAvatar(look)
             }
             .presentationDragIndicator(.visible)
+            #if os(visionOS)
+            // Wide enough for the 3D character beside the choices.
+            .presentationSizing(.page)
+            #endif
         }
         // Modal ownership must outlive the lazy sections while a picker is presented.
         .sheet(item: $modelPickerScope) { scope in
@@ -405,6 +405,30 @@ struct AgentEditorView: View {
         avatarPreparationID == requestID && model.isCurrentContext && !Task.isCancelled
     }
 
+    @ViewBuilder
+    private func heroAvatar(model: AgentEditorModel) -> some View {
+        #if os(visionOS)
+        if let look = heroLook, let spatial = SpatialAvatarLook(appearance: look, themeHex: theme.actionHex) {
+            // The same 3D character as in the room, playing its moves.
+            SpatialAvatarPreview(look: spatial, mood: look.vibe?.moodID, height: 170, isInteractive: false)
+        } else {
+            avatarPreview(model: model, size: 120)
+        }
+        #else
+        avatarPreview(model: model, size: 120)
+        #endif
+    }
+
+    #if os(visionOS)
+    /// A designed look to show in 3D: this session's pick, or the agent's saved one.
+    private var heroLook: CompanionAppearance? {
+        if model.pendingAvatar != nil { return model.selectedCompanionAppearance }
+        guard !model.draft.removesAvatar, let agentID = model.editingAgentID, let store = companionStore,
+              !companionAgentScope.isEmpty else { return nil }
+        return store.override(for: CompanionStore.agentKey(agentScope: companionAgentScope, agentID: agentID))
+    }
+    #endif
+
     private var heroState: AgentLiveState {
         // A preview, not live status: a new agent perks up once it has a name.
         !model.isEditing && !model.draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .happy : .idle
@@ -422,7 +446,7 @@ struct AgentEditorView: View {
 
     private func hero(model: AgentEditorModel) -> some View {
         VStack(spacing: BighelpTokens.space8) {
-            avatarPreview(model: model, size: 120)
+            heroAvatar(model: model)
                 .contentShape(.circle)
                 .onTapGesture { isAvatarCreatorPresented = true }
                 .accessibilityElement(children: .ignore)
@@ -443,6 +467,12 @@ struct AgentEditorView: View {
                             .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                             .contentShape(.circle)
                     }
+                    #if os(visionOS)
+                    // Otherwise it becomes the whole row's button, a glass slab over the
+                    // avatar that takes every pinch meant for Design avatar.
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    #endif
                     .offset(x: 6, y: 6)
                     .accessibilityLabel("Choose custom agent avatar photo")
                     .accessibilityIdentifier("agent.editor.avatar-picker")
@@ -453,6 +483,7 @@ struct AgentEditorView: View {
                 .foregroundStyle(theme.primaryText)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
+                .accessibilityIdentifier("agent.editor.hero-title")
             let role = model.draft.role.trimmingCharacters(in: .whitespacesAndNewlines)
             if !role.isEmpty {
                 Text(role)
@@ -495,6 +526,10 @@ struct AgentEditorView: View {
                     .accessibilityIdentifier("agent.editor.avatar-remove")
                 }
             }
+            // In a Vision Pro form this row was laid out zero points tall, so
+            // Design avatar hung over the name and missed every pinch.
+            .frame(minHeight: BighelpTokens.hitTarget)
+            .fixedSize(horizontal: false, vertical: true)
             if let avatarPreparationLabel {
                 ProgressView(avatarPreparationLabel)
                     .font(.footnote)
@@ -616,12 +651,23 @@ struct AgentEditorView: View {
         }
     }
 
+    @ViewBuilder
     private func identitySection(
         model: AgentEditorModel,
         name: Binding<String>,
         role: Binding<String>,
         summary: Binding<String>
     ) -> some View {
+        #if os(visionOS)
+        // Section headers don't grow to fit on Vision Pro: the avatar, name and
+        // Design avatar piled up and the button ended up zero points tall. A row
+        // sizes itself.
+        Section {
+            heroAndStarters(model: model)
+                .padding(.vertical, BighelpTokens.space8)
+        }
+        .listRowBackground(Color.clear)
+        #endif
         Section {
             field("Name", prompt: "Give your agent a name", text: name, focus: .name,
                   error: model.fieldErrors[.name], identifier: "agent.editor.name")
@@ -629,7 +675,8 @@ struct AgentEditorView: View {
                   error: model.fieldErrors[.role], identifier: "agent.editor.role")
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 fieldCaption("About")
-                TextField("About", text: summary, prompt: Text("One line about what it does"), axis: .vertical)
+                TextField("About", text: summary, prompt: Text("One line about what it does").bighelpFieldHint(theme),
+                          axis: .vertical)
                     .lineLimit(1...3)
                     .focused($focusedField, equals: .summary)
                     .accessibilityLabel("About")
@@ -639,12 +686,9 @@ struct AgentEditorView: View {
             .padding(.vertical, BighelpTokens.space4)
         } header: {
             VStack(spacing: BighelpTokens.space20) {
-                hero(model: model)
-                if !model.isEditing {
-                    AgentStudioStarterRow(selectedID: model.appliedStarterID) { starter in
-                        model.applyStarter(starter)
-                    }
-                }
+                #if !os(visionOS)
+                heroAndStarters(model: model)
+                #endif
                 AgentStudioCaption("Identity")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("agent.editor.identity-header")
@@ -653,6 +697,15 @@ struct AgentEditorView: View {
             .padding(.bottom, BighelpTokens.space4)
         }
         .listRowBackground(theme.surface)
+    }
+
+    private func heroAndStarters(model: AgentEditorModel) -> some View {
+        VStack(spacing: BighelpTokens.space20) {
+            hero(model: model)
+            if !model.isEditing {
+                AgentStartPicker(model: model, library: templateLibrary)
+            }
+        }
     }
 
     private func cloningSection(model: AgentEditorModel) -> some View {
@@ -698,7 +751,7 @@ struct AgentEditorView: View {
 
             if let error = model.fieldErrors[.cloning] { recoveryMessage(error) }
         } header: {
-            AgentStudioCaption("Start from an existing agent")
+            AgentStudioCaption("Copy setup from an agent")
         } footer: {
             Text(model.draft.cloneSourceProfileID == nil
                  ? "Start fresh can omit Hermes’ bundled skills."
@@ -714,20 +767,51 @@ struct AgentEditorView: View {
         )
     }
 
-    private func instructionsSection(model: AgentEditorModel, instructions: Binding<String>) -> some View {
+    private func saveAgent() {
+        Task {
+            do {
+                let profile = try await model.save()
+                applyCompanionLook(to: profile)
+                pendingCompletedProfile = profile
+                try await runtimeDefaultsModel?.saveIfNeeded()
+                guard model.isCurrentContext else { return }
+                onCompleted(profile)
+                pendingCompletedProfile = nil
+                dismiss()
+            } catch {
+                // Each model owns precise, recoverable inline error copy.
+            }
+        }
+    }
+
+    private var instructionsPlaceholder: String {
         let name = model.draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Section {
+        return "What should \(name.isEmpty ? "your agent" : name) help you with? How should it talk?"
+    }
+
+    private var canSaveAgent: Bool {
+        !isSaving && !model.hasUnconfirmedSave && avatarPreparationID == nil
+    }
+
+    private func instructionsSection(model: AgentEditorModel, instructions: Binding<String>) -> some View {
+        Section {
             textEditor(
                 "Instructions",
-                placeholder: "What should \(name.isEmpty ? "your agent" : name) help you with? How should it talk?",
+                placeholder: instructionsPlaceholder,
                 text: instructions,
                 focus: .instructions,
                 error: model.fieldErrors[.instructions],
                 identifier: "agent.editor.instructions"
             )
         } header: {
-            AgentStudioCaption("Instructions")
-                .accessibilityIdentifier("agent.editor.behavior-header")
+            HStack {
+                AgentStudioCaption("Instructions")
+                    .accessibilityIdentifier("agent.editor.behavior-header")
+                Spacer()
+                FocusedTextEditorButton(title: "Instructions", identifier: "agent.editor.instructions.expand") {
+                    expandsInstructions = true
+                }
+            }
         } footer: {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 if !model.isEditing && runtimeDefaultsModel == nil && runtimeDefaultsReadOnlyReason == nil {
@@ -780,7 +864,7 @@ struct AgentEditorView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
             fieldCaption(title)
-            TextField(title, text: text, prompt: Text(prompt))
+            TextField(title, text: text, prompt: Text(prompt).bighelpFieldHint(theme))
                 .focused($focusedField, equals: focus)
                 .accessibilityLabel(title)
                 .accessibilityIdentifier(identifier)

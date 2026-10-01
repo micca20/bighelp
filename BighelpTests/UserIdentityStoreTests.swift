@@ -31,14 +31,14 @@ struct UserIdentityStoreTests {
         #expect(UserIdentityStore(defaults: defaults).identity.name == "Maya")
     }
 
-    @Test func blankNameCannotReplaceAnAcceptedName() async {
+    /// Your name reaches agents, so saving an empty name removes it on purpose
+    /// ("Remove name" in Settings). A retired Link account still needs one.
+    @Test func savingABlankNameRemovesItWithoutAnAccount() async throws {
         let store = UserIdentityStore(defaults: isolatedDefaults())
         store.identity.name = "Maya"
-        do {
-            try await store.saveDisplayName(" \n ", to: nil)
-            Issue.record("Blank display names must be rejected")
-        } catch {}
-        #expect(store.identity.name == "Maya")
+        try await store.saveDisplayName(" \n ", to: nil)
+        #expect(store.identity.name.isEmpty)
+        #expect(store.identity.displayName == "You")
     }
 
     @Test func stableIdentityUsesTheLocalUserID() {

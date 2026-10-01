@@ -20,7 +20,7 @@ enum AgentDeletionPresentation {
     static func title(_ agent: AgentProfile) -> String { "Delete \(agent.name)?" }
 
     static func message(_ agent: AgentProfile) -> String {
-        "This permanently deletes \(agent.name) from your computer, including its instructions, memory, skills, settings and chat history. This can't be undone."
+        "This permanently deletes \(agent.name) from your computer, including its instructions, memory, skills, settings and chats. A reply in progress is stopped and unsent drafts are removed. This can't be undone."
     }
 
     static func progress(_ agent: AgentProfile) -> String { "Deleting \(agent.name)…" }

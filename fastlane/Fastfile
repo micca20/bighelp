@@ -328,20 +328,20 @@ platform :ios do
     end
   end
 
-  desc "Install the bighelp plugin revision this app pins into Hermes and restart the gateway"
+  desc "Install the latest bighelp plugin release into Hermes and restart the gateway"
   lane :hermes_plugin do
-    info_plist = File.join(REPOSITORY_ROOT, "Bighelp", "Info.plist")
-    revision = Actions.sh(
-      "/usr/libexec/PlistBuddy -c 'Print :BighelpNotificationPluginRevision' #{Shellwords.escape(info_plist)}",
-      log: false
-    ).strip
-    UI.user_error!("Bighelp/Info.plist has no pinned plugin revision.") unless revision.match?(/\A[0-9a-f]{40}\z/)
+    tag = Actions.sh("gh release view --repo promptclickrun/bighelp-plugin --json tagName --jq .tagName", log: false).strip
+    UI.user_error!("The bighelp plugin has no published release.") unless tag.match?(/\Av[0-9.]+\z/)
+    peeled = Actions.sh("git ls-remote https://github.com/promptclickrun/bighelp-plugin refs/tags/#{tag} 'refs/tags/#{tag}^{}'", log: false)
+    revision = peeled.lines.map(&:split).sort_by { |_sha, ref| ref.end_with?("^{}") ? 0 : 1 }.first&.first.to_s
+    UI.user_error!("Release #{tag} has no commit.") unless revision.match?(/\A[0-9a-f]{40}\z/)
 
     sh("hermes plugins install promptclickrun/bighelp-plugin --ref #{revision} --force --enable")
     sh("hermes plugins doctor loopdy --ci")
     sh("hermes gateway restart")
     sh("hermes gateway status")
-    sh("hermes loopdy link status")
+    # `hermes loopdy` works on every plugin version; 3.0.0 also answers to `hermes bighelp`.
+    sh("hermes loopdy status")
   end
 
   desc "Deploy the current bighelp plugin, then ship the next internal TestFlight build"

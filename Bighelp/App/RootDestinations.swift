@@ -21,6 +21,8 @@ extension RootShellView {
                 ContentUnavailableView("Projects aren't available", systemImage: "folder",
                     description: Text("Connect to your computer, then open Projects from the menu."))
             }
+        case (.kanban, _):
+            kanbanDestination
         case (.project(let id), _):
             if let context = projectsContext {
                 ProjectDetailView(projectID: id, context: context)
@@ -85,6 +87,8 @@ extension RootShellView {
                         WorkspaceUnavailableView(destination: .logs, hostName: workspaceHostName,
                             reason: "Logs require an available direct authenticated Hermes connection.")
                     }
+                } else if destination == .keys, let store = demoProviderKeysStore {
+                    ProviderAccountsView(store: store)
                 } else if [.security, .appearance, .tabBar, .caching, .contact, .watch].contains(destination) {
                     workspaceSettings(destination: destination)
                 } else if destination == .documentation {
@@ -98,7 +102,7 @@ extension RootShellView {
                     PermissionsSettingsView(center: permissionCenter)
                 } else if destination == .sessionMaintenance || destination == .profileLifecycle {
                     if let coordinator = lifecycleCoordinator,
-                       coordinator.owner == currentWorkspaceOwner, let profileID = lifecycleProfileID,
+                       isCurrentSignIn(coordinator.owner), let profileID = lifecycleProfileID,
                        profileID == workspaceAgentID {
                         if destination == .sessionMaintenance {
                             coordinator.sessionMaintenanceView(profileID: profileID)
@@ -114,7 +118,7 @@ extension RootShellView {
                 } else if NativeAdministrationPresentation.supports(destination), !usesWorkspaceFixtures {
                     if let presentation = administrationPresentation,
                        presentation.destination == destination,
-                       presentation.owner == currentWorkspaceOwner, presentation.profileID == workspaceAgentID {
+                       isCurrentSignIn(presentation.owner), presentation.profileID == workspaceAgentID {
                         NativeAdministrationDestination(presentation: presentation,
                             permissionCenter: permissionCenter,
                             onOpenProviderAccounts: { openWorkspaceDestination(.keys) },
@@ -164,6 +168,8 @@ extension RootShellView {
                 onOpenScheduledTasks: {
                     openScheduledTasks(filteredTo: agents.resolvedAgent(explicitID: nil)?.id)
                 },
+                onOpenProjects: canOpenProjects ? { openProjects() } : nil,
+                onOpenKanban: canOpenKanban ? { openKanban() } : nil,
                 onSelectAgent: { agent in
                     agents.select(agent.id)
                     startNewChat(explicitAgentID: agent.id)

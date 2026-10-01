@@ -39,6 +39,23 @@ struct AvatarCreatorTests {
         #expect(CompanionStore(defaults: defaults).override(for: "host:agent") == look)
     }
 
+    /// A Bit's face parts are part of its look. Dropping them showed the Bit's
+    /// own halo in chat after you picked a headset.
+    @Test func agentCompanionKeepsABitsFaceParts() {
+        let defaults = isolatedDefaults()
+        let store = CompanionStore(defaults: defaults)
+        let look = CompanionAppearance(character: .cloud, colorHex: "#FF7A70", matchesTheme: false,
+            bitEyes: .visor, bitMouth: .cat, bitAccessory: .headset, showsCheeks: false)
+        store.setOverride(look, for: "host:agent")
+        #expect(store.override(for: "host:agent") == look)
+        #expect(CompanionStore(defaults: defaults).override(for: "host:agent") == look)
+
+        var swapped = look
+        swapped.bitAccessory = .crown
+        store.setOverride(swapped, for: "host:agent")
+        #expect(store.override(for: "host:agent")?.bitAccessory == .crown)
+    }
+
     @Test func eyesStayReadableOnAnyBodyColor() {
         // Ink eyes vanish on a charcoal body; snow eyes on a snow body.
         #expect(CompanionAvatar.readableEyeColor(authored: "#16181B", body: "#2E3238") == "#F5F6F4")

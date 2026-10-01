@@ -15,6 +15,9 @@ HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
             open the host's chats (WidgetLinkHostUITests; not a default mode)
   features  no sign-in, with the bighelp plugin (--plugin) and a seeded board:
             Feed/Ideas/Goals feedback and Projects (ProjectsAndBoardHostUITests)
+  update    no sign-in, with an older plugin release installed by Hermes' own
+            installer from GitHub: the app finds the latest GitHub Release and
+            updates to it (PluginReleaseUpdateHostUITests; needs the internet)
 
 HERMES_DISABLE_LAZY_INSTALLS=1 keeps Hermes from "finishing a source update"
 into its checkout on first launch. Use a separate Hermes checkout anyway: never
@@ -56,7 +59,10 @@ TESTS = {
               "testWaitingQuestionOpensFocusedWhenReturningToTheApp"],
     "widgets": ["WidgetLinkHostUITests/testRecentChatAndNewChatWidgetLinksOpenChats"],
     "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost"],
+    "update": ["PluginReleaseUpdateHostUITests/testUpdatesToTheLatestReleaseOnARealHost"],
 }
+# 2.18.2, older than any release the app should offer.
+OLD_PLUGIN_REVISION = "34f2a16938ba69185a7f5ed9fa4a963f9a9fe1b4"
 STEER_OPEN = "[OUT-OF-BAND USER MESSAGE"
 
 
@@ -271,6 +277,22 @@ def free_port() -> int:
         return reservation.getsockname()[1]
 
 
+def installed_plugin(home: Path) -> dict:
+    manifest = (home / "plugins" / "loopdy" / "plugin.yaml").read_text()
+    version = re.search(r'(?m)^version:\s*"?([0-9.]+)"?', manifest)
+    metadata = json.loads((home / "plugins" / ".install-metadata.json").read_text()).get("loopdy", {})
+    return {"version": version.group(1) if version else None, "revision": metadata.get("revision")}
+
+
+def session_sources(home: Path) -> list[str]:
+    database = home / "state.db"
+    if not database.exists():
+        return []
+    import sqlite3
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        return sorted({row[0] or "" for row in connection.execute("SELECT source FROM sessions")})
+
+
 def run_mode(mode: str, args, repo: Path) -> int:
     with tempfile.TemporaryDirectory(prefix=f"signin-{mode}-", dir="/tmp") as temporary:
         temp = Path(temporary).resolve()
@@ -284,7 +306,7 @@ def run_mode(mode: str, args, repo: Path) -> int:
         # Hermes only gates a dashboard whose public address isn't loopback. *.localhost
         # still resolves to this Mac, so gated hosts use it; single sign-on needs the
         # app on that same name, since the sign-in cookie belongs to it.
-        public = origin if mode in ("open", "tools", "widgets", "features") else f"http://hermes.localhost:{port}"
+        public = origin if mode in ("open", "tools", "widgets", "features", "update") else f"http://hermes.localhost:{port}"
         config = {"dashboard": {"public_url": public},
                   "model": {"default": "fixture-model", "provider": "custom",
                             "base_url": f"http://127.0.0.1:{model.server_port}/v1", "api_key": "local-synthetic-no-auth"},
@@ -306,6 +328,11 @@ def run_mode(mode: str, args, repo: Path) -> int:
         env.update(HOME=str(home), HERMES_HOME=str(home), HERMES_DISABLE_LAZY_INSTALLS="1",
                    HERMES_DASHBOARD_SESSION_TOKEN=session_token, PYTHONUNBUFFERED="1",
                    NO_PROXY="127.0.0.1,localhost")
+        if mode == "update":
+            # A real Git install with Hermes' metadata, as on a person's computer.
+            subprocess.run([args.hermes, "plugins", "install", "promptclickrun/bighelp-plugin",
+                            "--ref", OLD_PLUGIN_REVISION, "--enable"], cwd=project, env=env, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
         idp = None
         if mode in ("password", "sso"):
             env.update(HERMES_DASHBOARD_BASIC_AUTH_USERNAME="signin-fixture",
@@ -356,6 +383,10 @@ def run_mode(mode: str, args, repo: Path) -> int:
                 print(json.dumps({"secure_input_saved_on_host": "SECURE_INPUT_FIXTURE=" in saved}), flush=True)
             if mode == "features":
                 print(json.dumps({"board_on_host": board_feedback(home)}), flush=True)
+            if mode == "update":
+                print(json.dumps({"plugin_on_host": installed_plugin(home)}), flush=True)
+            # The app's chats must reach Hermes as "bighelp", not its terminal UI.
+            print(json.dumps({"session_sources_on_host": session_sources(home)}), flush=True)
             print(json.dumps({"mode": mode, "exit_code": result.returncode}), flush=True)
             return result.returncode
         finally:

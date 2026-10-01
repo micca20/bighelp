@@ -21,7 +21,7 @@ struct TimelineSenderResolver {
         case .user:
             if sender.id == UserIdentity.stableID, let userIdentity {
                 return TimelineSenderDisplay(
-                    name: userIdentity.identity.name,
+                    name: userIdentity.identity.displayName,
                     imageURL: userIdentity.avatarURL()
                 )
             }
@@ -172,9 +172,11 @@ struct TimelineItemView: View {
                     .alignmentGuide(.messageContentBottom) { $0[.bottom] }
             case .generativeUI(let card):
                 GenerativeUICardView(card: card)
+                    .cardImageCopy(GenerativeUICardView(card: card))
                     .alignmentGuide(.messageContentBottom) { $0[.bottom] }
             case .bighelpCard(let card):
                 BighelpCardView(card: card)
+                    .cardImageCopy(BighelpCardView(card: card))
                     .alignmentGuide(.messageContentBottom) { $0[.bottom] }
             }
 

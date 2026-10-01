@@ -27,12 +27,14 @@ struct AgentsView: View {
     @State private var areGroupsExpanded = true
     @State private var agentActions = AgentActions()
     @State private var actionAgent: AgentProfile?
-    @State private var isTemplatePickerPresented = false
     @Environment(\.agentDeletion) private var agentDeletion
     @State private var activeOwner: WorkspaceOwner?
+    @State private var shownSignIn: WorkspaceSignIn?
     @State private var actionOwner: WorkspaceOwner?
     @State private var deferredAction: DeferredAgentAction?
     @State private var isSearchPresented = false
+    /// A pinned agent is lifted: the list holds still while it moves.
+    @State private var isArrangingPinned = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var visibleProfiles: [AgentProfile] {
@@ -111,6 +113,7 @@ struct AgentsView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollDisabled(isArrangingPinned)
             .textCase(nil)
             .scrollContentBackground(.hidden)
             .contentMargins(.horizontal, max(0, (geometry.size.width - 760) / 2), for: .scrollContent)
@@ -130,19 +133,29 @@ struct AgentsView: View {
             }
             .background(theme.canvas.ignoresSafeArea())
         }
-        .onAppear { activeOwner = workspaceOwner }
+        .onAppear {
+            activeOwner = workspaceOwner
+            if let workspaceOwner { shownSignIn = workspaceOwner.signIn }
+        }
         .onChange(of: groupFilterRequest.wrappedValue, initial: true) { _, profileID in
             guard let profileID else { return }
             groupFilterRequest.wrappedValue = nil
             showGroups(of: profileID)
         }
-        .onChange(of: workspaceOwner) { previous, current in
+        .onChange(of: workspaceOwner) { _, current in
             activeOwner = current
+            // An actions sheet left open acts on the new connection.
+            if let current, actionOwner?.signIn == current.signIn { actionOwner = current }
+            // Disconnected, or back on the same computer and sign-in (bighelp
+            // reconnects after you've been away): menus and dialogs stay open.
+            guard let current, current.signIn != shownSignIn else { return }
+            let previousScope = shownSignIn?.authority.cacheScopeID
+            shownSignIn = current.signIn
             deferredAction = nil
             actionAgent = nil
             renameGroup = nil
             deleteGroup = nil
-            if previous?.cacheScopeID != current?.cacheScopeID {
+            if previousScope != current.cacheScopeID {
                 groupPreferences = AgentGroupPreferences()
                 query = ""
                 showsArchivedGroups = false
@@ -174,10 +187,6 @@ struct AgentsView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $isTemplatePickerPresented) {
-            AgentTemplatePickerView(library: AgentTemplateLibrary.shared, onBlank: { createAgent() },
-                                    onPick: { createAgent(from: $0) })
-        }
         .alert("Rename group", isPresented: Binding(get: { renameGroup != nil }, set: { if !$0 { renameGroup = nil } })) {
             TextField("Group name", text: $renameText)
             Button("Cancel", role: .cancel) { renameGroup = nil }
@@ -198,40 +207,24 @@ struct AgentsView: View {
 
     private func featuredSection(_ states: [String: AgentLiveState]) -> some View {
         let featured = featured
-        let columns = Array(repeating: GridItem(.flexible(), spacing: BighelpTokens.space8, alignment: .top), count: 3)
         return Section {
             AgentsSectionCaption(title: featured.isPinnedSelection ? "Pinned" : "Your agents")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .listRowInsets(EdgeInsets(top: BighelpTokens.space4, leading: BighelpTokens.space16,
                                           bottom: 0, trailing: BighelpTokens.space16))
                 .listRowSeparator(.hidden)
-            LazyVGrid(columns: columns, spacing: BighelpTokens.space12) {
-                ForEach(featured.profiles) { agent in
-                    let canOpenChat = actionItems(agent).first { $0.action == .openChat }?.isEnabled == true
-                    AgentFeaturedTile(
-                        agent: agent, imageURL: store.avatarURL(for: agent),
-                        liveState: states[agent.id] ?? .idle,
-                        isPrimary: store.isPrimary(agent.id)
-                    ) {
-                        if canOpenChat {
-                            perform(.openChat, profileID: agent.id, expectedOwner: workspaceOwner)
-                        } else {
-                            actionOwner = workspaceOwner
-                            actionAgent = agent
-                        }
-                    }
-                    .contextMenu { agentContextMenu(agent) }
-                    .accessibilityAction(named: "Manage agent") {
-                        actionOwner = workspaceOwner
-                        actionAgent = agent
-                    }
-                    .accessibilityIdentifier("agents.featured.\(agent.id)")
-                }
-                if supports(.profilesCreate) {
-                    AgentNewTile(action: startCreating)
-                        .accessibilityIdentifier("agents.featured.create")
-                }
-            }
+            AgentPinnedGrid(
+                agents: featured.profiles,
+                canReorder: featured.isPinnedSelection,
+                imageURL: avatarURL,
+                liveState: { agent in states[agent.id] ?? .idle },
+                isPrimary: isPrimary,
+                open: openFeatured,
+                manage: manage,
+                reorder: reorderPinned,
+                create: createAction,
+                isArranging: $isArrangingPinned
+            )
             .listRowInsets(EdgeInsets(top: BighelpTokens.space8, leading: BighelpTokens.space16,
                                       bottom: BighelpTokens.space16, trailing: BighelpTokens.space16))
             .listRowSeparator(.hidden)
@@ -490,6 +483,26 @@ struct AgentsView: View {
         }
     }
 
+    private func avatarURL(_ agent: AgentProfile) -> URL? { store.avatarURL(for: agent) }
+    private func isPrimary(_ agent: AgentProfile) -> Bool { store.isPrimary(agent.id) }
+    private func reorderPinned(_ ids: [String]) { store.reorderPinnedAgents(ids) }
+    private var createAction: (() -> Void)? { supports(.profilesCreate) ? { startCreating() } : nil }
+
+    /// A pinned agent's chat, or its actions when it can't open one.
+    private func openFeatured(_ agent: AgentProfile) {
+        if actionItems(agent).first(where: { $0.action == .openChat })?.isEnabled == true {
+            perform(.openChat, profileID: agent.id, expectedOwner: workspaceOwner)
+        } else {
+            manage(agent)
+        }
+    }
+
+    /// That agent's actions, the same sheet as Manage agent.
+    private func manage(_ agent: AgentProfile) {
+        actionOwner = workspaceOwner
+        actionAgent = agent
+    }
+
     @ViewBuilder
     private func agentContextMenu(_ agent: AgentProfile) -> some View {
         AgentActionMenuItems(actions: agentActions, agent: agent, config: actionsConfig) { action in
@@ -599,13 +612,8 @@ struct AgentsView: View {
         onAction(AgentWorkspaceActionRequest(owner: owner, action: action))
     }
 
-    /// With saved templates, first ask whether to start blank or from one.
+    /// The studio itself offers scratch, built-in and saved templates.
     private func startCreating() {
-        if AgentTemplateLibrary.shared.templates.isEmpty { createAgent() }
-        else { isTemplatePickerPresented = true }
-    }
-
-    private func createAgent(from template: SavedAgentTemplate? = nil) {
         guard let owner = workspaceOwner, supports(.profilesCreate) else {
             agentActions.actionError = "Agent creation is not available on this connection."
             return
@@ -616,8 +624,7 @@ struct AgentsView: View {
             profileCloneSupport: supports(.profilesClone)
                 ? .nativeBundleOnly
                 : .unavailable("Native profile cloning is not available on this connection."),
-            template: template,
-            isCurrent: { activeOwner == owner }
+            isCurrent: { activeOwner?.signIn == owner.signIn }
         )
     }
 

@@ -155,6 +155,10 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
     private var listToken: UUID?
     private var replayEpoch: String?
     private var ownershipRevision = UUID()
+    /// Chats archived here. Hermes keeps a chat you had open running for a
+    /// while after, and live discovery must not bring it back. Hermes listing
+    /// it again (unarchived elsewhere) clears it.
+    private var archivedKeys: Set<String> = []
     private struct StaleOwnershipDiscovery: Error {}
     private(set) var historyProjections: [String: DirectHermesHistoryProjection] = [:]
 
@@ -253,6 +257,7 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
         historyProjections = [:]
         listToken = nil
         replayEpoch = nil
+        archivedKeys = []
     }
 
     func list() async throws -> [SessionRecord] {
@@ -312,6 +317,7 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
                         continue
                     }
                     var binding = try catalogBinding(object, profile: profile)
+                    if options.archived == .exclude { archivedKeys.subtract(identityKeys(binding)) }
                     binding = try coalescingSavedBinding(
                         binding,
                         claimedRetainedVisibleIDs: &claimedRetainedVisibleIDs
@@ -591,7 +597,16 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
             throw DirectHermesSessionError.creationUnconfirmed(profileID: profileID)
         }
         var state = try await newCreation(profile: profile, purpose: .ordinary)
-        let binding = try await dispatchCreate(&state, profile: profile)
+        let binding: Binding
+        do {
+            binding = try await dispatchCreate(&state, profile: profile)
+        } catch DirectHermesSessionError.workspaceNotConfirmed where state.requestedCWD != nil {
+            // Hermes starts a chat only in a folder that exists, else somewhere
+            // else. A project whose folder is gone must not lock its agent out of
+            // new chats: start it without the project, in the agent's own folder.
+            state = try await newCreation(profile: profile, purpose: .ordinary, inProjectFolder: false)
+            binding = try await dispatchCreate(&state, profile: profile)
+        }
         state.phase = .complete
         try retain(state)
         setBinding(binding, for: binding.record.id)
@@ -1094,6 +1109,20 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
 
     func archive(_ record: SessionRecord) async throws {
         try await setFlags(record, flags: .init(archived: true))
+        if let binding = bindings[record.id] {
+            // Bounded: the oldest archives have long since been closed by Hermes.
+            if archivedKeys.count > 1_024 { archivedKeys.removeAll() }
+            archivedKeys.formUnion(identityKeys(binding))
+        }
+        setBinding(nil, for: record.id)
+    }
+
+    private func identityKeys(_ binding: Binding) -> Set<String> {
+        var ids = [binding.anchorID]
+        ids += [binding.coordinate.storedSessionID, binding.runtimeSessionKey, binding.canonicalRegistryID,
+                binding.catalog?.rowID, binding.catalog?.lineageRootID].compactMap { $0 }
+        ids += binding.catalog?.lineageIDs ?? []
+        return Set(ids.map(DirectHermesSessionIdentity.key))
     }
 
     func setFlags(_ record: SessionRecord, flags: DirectHermesSessionFlags) async throws {
@@ -1243,6 +1272,7 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
         try await performReceipt(.sessionResume, [
             "profile": .string(profileID), "session_id": .string(storedID),
             "defer_history": .boolean(true), "omit_messages": .boolean(true),
+            "source": .string(DirectHermesReleaseContract.sessionSource),
         ])
     }
 
@@ -1664,6 +1694,7 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
                 binding(profileBindings[$0], containsStoredIdentity: item.sessionKey)
             }
             guard savedMatches.count <= 1 else { throw WorkspaceClientError.invalidResponse }
+            if savedMatches.isEmpty, archivedKeys.contains(DirectHermesSessionIdentity.key(item.sessionKey)) { continue }
 
             var index = savedMatches.first
             if index == nil {
@@ -1921,8 +1952,9 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
         creatingProfiles.insert(key)
     }
 
-    private func newCreation(profile: Profile, purpose: DirectHermesSessionCreationState.Purpose) async throws -> DirectHermesSessionCreationState {
-        let cwd = try await selectedFolderPath?(profile.id)
+    private func newCreation(profile: Profile, purpose: DirectHermesSessionCreationState.Purpose,
+                             inProjectFolder: Bool = true) async throws -> DirectHermesSessionCreationState {
+        let cwd = inProjectFolder ? try await selectedFolderPath?(profile.id) : nil
         try requireOwner()
         if let cwd { try DirectHermesSessionValidation.hostPath(cwd) }
         return .init(schemaVersion: 1, intentID: UUID().uuidString, scopeID: owner.cacheScopeID,
@@ -1933,14 +1965,30 @@ final class DirectHermesSessionCatalogClient: SessionCatalogClient {
 
     private func dispatchCreate(_ state: inout DirectHermesSessionCreationState, profile: Profile) async throws -> Binding {
         try persistBeforeDispatch(state)
-        var payload: [String: BighelpJSONValue] = ["profile": .string(profile.id)]
+        var payload: [String: BighelpJSONValue] = [
+            "profile": .string(profile.id), "source": .string(DirectHermesReleaseContract.sessionSource),
+        ]
         if state.purpose == .firstCanonical {
             payload["title"] = .string("Bot Chat")
             payload["hidden"] = .boolean(true)
             payload["follow_profile_config"] = .boolean(true)
         }
-        if let cwd = state.requestedCWD { payload["cwd"] = .string(cwd) }
-        let receipt = try await performReceipt(.sessionCreate, payload)
+        if let cwd = state.requestedCWD {
+            payload["cwd"] = .string(cwd)
+            // A deliberate pick. Otherwise Hermes puts an agent's own configured
+            // folder first, and the chat would come back outside its project.
+            payload["cwd_explicit"] = .boolean(true)
+        }
+        let receipt: (response: [String: BighelpJSONValue], epoch: String?)
+        do {
+            receipt = try await performReceipt(.sessionCreate, payload)
+        } catch WorkspaceClientError.rejected(code: "invalid_params") where payload["cwd_explicit"] != nil {
+            // Released Hermes (0.21.5 and older) refuses fields it doesn't know. It
+            // also doesn't put an agent's own folder first, so the plain request is
+            // enough there.
+            payload["cwd_explicit"] = nil
+            receipt = try await performReceipt(.sessionCreate, payload)
+        }
         let response = receipt.response
         guard response["message_count"]?.integer == 0, response["messages"]?.array?.isEmpty == true else {
             throw WorkspaceClientError.invalidResponse

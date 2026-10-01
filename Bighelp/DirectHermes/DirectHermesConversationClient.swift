@@ -133,8 +133,13 @@ final class DirectHermesConversationClient: StreamingConversationClient, Stoppab
     var promptContract = DirectHermesPromptContract.unknown
     var legacyPrompts: [DirectHermesLegacyPromptKey: DirectHermesPrompt] = [:]
     @ObservationIgnored var legacyMutations: [DirectHermesLegacyPromptKey: UUID] = [:]
+    /// Unsent answers in the question pop-up, so closing it and coming back
+    /// keeps what you picked and typed. Kept only while the request waits.
+    @ObservationIgnored var promptAnswerDrafts: [String: DirectHermesPromptAnswerDraft] = [:]
     @ObservationIgnored let drafts: DirectHermesDraftStore
     @ObservationIgnored let attachmentResolver: (any AgentAttachmentResolving)?
+    /// Says who is sending before each new turn (hosts several people share).
+    @ObservationIgnored var speakerNote: (any ChatSpeakerNoting)?
     @ObservationIgnored var attachmentTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var attachmentAttempts: [String: String] = [:]
     var retainedMessageReactions: [Int: DirectHermesMessageReaction] = [:]

@@ -11,7 +11,7 @@ final class AgentCompanionAvatarTests: XCTestCase {
         for character in CompanionCharacter.allCases {
             do {
                 let png = try await AgentCompanionAvatarRenderer.renderPNG(character: character,
-                    appearance: .init(appearance: .light, themeID: .bighelp),
+                    appearance: .init(appearance: .light),
                     colorScheme: .light, colorSchemeContrast: .standard)
                 let image = try XCTUnwrap(UIImage(data: png))
                 XCTAssertEqual(image.cgImage?.width, 512)

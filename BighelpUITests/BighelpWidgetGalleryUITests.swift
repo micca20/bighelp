@@ -37,9 +37,9 @@ final class BighelpWidgetGalleryUITests: XCTestCase {
         (bighelp.exists ? bighelp : bighelpText).tap()
         sleep(2)
         attach(springboard, "gallery-page-1")
-        let names = ["Your Agent", "Active Chats", "Scheduled Tasks", "New Chat", "Recent Chats"]
+        let names = ["Your Agent", "Active Chats", "Scheduled Tasks", "New Chat", "Recent Chats", "Kanban"]
         var seen = Set<String>()
-        for page in 2...12 {
+        for page in 2...16 {
             for name in names where springboard.staticTexts[name].exists { seen.insert(name) }
             if seen.count == names.count { break }
             springboard.swipeLeft()

@@ -15,16 +15,12 @@ final class SessionFollowupsUITests: BighelpUITestCase {
         row.tap()
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 8))
         capture("canvas-" + appearance)
-        XCTAssertTrue(openChatInfo(in: app))
-        let info = app.navigationBars["Info"]
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.switches["chat.session-info.reasoning"].firstMatch.exists)
-        XCTAssertTrue(app.switches["chat.session-info.tools"].firstMatch.exists)
-        capture("session-info-" + appearance)
-        let background = app.buttons["chat.session-info.appearance"]
-        XCTAssertTrue(background.isHittable)
-        background.tap()
+        capture("chat-menu-" + appearance)
         let appearanceBar = app.navigationBars["Appearance"]
+        func openAppearance() {
+            chatMenuItem("chat.appearance", in: app).tap()
+        }
+        openAppearance()
         XCTAssertTrue(appearanceBar.waitForExistence(timeout: 5))
         let sky = app.buttons["Sky background"].firstMatch
         XCTAssertTrue(sky.waitForExistence(timeout: 4))
@@ -35,18 +31,14 @@ final class SessionFollowupsUITests: BighelpUITestCase {
         XCTAssertTrue(apply.isEnabled)
         capture("appearance-selection-" + appearance)
         apply.tap()
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        background.tap()
+        XCTAssertTrue(appearanceBar.waitForNonExistence(timeout: 5))
+        openAppearance()
         XCTAssertTrue(appearanceBar.waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["Sky background"].firstMatch.value as? String, "Selected")
         appearanceBar.buttons["Cancel"].tap()
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        info.buttons["Done"].tap()
         XCTAssertTrue(chatIdentity(in: app).waitForExistence(timeout: 5))
         capture("canvas-customized-" + appearance)
-        XCTAssertTrue(openChatInfo(in: app))
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        background.tap()
+        openAppearance()
         XCTAssertTrue(appearanceBar.waitForExistence(timeout: 5))
         let reset = app.buttons["session-appearance.reset"]
         for _ in 0..<3 where !reset.isHittable { app.swipeUp() }
@@ -54,8 +46,8 @@ final class SessionFollowupsUITests: BighelpUITestCase {
         reset.tap()
         XCTAssertTrue(apply.isEnabled)
         apply.tap()
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        background.tap()
+        XCTAssertTrue(appearanceBar.waitForNonExistence(timeout: 5))
+        openAppearance()
         XCTAssertTrue(appearanceBar.waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["App background"].firstMatch.value as? String, "Selected")
         capture("appearance-inherited-" + appearance)
@@ -74,30 +66,25 @@ final class SessionFollowupsUITests: BighelpUITestCase {
         XCTAssertEqual(app.buttons["App background"].firstMatch.value as? String, "Selected")
     }
 
-    @MainActor func testInfoActionsOpenIndependentDestinationsOnFirstTap() {
+    @MainActor func testChatMenuOpensFilesAndAppearanceOnFirstTap() {
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-preview-simple-chat",
             "-preview-ui-v3", "-loopdy.appearance.interface-version", "v3", "-loopdy.demo.appearance", "dark"]
         app.launch()
         let row = app.buttons["session.row.demo-finance"]
         XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
-        XCTAssertTrue(openChatInfo(in: app))
-        let info = app.navigationBars["Info"]
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        let appearance = app.buttons["chat.session-info.appearance"]
-        let files = app.buttons["chat.session-info.files"]
-        XCTAssertTrue(appearance.isHittable); XCTAssertTrue(files.isHittable)
-        XCTAssertFalse(appearance.frame.intersects(files.frame), "Independent action buttons must not share a List navigation row target")
-        capture("independent-info-actions")
+        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 8))
+        let files = chatMenuItem("chat.files", in: app)
+        XCTAssertTrue(files.isHittable)
+        XCTAssertTrue(app.buttons["chat.appearance"].isHittable)
+        capture("chat-menu-actions")
         files.tap()
         XCTAssertTrue(app.navigationBars["Files"].waitForExistence(timeout: 5), "Files must open its own screen on the first tap")
-        capture("info-files-destination")
+        capture("chat-files-destination")
         app.navigationBars["Files"].buttons["Done"].tap()
-        if !info.exists { openChatInfo(in: app) }
-        XCTAssertTrue(info.waitForExistence(timeout: 5))
-        appearance.tap()
+        chatMenuItem("chat.appearance", in: app).tap()
         XCTAssertTrue(app.navigationBars["Appearance"].waitForExistence(timeout: 5))
-        capture("info-appearance-destination")
+        capture("chat-appearance-destination")
     }
 
     @MainActor func testFloatingIdentityHasPhotoScaleAndTranscriptBehindIt() {

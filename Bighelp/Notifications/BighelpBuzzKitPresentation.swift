@@ -10,8 +10,31 @@ final class BighelpBuzzKitPresentation: BuzzKitDelegate {
     static let shared = BighelpBuzzKitPresentation()
 
     func buzzKit(_ buzzKit: BuzzKit, willPresent payload: PushPayload) -> UNNotificationPresentationOptions? {
-        guard let thread = Self.thread(payload.data) else { return nil }
-        return BighelpVisibleChats.isShowingFromAnyThread(thread: thread) ? [] : nil
+        // Nothing for the chat you're looking at: not a banner, not a sound.
+        if BighelpVisibleChats.isShowingFromAnyThread(chat: Self.thread(payload.data), agent: Self.agent(payload.data)) {
+            return []
+        }
+        // bighelp already raised this question or approval itself (BighelpPromptAlerts).
+        if let eventType = Self.eventType(payload.data),
+           ["approval.required", "clarification.required"].contains(eventType),
+           BighelpPromptAlerts.alertedRecentlyFromAnyThread(eventType: eventType) {
+            return [.list]
+        }
+        return nil
+    }
+
+    /// The agent (profile) an alert is from: sealed alerts carry only its id.
+    static func agent(_ data: [String: JSONValue]) -> String? {
+        guard case .object(let loopdy)? = data["loopdy"] else { return nil }
+        if case .object(let agent)? = loopdy["agent"], case .string(let id)? = agent["id"], !id.isEmpty { return id }
+        if case .string(let profile)? = loopdy["profile"], !profile.isEmpty { return profile }
+        return nil
+    }
+
+    static func eventType(_ data: [String: JSONValue]) -> String? {
+        guard case .object(let loopdy)? = data["loopdy"],
+              case .string(let eventType)? = loopdy["eventType"] else { return nil }
+        return eventType
     }
 
     /// Alerts carry `loopdy:///dashboard?eventId=…`, which used to open the

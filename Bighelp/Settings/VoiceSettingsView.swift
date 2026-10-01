@@ -188,7 +188,7 @@ private struct VoicePreferenceSections: View {
                 Text(VoiceConversationMode.turnBased.title).tag(VoiceConversationMode.turnBased)
                 Text(VoiceConversationMode.codexLive.title).tag(VoiceConversationMode.codexLive)
             }
-            .pickerStyle(.segmented)
+            .bighelpSegmentedPicker()
             .frame(minHeight: BighelpTokens.hitTarget)
             .accessibilityIdentifier("voice.settings.conversation-mode")
             Text(settings.voiceConversationMode.detail)
@@ -229,6 +229,12 @@ private struct VoicePreferenceSections: View {
                     }
                 }
                 .accessibilityIdentifier("settings.chat.voice-mode")
+                Picker("Speech to text", selection: $settings.voiceTranscription) {
+                    ForEach(VoiceTranscriptionSource.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .accessibilityIdentifier("voice.settings.transcription")
                 Picker("Voice speed", selection: $settings.voiceSpeed) {
                     ForEach(VoiceSpeed.allCases) { option in
                         Text(option.title).tag(option)
@@ -237,7 +243,7 @@ private struct VoicePreferenceSections: View {
             } header: {
                 Text("Listening")
             } footer: {
-                Text(settings.voiceMode.detail)
+                Text(settings.voiceMode.detail + " " + settings.voiceTranscription.detail)
             }
         }
     }

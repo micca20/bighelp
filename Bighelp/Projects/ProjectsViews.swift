@@ -277,6 +277,13 @@ struct ProjectDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
+        .overlay {
+            if context.store.openingChatID != nil {
+                OpeningChatOverlay()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy, value: context.store.openingChatID)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
         .navigationTitle(project?.name ?? "Project")
         .navigationBarTitleDisplayMode(.inline)
@@ -438,6 +445,26 @@ struct ProjectDetailView: View {
                 .foregroundStyle(theme.secondaryText)
         }
         .accessibilityIdentifier("project.folders")
+    }
+
+    @BighelpThemeReader private var theme
+}
+
+/// Shown while a project chat is found on the host, so the tap visibly did something.
+private struct OpeningChatOverlay: View {
+    var body: some View {
+        ZStack {
+            theme.canvas.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: BighelpTokens.space12) {
+                BighelpThinkingOrb(scenario: .searching, visibleLabel: "Opening chat…")
+            }
+            .padding(BighelpTokens.space24)
+            .background(theme.surface, in: .rect(cornerRadius: BighelpTokens.radius16))
+            .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Opening chat")
+        .accessibilityIdentifier("project.opening-chat")
     }
 
     @BighelpThemeReader private var theme

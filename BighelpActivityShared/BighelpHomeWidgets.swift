@@ -1,6 +1,5 @@
-// Home screen widgets live in the iPhone/iPad widget extension. Vision Pro
-// builds of the app share this folder but have no widget extension.
-#if !os(visionOS)
+// Home screen widgets; on Vision Pro they're glass in the room. Lock Screen
+// sizes are iPhone-only.
 import SwiftUI
 import WidgetKit
 
@@ -157,6 +156,7 @@ struct BighelpActiveSessionsView: View {
     var body: some View {
         let running = snapshot.runningSessions
         switch family {
+        #if os(iOS)
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
@@ -178,6 +178,7 @@ struct BighelpActiveSessionsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .widgetURL(running.first.map { BighelpWidgetSnapshot.chatURL($0.id) } ?? BighelpWidgetSnapshot.sessionsURL)
+        #endif
         default:
             VStack(alignment: .leading, spacing: 8) {
                 WidgetHeader(title: "Working on", symbol: "bolt.fill", count: running.count)
@@ -207,7 +208,16 @@ struct BighelpActiveSessionsWidget: Widget {
         }
         .configurationDisplayName("Active Chats")
         .description("See which chats your agents are working on, and what they're doing.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
+        .supportedFamilies(Self.families)
+        .bighelpWidgetPlacement()
+    }
+
+    private static var families: [WidgetFamily] {
+        #if os(visionOS)
+        [.systemSmall, .systemMedium]
+        #else
+        [.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular]
+        #endif
     }
 }
 
@@ -221,6 +231,7 @@ struct BighelpScheduledTasksView: View {
     var body: some View {
         let tasks = snapshot.tasks.sorted { ($0.nextRun ?? .distantFuture) < ($1.nextRun ?? .distantFuture) }
         switch family {
+        #if os(iOS)
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
                 Text(tasks.first?.name ?? "No scheduled tasks").font(.headline).lineLimit(1).widgetAccentable()
@@ -230,6 +241,7 @@ struct BighelpScheduledTasksView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .widgetURL(tasks.first.map { BighelpWidgetSnapshot.taskURL($0.id) } ?? BighelpWidgetSnapshot.tasksURL)
+        #endif
         default:
             VStack(alignment: .leading, spacing: 8) {
                 WidgetHeader(title: "Scheduled", symbol: "clock.arrow.circlepath", count: tasks.count)
@@ -275,7 +287,16 @@ struct BighelpScheduledTasksWidget: Widget {
         }
         .configurationDisplayName("Scheduled Tasks")
         .description("Your active scheduled tasks and when they run next.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
+        .supportedFamilies(Self.families)
+        .bighelpWidgetPlacement()
+    }
+
+    private static var families: [WidgetFamily] {
+        #if os(visionOS)
+        [.systemSmall, .systemMedium]
+        #else
+        [.systemSmall, .systemMedium, .accessoryRectangular]
+        #endif
     }
 }
 
@@ -291,12 +312,14 @@ struct BighelpNewChatView: View {
         let url = BighelpWidgetSnapshot.newChatURL(agentID: snapshot.defaultAgentID)
         Group {
             switch family {
+            #if os(iOS)
             case .accessoryCircular:
                 ZStack {
                     AccessoryWidgetBackground()
                     Image(systemName: "square.and.pencil").font(.title3.weight(.semibold))
                 }
                 .accessibilityLabel("New chat with \(name)")
+            #endif
             default:
                 VStack(alignment: .leading, spacing: 0) {
                     BighelpWidgetAvatar(agentID: snapshot.defaultAgentID, name: name, diameter: 56)
@@ -328,7 +351,16 @@ struct BighelpNewChatWidget: Widget {
         }
         .configurationDisplayName("New Chat")
         .description("Start a new chat with your default agent in one tap.")
-        .supportedFamilies([.systemSmall, .accessoryCircular])
+        .supportedFamilies(Self.families)
+        .bighelpWidgetPlacement()
+    }
+
+    private static var families: [WidgetFamily] {
+        #if os(visionOS)
+        [.systemSmall]
+        #else
+        [.systemSmall, .accessoryCircular]
+        #endif
     }
 }
 
@@ -361,9 +393,10 @@ struct BighelpActivityFeedView: View {
             if sessions.isEmpty {
                 EmptyState(symbol: "bubble.left.and.bubble.right", text: "No recent chats")
             } else {
-                ForEach(sessions.prefix(family == .systemLarge ? 5 : 2)) { session in
+                let large = family == .systemLarge || family == .systemExtraLarge
+                ForEach(sessions.prefix(family == .systemExtraLarge ? 8 : large ? 5 : 2)) { session in
                     Link(destination: BighelpWidgetSnapshot.chatURL(session.id)) {
-                        WidgetSessionRow(session: session, avatar: 30, detailLines: family == .systemLarge ? 2 : 1)
+                        WidgetSessionRow(session: session, avatar: 30, detailLines: large ? 2 : 1)
                     }
                 }
                 Spacer(minLength: 0)
@@ -382,7 +415,15 @@ struct BighelpActivityFeedWidget: Widget {
         }
         .configurationDisplayName("Recent Chats")
         .description("Your latest chats, newest first, with what each agent is doing.")
-        .supportedFamilies([.systemMedium, .systemLarge])
+        .supportedFamilies(Self.families)
+        .bighelpWidgetPlacement()
+    }
+
+    private static var families: [WidgetFamily] {
+        #if os(visionOS)
+        [.systemMedium, .systemLarge, .systemExtraLarge]
+        #else
+        [.systemMedium, .systemLarge]
+        #endif
     }
 }
-#endif

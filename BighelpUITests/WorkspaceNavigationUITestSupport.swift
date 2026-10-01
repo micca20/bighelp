@@ -5,6 +5,16 @@ extension BighelpUITestCase {
     func openRootDestination(_ destination: String, sidebarIdentifier: String,
                              in app: XCUIApplication,
                              file: StaticString = #filePath, line: UInt = #line) {
+        if sidebarIdentifier == "menu.hermes-tools" {
+            // Hermes tools moved from ☰ into Settings (Nerd Mode).
+            openSettings(in: app, file: file, line: line)
+            let tools = settingsRow("settings.hermes-tools", in: app, file: file, line: line)
+            guard tools.exists else { return }
+            tools.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["workspace.hub"].firstMatch.waitForExistence(timeout: 5),
+                          "Settings › Hermes tools must open the tools list.", file: file, line: line)
+            return
+        }
         // iPad and iPhone share ☰; there's no always-open sidebar.
         openSidebarDestination(sidebarIdentifier, in: app, file: file, line: line)
     }
@@ -49,7 +59,7 @@ extension BighelpUITestCase {
     func openActivity(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         openHermesTool("activity", in: app, file: file, line: line)
         XCTAssertTrue(app.descendants(matching: .any)["dashboard.screen"].firstMatch.waitForExistence(timeout: 5),
-                      "Activity must open from ☰ › Hermes Tools.", file: file, line: line)
+                      "Activity must open from Settings › Hermes tools.", file: file, line: line)
     }
 
     @MainActor
@@ -57,11 +67,14 @@ extension BighelpUITestCase {
         openHermesTool("skills", in: app, file: file, line: line)
     }
 
-    /// Host tools live in ☰ › Hermes Tools (Nerd Mode).
+    /// Host tools live in Settings › Hermes tools (Nerd Mode).
     @MainActor
     func openHermesTool(_ destination: String, in app: XCUIApplication,
                         file: StaticString = #filePath, line: UInt = #line) {
-        openSidebarDestination("menu.hermes-tools", in: app, file: file, line: line)
+        openSettings(in: app, file: file, line: line)
+        let tools = settingsRow("settings.hermes-tools", in: app, file: file, line: line)
+        guard tools.exists else { return }
+        tools.tap()
         let row = app.buttons["workspace.open.\(destination)"].firstMatch
         // Let Hermes Tools finish opening before scrolling, or the first rows scroll away.
         _ = app.descendants(matching: .any)["workspace.hub"].firstMatch.waitForExistence(timeout: 5)

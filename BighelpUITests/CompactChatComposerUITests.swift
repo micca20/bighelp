@@ -111,7 +111,9 @@ final class CompactChatComposerUITests: BighelpUITestCase {
     func testCompactSessionMenuOpensChangesWithoutLosingDraft() {
         let app = openCompactSessionMenu()
         defer { XCUIDevice.shared.orientation = .portrait }
-        app.buttons["chat.composer.menu.changes"].tap()
+        // File changes moved to the chat's ⋯ menu; close the session menu first.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).tap()
+        chatMenuItem("chat.file-changes", in: app).tap()
         let panel = app.otherElements["project-changes.panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -159,8 +161,8 @@ final class CompactChatComposerUITests: BighelpUITestCase {
         XCTAssertGreaterThanOrEqual(menu.frame.minY, app.otherElements["chat.header-surface"].frame.maxY)
         XCTAssertLessThanOrEqual(menu.frame.maxY, app.tables["chat.timeline"].frame.maxY)
         menu.tap()
-        XCTAssertTrue(app.buttons["chat.composer.menu.changes"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["chat.composer.menu.context"].exists)
+        XCTAssertTrue(app.buttons["chat.composer.menu.context"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["chat.composer.menu.changes"].exists, "File changes live in the ⋯ menu")
         return app
     }
 
@@ -243,13 +245,6 @@ final class CompactChatComposerUITests: BighelpUITestCase {
             XCTAssertGreaterThanOrEqual(control.frame.minY, header.frame.maxY, control.identifier)
             XCTAssertLessThanOrEqual(control.frame.maxY, availableBottom, control.identifier)
             geometry += "\n\(control.identifier)=\(control.frame), hittable=\(control.isHittable)"
-        }
-        let changes = app.buttons["chat.session-status.changes"]
-        if changes.exists {
-            XCTAssertTrue(changes.isHittable)
-            XCTAssertGreaterThanOrEqual(changes.frame.minY, header.frame.maxY)
-            XCTAssertLessThanOrEqual(changes.frame.maxY, availableBottom)
-            geometry += "\nchanges=\(changes.frame)"
         }
         XCTAssertFalse(editor.frame.intersects(app.buttons["chat.composer.expand"].frame))
         XCTAssertFalse(app.otherElements["primary-navigation"].exists)

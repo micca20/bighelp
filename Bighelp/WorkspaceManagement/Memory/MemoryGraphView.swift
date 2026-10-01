@@ -16,7 +16,7 @@ struct MemoryGraphView: View {
                             Text(filter.title).tag(filter)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .bighelpSegmentedPicker()
                 } header: {
                     Text("View")
                 }

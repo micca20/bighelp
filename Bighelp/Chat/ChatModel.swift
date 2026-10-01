@@ -80,6 +80,9 @@ final class ChatModel {
     // terminal-message contract. A local RPC waiter is not the current run.
     var nativeTurnID: String?
     var pendingIndependentMessageIDs: Set<String> = []
+    /// When the last turn here ended: an alert about it while you're reading
+    /// this chat is old news (`BighelpVisibleChats`).
+    @ObservationIgnored private(set) var lastTurnEndedAt: Date?
     var isSending = false {
         didSet {
             // The runtime controls are the authority for whether a model or
@@ -91,6 +94,7 @@ final class ChatModel {
                 hasExternallyOwnedPrimaryTurn = false
                 hasRestoredPrimaryTurn = false
                 if oldValue {
+                    lastTurnEndedAt = Date()
                     flushPersistence()
                 }
             }
@@ -104,6 +108,8 @@ final class ChatModel {
     /// reconnect recovery. The header reads "Updating…" while any is running.
     private(set) var hostRefreshCount = 0
     var isRefreshingFromHost: Bool { hostRefreshCount > 0 }
+    func requestSessionControls() { sessionControlsRequest += 1 }
+
     func beginHostRefresh() { hostRefreshCount += 1 }
     func endHostRefresh() { hostRefreshCount = max(0, hostRefreshCount - 1) }
     /// Invalidates decorative live-only reactions when canonical history arrives.
@@ -177,6 +183,9 @@ final class ChatModel {
         }
     }
     private(set) var slashCommandCatalog: SlashCommandCatalogModel?
+    /// Bumped to ask the chat screen to open Model & reasoning, from places
+    /// that show the current model (Info, the avatar's profile, the context pop-up).
+    private(set) var sessionControlsRequest = 0
     var botModeRoomID: String?
     private let userIdentity: UserIdentity
     private let userIdentityStore: UserIdentityStore?
@@ -212,7 +221,7 @@ final class ChatModel {
         conversationID: String,
         client: any ConversationClient,
         sleeper: any DemoSleeper = ImmediateDemoSleeper(),
-        userIdentity: UserIdentity = .init(name: "You", avatarFileName: nil),
+        userIdentity: UserIdentity = .init(name: "", avatarFileName: nil),
         userIdentityStore: UserIdentityStore? = nil,
         agentID: String = "default",
         initialItems: [TimelineItem]? = nil,
@@ -800,7 +809,7 @@ final class ChatModel {
 
     var currentUserSnapshot: TimelineSenderSnapshot {
         let identity = userIdentityStore?.identity ?? userIdentity
-        return TimelineSenderSnapshot(name: identity.name, avatarFileName: identity.avatarFileName)
+        return TimelineSenderSnapshot(name: identity.displayName, avatarFileName: identity.avatarFileName)
     }
 
     private func agentName(from item: TimelineItem?) -> String? {

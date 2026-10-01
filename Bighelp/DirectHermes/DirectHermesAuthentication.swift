@@ -190,6 +190,8 @@ final class DirectHermesHTTP {
     }
 
     private static let maximumBodyBytes = 1_024 * 1_024
+    /// The most any one request may take, start to finish.
+    static let longestRequestSeconds: TimeInterval = 75
     /// Matches the stock host's incrementally enforced session-import ceiling.
     /// This is route-scoped; ordinary JSON requests retain the 1 MiB body cap.
     static let maximumSessionTransferBytes = 25 * 1_024 * 1_024
@@ -212,7 +214,19 @@ final class DirectHermesHTTP {
         "/api/plugins/loopdy/native/workspace-files/read": maximumMediaResponseBytes,
     ]
 
+    /// A server's whole tool list (test, or a finished sign-in). A cloud
+    /// provider's full API server lists thousands of tools with their descriptions.
+    nonisolated static let maximumMCPToolListResponseBytes = 16 * 1_024 * 1_024
+
+    static func isMCPToolListRoute(_ route: String, method: String) -> Bool {
+        (method == "POST" && route.hasPrefix("/api/mcp/servers/") && route.hasSuffix("/test"))
+            || (method == "GET" && route.hasPrefix("/api/mcp/oauth/flows/"))
+    }
+
     static func responseLimit(route: String, method: String, query: [URLQueryItem]) -> Int {
+        if isMCPToolListRoute(route, method: method) {
+            return maximumMCPToolListResponseBytes
+        }
         if method == "POST", route == "/api/audio/speak" {
             return maximumVoiceSpeechResponseBytes
         }
@@ -265,7 +279,8 @@ final class DirectHermesHTTP {
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 30
+        // Requests wait 20 seconds for the host unless they ask for longer; this caps the longest.
+        configuration.timeoutIntervalForResource = Self.longestRequestSeconds
         configuration.waitsForConnectivity = false
         configuration.httpMaximumConnectionsPerHost = 4
         // A Cloudflare Access token or proxy password, and any custom headers,
@@ -306,6 +321,7 @@ final class DirectHermesHTTP {
               legacyToken: String? = nil, cookie: String? = nil, accept: String = "application/json",
               allowAuthorizeRedirect: Bool = false,
               maximumResponseBytes: Int = 1_048_576,
+              timeout: TimeInterval = 20,
               nativeGuard: DirectHermesNativeRequestGuard? = nil) async throws -> Response {
         try Task.checkCancellation()
         guard (1...Self.responseLimit(route: route, method: method, query: query)).contains(maximumResponseBytes) else {
@@ -314,7 +330,8 @@ final class DirectHermesHTTP {
         var components = URLComponents(url: try endpoint.url(for: route), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else { throw DirectHermesError.invalidEndpoint }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData,
+                                 timeoutInterval: min(max(timeout, 1), Self.longestRequestSeconds))
         request.httpMethod = method
         request.httpShouldHandleCookies = false
         request.setValue(accept, forHTTPHeaderField: "Accept")
@@ -975,7 +992,8 @@ final class DirectHermesAuthenticator {
         return try await http.send(route: request.path, method: request.method.rawValue,
                                    query: request.query, body: request.body, bearer: tokens.bearer,
                                    legacyToken: tokens.dashboard,
-                                   maximumResponseBytes: request.maximumResponseBytes, nativeGuard: nativeGuard)
+                                   maximumResponseBytes: request.maximumResponseBytes, timeout: request.timeout,
+                                   nativeGuard: nativeGuard)
     }
 
     func authenticatedManagedFileResponse(

@@ -38,10 +38,11 @@ enum DynamicIslandGeometry {
     }
 }
 
-/// While the app is open, iOS hides the app's own Live Activity. This grows
-/// the Dynamic Island into a stage while the agent works: its name on the
-/// left, the work on the right, and the avatar acting it out underneath.
-/// Tap for the compact pill; touch and hold to open the chat.
+/// While the app is open, iOS hides the app's own Live Activity. This widens
+/// the Dynamic Island into a small pill while the agent works, with the avatar
+/// acting out the work inside it (code, files, the web flying across). Tap for
+/// the big stage with its name and what it's doing; touch and hold to open
+/// the chat.
 struct AgentActivityIsland: View {
     let activity: AgentIslandActivity?
     let island: CGRect
@@ -74,8 +75,9 @@ struct AgentActivityIsland: View {
         CGSize(width: min(containerWidth - 20, 420), height: island.height + Self.stageHeight + 8)
     }
 
+    /// Wide enough that the work can fly across on both sides of the camera.
     private var compactSize: CGSize {
-        CGSize(width: island.width + 80, height: island.height)
+        CGSize(width: min(island.width + 150, containerWidth - 20), height: island.height)
     }
 
     private func panel(_ activity: AgentIslandActivity) -> some View {
@@ -94,7 +96,7 @@ struct AgentActivityIsland: View {
                     }
                     .transition(.opacity)
                 } else {
-                    compactRow(activity)
+                    compactStage(activity)
                         .transition(.opacity)
                 }
             }
@@ -146,22 +148,18 @@ struct AgentActivityIsland: View {
         .frame(height: island.height)
     }
 
-    private func compactRow(_ activity: AgentIslandActivity) -> some View {
-        HStack(spacing: 0) {
-            AgentLiveAvatar(agentID: activity.agentID, displayName: activity.name,
-                            imageURL: activity.imageURL, activity: activity.kind, size: 24, showsBadge: false)
-                .frame(width: 40)
-            Spacer(minLength: 0)
-            Image(systemName: activity.kind.systemImage)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(activity.kind.pose.tint)
-                .shadow(color: activity.kind.pose.tint.opacity(0.6), radius: 5)
-                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion && activity.kind.isWorking)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 40)
-        }
-        .frame(height: island.height)
+    /// The big stage's scene, shrunk to the pill's height.
+    private func compactStage(_ activity: AgentIslandActivity) -> some View {
+        let scale = island.height / Self.stageHeight
+        let width = compactSize.width - 2 * Self.compactInset
+        return IslandStage(activity: activity)
+            .frame(width: width / scale, height: Self.stageHeight)
+            .scaleEffect(scale)
+            .frame(width: width, height: island.height)
+            .clipShape(Capsule())
     }
+
+    static let compactInset: CGFloat = 8
 }
 
 /// Shared by the app scene (which draws the island above every screen) and
@@ -171,7 +169,8 @@ struct AgentActivityIsland: View {
 final class AgentIslandModel {
     var activity: AgentIslandActivity?
     var isAvailable = false
-    var isCompact = false
+    /// The small pill unless someone taps for the big stage.
+    var isCompact = true
     /// How far the big island reaches below the safe area; the app moves down
     /// by this much so the island never covers its buttons.
     var contentInset: CGFloat = 0

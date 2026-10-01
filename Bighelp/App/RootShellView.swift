@@ -74,6 +74,8 @@ struct RootShellView: View {
     @Environment(\.workspaceConnections) var workspaceConnections
     @Environment(\.scenePhase) var scenePhase
     @State var connectionKeeper = WorkspaceConnectionKeeper()
+    /// The computer and sign-in open screens belong to (`WorkspacePresentationContinuity`).
+    @State var workspaceSignIn: WorkspaceSignIn?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State var isUnifiedSettingsPresented = false
@@ -91,8 +93,23 @@ struct RootShellView: View {
     @State var didAutoOpenHomeChat = false
     /// The open Projects screens' chats and project details.
     @State var projectsStore: ProjectsStore?
+    @State var kanbanModel: KanbanBoardModel?
+    @State var kanbanAvailability = KanbanAvailability()
+    @State var kanbanTaskToOpen: String?
+    #if os(visionOS)
+    @Environment(\.openWindow) var openWindow
+    #endif
     /// Runs after a home sheet closes, so the next sheet can open.
     @State var afterHomeSheet: (@MainActor () -> Void)?
+
+    /// Demo runs show Provider Keys with made-up accounts instead of a host's.
+    var demoProviderKeysStore: ProviderAccountsStore? {
+        #if DEBUG
+        usesWorkspaceFixtures ? DemoProviderKeys.shared : nil
+        #else
+        nil
+        #endif
+    }
 
     var usesWorkspaceFixtures: Bool {
         ProcessInfo.processInfo.arguments.contains("-use-demo-fixtures")
@@ -161,28 +178,21 @@ struct RootShellView: View {
         .onChange(of: hostRegistry?.onboardingHostID) { _, _ in
             reconcileRestoredHostOnboardingState()
         }
-        .onChange(of: currentWorkspaceOwner) { _, _ in
-            managementStore?.retire()
-            managementStore = nil
-            capabilitiesPresentation = nil
-            administrationPresentation?.retire()
-            administrationPresentation = nil
-            workspaceProfileEditor = nil
-            lifecycleCoordinator = nil
-            lifecycleProfileID = nil
-            lifecyclePresentationID = nil
-            isGroupCreationPresented = false
-            groupSettingsModel = nil
-            fixtureCanonicalSessions = [:]
-        }
+        .modifier(WorkspacePresentationContinuity(
+            owner: currentWorkspaceOwner, registryGeneration: hostRegistry?.generation,
+            isHostSettled: nativeRuntime.map { $0.isReady && !$0.isSuspended && !$0.isRefreshing } ?? true,
+            signIn: $workspaceSignIn, close: closeWorkspacePresentations,
+            reattach: reattachWorkspacePresentations))
         .sheet(item: $workspaceProfileEditor) { editor in
             AgentEditorView(model: editor, runtimeDefaultsClient: agentRuntimeDefaults, onCompleted: { _ in })
                 .environment(\.agentDeletion, agentDeletionAction)
         }
         .sheet(isPresented: $isGroupCreationPresented) {
             BotModeCreateRoomView(rooms: botModeRooms, agents: agents, seedProfileID: groupCreationSeed) { roomID in
-                guard let owner = groupCreationOwner, owner == currentWorkspaceOwner else { return }
-                openHostedGroup(roomID, owner: owner, settings: false)
+                // A reconnect while the sheet was open is still this computer.
+                guard let owner = groupCreationOwner, isCurrentSignIn(owner),
+                      let current = currentWorkspaceOwner else { return }
+                openHostedGroup(roomID, owner: current, settings: false)
             }
         }
         .sheet(isPresented: Binding(
@@ -204,6 +214,9 @@ struct RootShellView: View {
         .task(id: hostRegistry?.selectedHostID) {
             connectionKeeper.bind { [hostRegistry] in
                 hostRegistry?.isWorkspaceReady == true ? hostRegistry?.selectedWorkspace : nil
+            }
+            ConnectionIslandFollower.shared.follow(connectionKeeper) { [hostRegistry] in
+                hostRegistry?.selectedWorkspace?.isConnected == true
             }
             guard scenePhase == .active else { return }
             await nativeWorkspaceStore?.reconnect()
@@ -290,7 +303,7 @@ struct RootShellView: View {
         .onChange(of: agents.errorMessage) { _, _ in
             Task { await currentHostRuntime?.refresh() }
         }
-        .onOpenURL(perform: handleIncomingURL)
+        .modifier(IncomingLinks(open: handleIncomingURL))
         .onChange(of: acceptsIncomingLinks) { _, ready in
             if ready { openPendingIncomingChatIfNeeded() }
         }
@@ -365,6 +378,22 @@ struct RootShellView: View {
         ProcessInfo.processInfo.arguments.contains("-force-signed-out-onboarding")
     }
     #endif
+
+    /// Another computer or sign-in: nothing opened for the old one stays up.
+    private func closeWorkspacePresentations() {
+        managementStore?.retire()
+        managementStore = nil
+        capabilitiesPresentation = nil
+        administrationPresentation?.retire()
+        administrationPresentation = nil
+        workspaceProfileEditor = nil
+        lifecycleCoordinator = nil
+        lifecycleProfileID = nil
+        lifecyclePresentationID = nil
+        isGroupCreationPresented = false
+        groupSettingsModel = nil
+        fixtureCanonicalSessions = [:]
+    }
 
     private func completeFirstRunOnboarding() {
         didCompleteForcedFirstRunOnboarding = true
@@ -535,8 +564,19 @@ struct RootShellView: View {
                 EmberBrandToolbarItem(linkDevices: linkDevices)
             }
         }
+        #if os(visionOS)
+        // Beside the window, not along its bottom edge by the close control.
+        .ornament(visibility: visionTabsVisible ? .visible : .hidden,
+                  attachmentAnchor: .scene(.leading), contentAlignment: .trailing) {
+            VisionTabOrnament(selection: tabSelection, unread: boardUnreadTabs,
+                              onNewChat: appState.selectedTab == .sessions && appState.path.isEmpty ? {
+                                  appState.chatOpenedFromList = true
+                                  startNewChat(explicitAgentID: nil)
+                              } : nil)
+        }
+        #endif
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if showsBottomNavigation {
+            if showsBottomNavigation && !BighelpPlatform.usesTabOrnament {
                 FloatingTabBar(selection: tabSelection,
                                onNewChat: appState.selectedTab == .sessions ? {
                                    appState.chatOpenedFromList = true
@@ -661,6 +701,10 @@ struct RootShellView: View {
     private var showsBottomNavigation: Bool {
         appState.path.isEmpty && !isKeyboardVisible
     }
+
+    /// Vision Pro's tab strip on root screens. The agent's own chat draws its
+    /// own: a screen covered by a pushed one doesn't show its ornaments.
+    private var visionTabsVisible: Bool { appState.path.isEmpty }
 
     @ViewBuilder
     private var rootTabs: some View {
@@ -969,6 +1013,7 @@ struct RootShellView: View {
                 // The chat keeps any draft typed while it was starting; Try Again reuses it.
                 actionErrorRetry = retry
                 actionErrorMessage = error is WorkspaceClientError || error is BighelpShortcutServiceError
+                    || error is DirectHermesSessionError
                     ? error.localizedDescription
                     : AgentDirectoryStore.isHermesCapabilityMissing(error)
                     ? AgentDirectoryStore.hermesCompatibilityRecovery
@@ -1112,7 +1157,9 @@ struct RootShellView: View {
             return
         case .chat(let sessionID):
             openIncomingChat(sessionID: sessionID)
-        case .agent(let tab):
+        case .agent(let tab, let agentID):
+            // From the Watch: that agent's Feed, Ideas or Goals.
+            if let agentID { _ = agents.setPrimaryAgent(agentID) }
             switch tab {
             case "feed": appState.select(.feed)
             case "ideas": appState.select(.ideas)
@@ -1129,6 +1176,10 @@ struct RootShellView: View {
             openPrepared(.scheduledTask(id: id, agentID: nil))
         case .sessions:
             appState.select(.sessions)
+        case .kanban(let board, let task):
+            openKanban(board: board, task: task)
+        case .approval(let id):
+            openApproval(requestID: id)
         }
     }
 
@@ -1443,9 +1494,23 @@ private extension BighelpIncomingURLRoute {
     /// Routes that open a chat or the agent home need the host's workspace.
     var opensWorkspaceContent: Bool {
         switch self {
-        case .home, .chat, .newChat, .agent: true
+        case .home, .chat, .newChat, .agent, .kanban, .approval: true
         case .scheduledTasks, .scheduledTask, .sessions, .pairBighelpLink: false
         }
+    }
+}
+
+/// Links, and Handoff from the Watch (what it was showing, opened here).
+/// Its own modifier keeps RootShellView's body small enough to type-check.
+private struct IncomingLinks: ViewModifier {
+    let open: (URL) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onOpenURL(perform: open)
+            .onContinueUserActivity(WatchPhoneLink.handoffActivityType) { activity in
+                if let link = activity.userInfo?["url"] as? String, let url = URL(string: link) { open(url) }
+            }
     }
 }
 

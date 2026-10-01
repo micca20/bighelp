@@ -1883,6 +1883,25 @@ struct SessionCatalogStoreTests {
         ])
     }
 
+    /// A refresh that read the list before the archive finished used to put
+    /// the archived chat back.
+    @Test(arguments: [false, true])
+    func aRefreshThatStartedBeforeArchivingDoesNotBringTheChatBack(authoritative: Bool) async throws {
+        let keep = Self.record(id: "keep-session", title: "Keep")
+        let archive = Self.record(id: "archive-session", title: "Archive me")
+        let client = GatedListSessionCatalogClient(records: [keep, archive])
+        let catalog = SessionCatalogStore(client: client, records: [keep, archive])
+
+        let refresh = Task { try? await catalog.load(requireAuthoritativeRefresh: authoritative) }
+        while client.waitingLists == 0 { await Task.yield() }
+        try await catalog.archiveSession(id: archive.id)
+        client.releaseLists()
+        await refresh.value
+
+        #expect(catalog.session(id: archive.id) == nil)
+        #expect(catalog.session(id: keep.id) != nil)
+    }
+
     @Test func pinningIsLocalPersistsAndNeverCallsTheRemoteMutationClient() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "loopdy-local-session-pin-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -2119,6 +2138,49 @@ private final class MutationRecordingSessionCatalogClient: SessionCatalogClient 
     func delete(_ record: SessionRecord) async throws {
         if let failure { throw failure }
         operations.append(.delete(id: record.id))
+    }
+}
+
+/// Holds each list read until released, then answers with the host's list at
+/// that moment, like Hermes: an archived chat is gone from later reads.
+@MainActor
+private final class GatedListSessionCatalogClient: SessionCatalogClient {
+    private var records: [SessionRecord]
+    private var gates: [CheckedContinuation<Void, Never>] = []
+    private var isReleased = false
+    var waitingLists: Int { gates.count }
+
+    init(records: [SessionRecord]) {
+        self.records = records
+    }
+
+    func releaseLists() {
+        isReleased = true
+        gates.forEach { $0.resume() }
+        gates.removeAll()
+    }
+
+    func list() async throws -> [SessionRecord] {
+        guard !isReleased else { return records }
+        let snapshot = records
+        await withCheckedContinuation { gates.append($0) }
+        return snapshot
+    }
+
+    func create(kind: SessionKind, agentIDs: [String]) async throws -> SessionRecord {
+        throw CancellationError()
+    }
+
+    func hydrate(_ record: SessionRecord) async throws -> SessionRecord { record }
+    func rename(_ record: SessionRecord, title: String) async throws {}
+    func setPinned(_ record: SessionRecord, pinned: Bool) async throws {}
+
+    func archive(_ record: SessionRecord) async throws {
+        records.removeAll { $0.id == record.id }
+    }
+
+    func delete(_ record: SessionRecord) async throws {
+        records.removeAll { $0.id == record.id }
     }
 }
 

@@ -680,7 +680,8 @@ struct DirectHermesSessionCatalogClientTests {
             case .profilesList: return Self.profiles(canonical: "root", resolved: "tip")
             case .sessionResume:
                 #expect(payload == ["profile": .string("alpha"), "session_id": .string("root"),
-                                    "defer_history": .boolean(true), "omit_messages": .boolean(true)])
+                                    "defer_history": .boolean(true), "omit_messages": .boolean(true),
+                                    "source": .string("bighelp")])
                 return Self.attached(stored: "tip")
             case .sessionActivate:
                 #expect(payload["session_id"] == .string("runtime"))
@@ -774,7 +775,7 @@ struct DirectHermesSessionCatalogClientTests {
             switch operation {
             case .profilesList: return Self.profiles()
             case .sessionCreate:
-                #expect(payload == ["profile": .string("alpha")])
+                #expect(payload == ["profile": .string("alpha"), "source": .string("bighelp")])
                 return Self.created(stored: "ordinary")
             default: throw WorkspaceClientError.invalidRequest
             }
@@ -802,7 +803,8 @@ struct DirectHermesSessionCatalogClientTests {
                 #expect(states.last?.phase == .createRequested)
                 #expect(payload == ["profile": .string("alpha"), "title": .string("Bot Chat"),
                                     "hidden": .boolean(true), "follow_profile_config": .boolean(true),
-                                    "cwd": .string("/approved/work")])
+                                    "cwd": .string("/approved/work"), "cwd_explicit": .boolean(true),
+                                    "source": .string("bighelp")])
                 return Self.created(stored: "created", cwd: "/approved/work")
             case .sessionTitle:
                 #expect(states.last?.phase == .titleRequested)
@@ -1002,6 +1004,43 @@ struct DirectHermesSessionCatalogClientTests {
         #expect(throws: WorkspaceClientError.invalidRequest) { try client.coordinate(for: record.id) }
     }
 
+    /// Hermes keeps a chat you had open running for a while after you archive
+    /// it. Refreshing used to bring the chat back until Hermes closed it.
+    @Test(arguments: ["idle", "working"])
+    func anArchivedChatStaysGoneWhileHermesStillHasItOpen(status: String) async throws {
+        let workspace = try SessionWorkspaceStub()
+        var archived = false
+        workspace.handler = { operation, _ in
+            switch operation {
+            case .profilesList: return Self.profiles()
+            case .sessionsList: return Self.ownershipPage(archived ? [] : [Self.session(id: "stored")])
+            case .sessionResume: return Self.attached(stored: "stored")
+            case .sessionUpdate:
+                archived = true
+                return ["ok": .boolean(true), "archived": .boolean(true)]
+            case .sessionDetail:
+                var detail = try #require(Self.session(id: "stored").object)
+                detail["archived"] = .integer(archived ? 1 : 0)
+                return detail
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let client = Self.client(workspace, sink: { _ in })
+        let record = try #require(try await client.list().first)
+        #expect(try await client.resolveSession(record).coordinate.runtimeSessionID == "runtime")
+        var open = try #require(Self.activeSession(stored: "stored", status: status).object)
+        open["id"] = .string("runtime")
+        workspace.activeSessions = [.object(open)]
+
+        try await client.archive(record)
+        #expect(try await client.list().isEmpty)
+        #expect(try await client.list().isEmpty, "Still gone on the next refresh")
+
+        // Unarchived somewhere else: Hermes lists it again, so it's back.
+        archived = false
+        #expect(try await client.list().map(\.id) == [record.id])
+    }
+
     @Test func unknownTitleResultRetainsReceiptAndNeverRepeatsTheMutation() async throws {
         let workspace = try SessionWorkspaceStub()
         var retained: DirectHermesSessionCreationState?
@@ -1110,6 +1149,106 @@ struct DirectHermesSessionCatalogClientTests {
         #expect(!workspace.calls.contains { $0.operation == .sessionTitle })
     }
 
+    /// Without a source Hermes labels the chat "tui" and tells the agent it's in a terminal: no files,
+    /// no cards, reminders can't reach anyone. Reopened chats must keep the same label.
+    @Test func chatsTellHermesTheyComeFromBighelp() async throws {
+        let workspace = try SessionWorkspaceStub()
+        workspace.handler = { operation, payload in
+            switch operation {
+            case .profilesList: return Self.profiles(canonical: "root", resolved: "tip")
+            case .sessionCreate:
+                #expect(payload["source"] == .string("bighelp"))
+                return Self.created(stored: "fresh", cwd: "/workspace")
+            case .sessionResume:
+                #expect(payload["source"] == .string("bighelp"))
+                return Self.attached(stored: "tip")
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let sessions = Self.client(workspace, folder: { _ in nil }, sink: { _ in })
+
+        _ = try await sessions.createOrdinarySession(profileID: "alpha")
+        #expect(workspace.calls.contains { $0.operation == .sessionCreate })
+        #expect(DirectHermesReleaseContract.resumeParameters(profile: "alpha", storedID: "tip")["source"]
+                == .string("bighelp"))
+    }
+
+    /// A project's folder is a deliberate pick. Sent without `cwd_explicit`, Hermes put an agent's own
+    /// configured folder first, the chat came back outside the project and every new chat was refused.
+    @Test func projectFolderIsSentAsADeliberatePick() async throws {
+        let workspace = try SessionWorkspaceStub()
+        workspace.handler = { operation, payload in
+            switch operation {
+            case .profilesList: return Self.profiles()
+            case .sessionCreate:
+                #expect(payload["cwd"] == .string("/workspace/notes"))
+                #expect(payload["cwd_explicit"] == .boolean(true))
+                return Self.created(stored: "in-project", cwd: "/workspace/notes")
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let sessions = Self.client(workspace, folder: { _ in "/workspace/notes" }, sink: { _ in })
+
+        let created = try await sessions.createOrdinarySession(profileID: "alpha")
+
+        #expect(created.coordinate.storedSessionID == "in-project")
+        #expect(created.cwd == "/workspace/notes")
+    }
+
+    /// Released Hermes (0.21.5 and older) rejects the flag as an unknown field (4000); the plain request works there.
+    @Test func olderHermesWithoutTheFolderFlagStillStartsTheChat() async throws {
+        let workspace = try SessionWorkspaceStub()
+        workspace.handler = { operation, payload in
+            switch operation {
+            case .profilesList: return Self.profiles()
+            case .sessionCreate:
+                // Hermes 0.21.5 and older refuse fields they don't know with JSON-RPC error 4000.
+                if payload["cwd_explicit"] != nil { throw DirectHermesError.rpcRejected(code: 4000) }
+                #expect(payload["cwd"] == .string("/workspace/notes"))
+                return Self.created(stored: "older-host", cwd: "/workspace/notes")
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let sessions = Self.client(workspace, folder: { _ in "/workspace/notes" }, sink: { _ in })
+
+        let created = try await sessions.createOrdinarySession(profileID: "alpha")
+
+        #expect(created.coordinate.storedSessionID == "older-host")
+        #expect(workspace.calls.filter { $0.operation == .sessionCreate }.count == 2)
+    }
+
+    /// A project whose folder is gone from the computer must not lock its agent out of new chats.
+    /// Hermes starts such a chat somewhere else; start it again without the project instead.
+    @Test func missingProjectFolderStartsTheChatWithoutTheProject() async throws {
+        let workspace = try SessionWorkspaceStub()
+        workspace.handler = { operation, payload in
+            switch operation {
+            case .profilesList: return Self.profiles()
+            case .sessionCreate:
+                if workspace.calls.filter({ $0.operation == .sessionCreate }).count == 1 {
+                    #expect(payload["cwd"] == .string("/workspace/gone"))
+                    return Self.created(stored: "fell-back", cwd: "/host/launch")
+                }
+                #expect(payload["cwd"] == nil, "The retry lets the agent's own default folder apply")
+                return Self.created(stored: "without-project")
+            default: throw WorkspaceClientError.invalidRequest
+            }
+        }
+        let sessions = Self.client(workspace, folder: { _ in "/workspace/gone" }, sink: { _ in })
+
+        let created = try await sessions.createOrdinarySession(profileID: "alpha")
+
+        #expect(created.coordinate.storedSessionID == "without-project")
+        #expect(workspace.calls.filter { $0.operation == .sessionCreate }.count == 2)
+    }
+
+    /// These used to fall through to "New chat could not be opened. Try again." with no reason.
+    @Test func sessionErrorsSayWhatWentWrong() {
+        #expect(DirectHermesSessionError.workspaceNotConfirmed.localizedDescription.contains("project"))
+        #expect(DirectHermesSessionError.creationUnconfirmed(profileID: "alpha").localizedDescription
+            .contains("didn't finish"))
+    }
+
     static func client(_ workspace: SessionWorkspaceStub,
                        folder: DirectHermesSessionCatalogClient.SelectedFolderPath? = nil,
                        sink: DirectHermesSessionCatalogClient.CreationStateChange? = nil) -> DirectHermesSessionCatalogClient {
@@ -1193,6 +1332,9 @@ final class SessionWorkspaceStub: WorkspaceOperationPerforming {
     func perform(_ operation: WorkspaceOperation, payload: [String: BighelpJSONValue],
                  owner: WorkspaceOwner) async throws -> [String: BighelpJSONValue] {
         guard owner == self.owner else { throw WorkspaceClientError.ownerChanged }
+        // The real client refuses fields its routes don't list before anything
+        // reaches Hermes; a stub that skipped this once hid a new-chat failure.
+        _ = try DirectHermesWorkspaceClient.route(operation, payload: payload)
         calls.append(.init(operation: operation, payload: payload))
         if operation == .sessionEvents, payload["session_id"] == .string("") {
             if let epochHandler { return try await epochHandler() }
@@ -1201,6 +1343,11 @@ final class SessionWorkspaceStub: WorkspaceOperationPerforming {
         if operation.rawValue == "session.active_list", let activeSessions {
             return ["sessions": .array(activeSessions)]
         }
-        return try await handler(operation, payload)
+        do {
+            return try await handler(operation, payload)
+        } catch {
+            // Handlers throw what Hermes raises; callers see the client's translation.
+            throw DirectHermesWorkspaceClient.workspaceError(error, for: operation)
+        }
     }
 }

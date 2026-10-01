@@ -184,18 +184,7 @@ final class DirectHermesMCPClient: MCPManagementClient, MCPRuntimeManagementClie
         let name = try CapabilitiesPayload.identifier(serverName)
         let payload = try await request(.test(name: name, profile: profile))
         let succeeded = try CapabilitiesPayload.boolean(payload["ok"])
-        let tools = try CapabilitiesPayload.array(payload["tools"], maximum: 512).map { value in
-            let row = try CapabilitiesPayload.object(value)
-            let schemaCharacters = row["schema_chars"]?.integer
-            if let schemaCharacters, !(0...2_000_000).contains(schemaCharacters) {
-                throw CapabilitiesManagementError.invalidResponse
-            }
-            return MCPProbeTool(
-                name: try CapabilitiesPayload.text(row["name"], maximumBytes: 256),
-                summary: try CapabilitiesPayload.text(row["description"], maximumBytes: 8_192, required: false),
-                schemaCharacterCount: schemaCharacters
-            )
-        }
+        let (tools, toolCount) = try MCPProbeResult.displayedTools(payload["tools"])
         let promptCount: Int
         if let value = payload["prompts"] { promptCount = try CapabilitiesPayload.integer(value) }
         else { promptCount = 0 }
@@ -206,6 +195,7 @@ final class DirectHermesMCPClient: MCPManagementClient, MCPRuntimeManagementClie
             succeeded: succeeded,
             error: succeeded ? nil : "Connection test failed. Review the server’s authentication and host configuration.",
             tools: tools,
+            toolCount: toolCount,
             promptCount: promptCount,
             resourceCount: resourceCount
         )
@@ -366,11 +356,14 @@ final class DirectHermesMCPClient: MCPManagementClient, MCPRuntimeManagementClie
             case .remove(let name, let profile):
                 return DirectHermesHTTPRequest(path: "/api/mcp/servers/\(name)", method: .delete, query: [.init(name: "profile", value: profile)])
             case .test(let name, let profile):
-                return DirectHermesHTTPRequest(path: "/api/mcp/servers/\(name)/test", method: .post, query: [.init(name: "profile", value: profile)])
+                return DirectHermesHTTPRequest(path: "/api/mcp/servers/\(name)/test", method: .post,
+                                               query: [.init(name: "profile", value: profile)],
+                                               maximumResponseBytes: DirectHermesHTTP.maximumMCPToolListResponseBytes)
             case .startOAuth(let name, let profile):
                 return DirectHermesHTTPRequest(path: "/api/mcp/servers/\(name)/auth", method: .post, query: [.init(name: "profile", value: profile)])
             case .pollOAuth(let flowID):
-                return DirectHermesHTTPRequest(path: "/api/mcp/oauth/flows/\(flowID)", method: .get)
+                return DirectHermesHTTPRequest(path: "/api/mcp/oauth/flows/\(flowID)", method: .get,
+                                               maximumResponseBytes: DirectHermesHTTP.maximumMCPToolListResponseBytes)
             case .cancelOAuth(let flowID):
                 return DirectHermesHTTPRequest(path: "/api/mcp/oauth/flows/\(flowID)", method: .delete)
             }
@@ -521,18 +514,7 @@ final class DirectHermesMCPClient: MCPManagementClient, MCPRuntimeManagementClie
                   parsed.host != nil else { throw CapabilitiesManagementError.invalidResponse }
             url = parsed
         } else { url = nil }
-        let tools: [MCPProbeTool]
-        if payload["tools"] == nil { tools = [] }
-        else {
-            tools = try CapabilitiesPayload.array(payload["tools"], maximum: 512).map { value in
-                let row = try CapabilitiesPayload.object(value)
-                return MCPProbeTool(
-                    name: try CapabilitiesPayload.text(row["name"], maximumBytes: 256),
-                    summary: try CapabilitiesPayload.text(row["description"], maximumBytes: 8_192, required: false),
-                    schemaCharacterCount: nil
-                )
-            }
-        }
+        let tools = payload["tools"] == nil ? [] : try MCPProbeResult.displayedTools(payload["tools"]).tools
         let remoteError = try CapabilitiesPayload.optionalText(payload["error"], maximumBytes: 8_192)
         return MCPOAuthFlow(
             id: try CapabilitiesPayload.text(payload["flow_id"], maximumBytes: 256),

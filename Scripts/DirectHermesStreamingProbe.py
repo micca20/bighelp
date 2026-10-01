@@ -42,13 +42,16 @@ class SyntheticModel(BaseHTTPRequestHandler):
         # A reaction note: the fixture agent chooses not to answer.
         reaction_note = "[The user reacted" in latest_user
         # "react direct": the fixture agent tapbacks the latest human message.
-        react_tool = next((name for name in ("react_to_message", "loopdy_react_to_message")
+        # Plugins before 2.20.0 named the tool loopdy_react_to_message.
+        react_names = ("react_to_message", "bighelp_react_to_message", "loopdy_react_to_message")
+        react_tool = next((name for name in react_names
                            if any(t.get("function", {}).get("name") == name for t in tools)), None)
         # Hermes may list plugin tools only in the prompt's catalog, called through tool_call.
         catalog = " ".join(str(m.get("content", "")) for m in request.get("messages", []) if m.get("role") == "system")
-        if "loopdy_react_to_message" in catalog:
-            SyntheticModel.offered_tools.add("catalog:loopdy_react_to_message")
-        bridged_react = react_tool is None and "loopdy_react_to_message" in catalog and any(
+        catalog_react = next((name for name in react_names[1:] if name in catalog), None)
+        if catalog_react:
+            SyntheticModel.offered_tools.add("catalog:" + catalog_react)
+        bridged_react = react_tool is None and catalog_react is not None and any(
             t.get("function", {}).get("name") == "tool_call" for t in tools)
         if bridged_react:
             react_tool = "tool_call"
@@ -68,7 +71,7 @@ class SyntheticModel(BaseHTTPRequestHandler):
         if reaction_note:
             SyntheticModel.reaction_notes += 1
             final_text = "[SILENT]"
-        react_arguments = ({"name": "loopdy_react_to_message", "arguments": {"emoji": "👍"}}
+        react_arguments = ({"name": catalog_react, "arguments": {"emoji": "👍"}}
                            if bridged_react else {"emoji": "👍"})
         tool_call = ({"id": "call_direct_fixture_react", "type": "function",
                       "function": {"name": react_tool, "arguments": json.dumps(react_arguments)}}

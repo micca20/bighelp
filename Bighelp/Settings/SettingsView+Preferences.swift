@@ -2,90 +2,95 @@ import SwiftUI
 import UIKit
 
 extension SettingsView {
-    var appearanceBasics: some View {
-        Section {
-            ThemeSelectionLink(settings: settings)
-            Picker("Appearance", selection: $settings.appearance) {
-                ForEach(AppAppearance.allCases) { appearance in
-                    Text(appearance.title).tag(appearance)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(minHeight: BighelpTokens.hitTarget)
-            .accessibilityIdentifier("settings.appearance")
+    /// Settings › Appearance: colors, light and dark, and the rest of the look on one page.
+    var appearancePage: some View {
+        AppearanceStudioView(settings: settings) {
             NavigationLink {
                 ChatLayoutSettingsView()
             } label: {
-                settingLabel("Chat layout", detail: "Avatar, name, text size and spacing")
+                AppearanceStudioRow(title: "Chat layout", detail: "Avatar, name, text size and spacing",
+                                    systemImage: "text.bubble")
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.appearance.chat-layout")
-        } header: {
-            Text("Appearance")
-        } footer: {
-            EmptyView()
+            #if os(visionOS)
+            transparency
+                .padding(BighelpTokens.space16)
+                .background(theme.surface, in: .rect(cornerRadius: 16))
+            #endif
+            if settings.nerdModeEnabled {
+                reflectiveVisionCard
+            }
         }
-        .listRowBackground(theme.surface)
     }
 
-    var appearance: some View { appearanceBasics }
-
-    var advancedAppearance: some View {
-        Group {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { settings.reflectiveVisionEnabled },
-                    set: { enabled in
-                        settings.reflectiveVisionEnabled = enabled
-                        Task {
-                            if enabled {
-                                _ = await permissionCenter.authorizeContextualAccess(.camera)
-                            }
-                            await reflectiveVisionCamera?.update(
-                                enabled: enabled
-                            )
-                            await permissionCenter.refresh(.camera)
-                        }
-                    }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Reflective Vision UI")
-                            .foregroundStyle(theme.primaryText)
-                        Text("Live, blurred surroundings in selected accents")
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                }
-                .accessibilityIdentifier("settings.reflective-vision")
-
-                if settings.reflectiveVisionEnabled {
-                    HStack(alignment: .top, spacing: BighelpTokens.space8) {
-                        Image(systemName: reflectiveVisionCamera?.state.isActive == true
-                            ? "camera.aperture"
-                            : "camera.fill")
-                            .reflectiveVisionIcon()
-                            .foregroundStyle(theme.action)
-                            .accessibilityHidden(true)
-                        Text(reflectiveVisionStatus)
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                    .accessibilityElement(children: .combine)
-
-                    if reflectiveVisionCamera?.state.canOpenSettings == true {
-                        Button("Open Camera Settings") {
-                            permissionCenter.performRecoveryAction(for: .camera)
-                        }
-                        .bighelpFont(.label)
-                    }
-                }
-            } header: {
-                Text("Appearance")
-            } footer: {
-                Text("Reflective Vision is optional, uses the camera only while active, and stays on this device. Saved theme document data remains available for editing and transfer.")
-                    .bighelpFont(.metadata)
+    #if os(visionOS)
+    /// How much of the room shows through bighelp's windows.
+    private var transparency: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+            settingLabel("Transparency", detail: "How much of your space shows through bighelp")
+            HStack(spacing: BighelpTokens.space12) {
+                Image(systemName: "square.fill")
+                    .foregroundStyle(theme.secondaryText)
+                    .accessibilityHidden(true)
+                Slider(value: $settings.windowTransparency, in: 0...1)
+                    .accessibilityLabel("Window transparency")
+                    .accessibilityValue("\(Int((settings.windowTransparency * 100).rounded())) percent")
+                    .accessibilityIdentifier("appearance.transparency")
+                Image(systemName: "square.dashed")
+                    .foregroundStyle(theme.secondaryText)
+                    .accessibilityHidden(true)
             }
-            .listRowBackground(theme.surface)
+            .frame(minHeight: BighelpTokens.hitTarget)
         }
+    }
+    #endif
+
+    private var reflectiveVisionCard: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space12) {
+            Toggle(isOn: Binding(
+                get: { settings.reflectiveVisionEnabled },
+                set: { enabled in
+                    settings.reflectiveVisionEnabled = enabled
+                    Task {
+                        if enabled {
+                            _ = await permissionCenter.authorizeContextualAccess(.camera)
+                        }
+                        await reflectiveVisionCamera?.update(
+                            enabled: enabled
+                        )
+                        await permissionCenter.refresh(.camera)
+                    }
+                }
+            )) {
+                settingLabel("Reflective Vision", detail: "Your blurred surroundings in a few accents. Uses the camera only while on.")
+            }
+            .accessibilityIdentifier("settings.reflective-vision")
+
+            if settings.reflectiveVisionEnabled {
+                HStack(alignment: .top, spacing: BighelpTokens.space8) {
+                    Image(systemName: reflectiveVisionCamera?.state.isActive == true
+                        ? "camera.aperture"
+                        : "camera.fill")
+                        .reflectiveVisionIcon()
+                        .foregroundStyle(theme.action)
+                        .accessibilityHidden(true)
+                    Text(reflectiveVisionStatus)
+                        .bighelpFont(.metadata)
+                        .foregroundStyle(theme.secondaryText)
+                }
+                .accessibilityElement(children: .combine)
+
+                if reflectiveVisionCamera?.state.canOpenSettings == true {
+                    Button("Open Camera Settings") {
+                        permissionCenter.performRecoveryAction(for: .camera)
+                    }
+                    .bighelpFont(.label)
+                }
+            }
+        }
+        .padding(BighelpTokens.space16)
+        .background(theme.surface, in: .rect(cornerRadius: 16))
     }
 
     private var reflectiveVisionStatus: String {
@@ -94,34 +99,19 @@ extension SettingsView {
     }
 
     var workspace: some View {
-        Section("Workspace") {
-            Button(action: onOpenSessions) {
-                Label("Sessions", systemImage: "clock.arrow.circlepath")
-                    .foregroundStyle(theme.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-            }
-            .accessibilityLabel("Open sessions")
-            .accessibilityIdentifier("profile.sessions")
-            Button(action: onOpenScheduledTasks) {
-                Label("Scheduled Tasks", systemImage: "calendar.badge.clock")
-                    .foregroundStyle(theme.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
-            }
-            .accessibilityLabel("Open scheduled tasks")
-            .accessibilityIdentifier("profile.scheduled-tasks")
-
+        Section("Chat list") {
             Toggle(isOn: $settings.organizeChatsByProjects) {
                 settingLabel(
-                    "Organize Chats by Projects",
-                    detail: "Group chats by their Hermes project in Sessions and Quick Workspace."
+                    "Organize chats by project",
+                    detail: "Group chats by their Hermes project."
                 )
             }
             .accessibilityIdentifier("settings.organize-chats-by-projects")
 
             Toggle(isOn: $settings.showCronSessions) {
                 settingLabel(
-                    "Show Scheduled Runs",
-                    detail: "Include cron sessions in Chats and Quick Workspace."
+                    "Show scheduled runs",
+                    detail: "Include scheduled task runs in Chats."
                 )
             }
             .accessibilityIdentifier("settings.show-cron-sessions")
@@ -175,60 +165,8 @@ extension SettingsView {
         } header: {
             Text("Edge Gestures")
         } footer: {
-            Text("Start at the very edge of the screen. The left edge opens Quick Workspace by default; the right edge stays off until you choose an action.")
+            Text("Start right at the edge of the screen.")
                 .bighelpFont(.metadata)
-        }
-        .listRowBackground(theme.surface)
-    }
-
-    /// What the microphone in a chat opens, right on the Settings page, with
-    /// the speech provider and voice one tap further.
-    private var voiceBasics: some View {
-        Section {
-            Picker("Voice mode", selection: $settings.voiceConversationMode) {
-                Text(VoiceConversationMode.turnBased.title).tag(VoiceConversationMode.turnBased)
-                Text(VoiceConversationMode.codexLive.title).tag(VoiceConversationMode.codexLive)
-            }
-            .pickerStyle(.segmented)
-            .frame(minHeight: BighelpTokens.hitTarget)
-            .accessibilityIdentifier("settings.voice.mode")
-
-            NavigationLink {
-                VoiceSettingsView(settings: settings, agents: agents,
-                    selectedAgentID: agentDirectory?.selectedAgentID,
-                    client: voiceSettingsClient, scope: voiceSettingsScope,
-                    isCurrent: voiceSettingsIsCurrent)
-            } label: {
-                if settings.voiceConversationMode == .codexLive {
-                    settingLabel("GPT Live 1 settings", detail: "Sign-in and voice")
-                } else {
-                    settingLabel("Speech provider and voice", detail: "Each agent's voice, including ones that run on your computer")
-                }
-            }
-            .accessibilityIdentifier("settings.chat.voice-settings")
-        } header: {
-            Text("Voice")
-        } footer: {
-            Text("TTS listens on this device and reads replies aloud with your agent's speech provider. GPT Live 1 is a live conversation with OpenAI.")
-                .bighelpFont(.metadata)
-        }
-        .listRowBackground(theme.surface)
-    }
-
-    var voiceExperience: some View { voiceBasics }
-
-    /// Which providers the Provider Usage overlay shows.
-    var providerUsageSection: some View {
-        Section {
-            NavigationLink {
-                // Pushed screens don't reliably inherit the store; hand it over.
-                ProviderUsageSettingsView().environment(\.providerUsage, providerUsage)
-            } label: {
-                settingLabel("Show and hide providers", detail: "Choose which plans and balances Provider Usage shows")
-            }
-            .accessibilityIdentifier("settings.provider-usage")
-        } header: {
-            Text("Provider Usage")
         }
         .listRowBackground(theme.surface)
     }
@@ -259,13 +197,29 @@ extension SettingsView {
             }
             .accessibilityIdentifier("settings.chat.agent-island")
 
-        } header: {
-            Text("Chat")
         }
         .listRowBackground(theme.surface)
     }
 
-    var chatExperience: some View { chatBasics }
+    /// Settings › Chat. Nerd Mode adds what chats show and how the chat list and
+    /// edge swipes behave; everyday toggles stay first.
+    var chatPage: some View {
+        Form {
+            BighelpDeferredSection { chatBasics }
+            if settings.nerdModeEnabled {
+                BighelpDeferredSection { chatDetailDefaults }
+                BighelpDeferredSection { advancedChat }
+                BighelpDeferredSection { workspace }
+                BighelpDeferredSection { edgeGestures }
+            }
+        }
+        .bighelpFormSurface()
+        .environment(\.defaultMinListRowHeight, BighelpTokens.hitTarget)
+        .scrollContentBackground(.hidden)
+        .background(theme.canvas.ignoresSafeArea())
+        .navigationTitle("Chat")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 
     /// How much of an agent's work new chats show. Technical, so it appears
     /// with Nerd Mode's Advanced section rather than the basics.
@@ -273,8 +227,8 @@ extension SettingsView {
         Section {
             Toggle(isOn: $settings.foldCompletedTurns) {
                 settingLabel(
-                    "Fold Completed Turns",
-                    detail: "Tuck finished work away; messages stay."
+                    "Fold finished turns",
+                    detail: "Tuck finished work away; answers stay."
                 )
             }
             .accessibilityIdentifier("settings.chat.fold-completed-turns")
@@ -282,7 +236,7 @@ extension SettingsView {
             Toggle(isOn: $settings.showReasoningByDefault) {
                 settingLabel(
                     "Show reasoning",
-                    detail: "Expand thinking in new chats."
+                    detail: "Thinking and notes between steps, in new chats."
                 )
             }
             .accessibilityIdentifier("settings.chat.show-reasoning")
@@ -297,41 +251,7 @@ extension SettingsView {
         } header: {
             Text("Chat details")
         } footer: {
-            Text("Reasoning and tool calls apply to new chats. Each chat can change its own from the ••• menu.")
-                .bighelpFont(.metadata)
-        }
-        .listRowBackground(theme.surface)
-    }
-
-    /// Everything a person rarely changes lives on one page, reached from a
-    /// single row, so the first Settings screen stays short.
-    var advancedLink: some View {
-        Section {
-            NavigationLink {
-                Form {
-                    advancedChat
-                    advancedAppearance
-                    localCache
-                }
-                .modifier(ClearCacheConfirmation(
-                    isPresented: $isClearCacheConfirmationPresented,
-                    onConfirm: clearLocalCache
-                ))
-                .bighelpFormSurface()
-                .scrollContentBackground(.hidden)
-                .background(theme.canvas.ignoresSafeArea())
-                .navigationTitle("Advanced")
-                .navigationBarTitleDisplayMode(.inline)
-            } label: {
-                Label {
-                    Text("Advanced")
-                } icon: {
-                    BighelpIconTile(systemName: "slider.horizontal.3", tint: .gray)
-                }
-            }
-            .accessibilityIdentifier("settings.advanced")
-        } footer: {
-            Text("Suggestions, inline cards, links, Reflective Vision and local data.")
+            Text("For new chats. Each chat can change its own in its ••• menu.")
                 .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
@@ -388,22 +308,12 @@ extension SettingsView {
                 }
                 .accessibilityIdentifier("settings.chat.mid-session-behavior")
             } header: {
-                Text("Chat")
+                Text("More chat options")
             } footer: {
-                Text("Hold Send during a live turn to choose a different behavior for only that message.")
+                Text("Hold Send while an agent works to choose for just that message.")
                     .bighelpFont(.metadata)
             }
             .listRowBackground(theme.surface)
-        }
-    }
-}
-
-private extension AppAppearance {
-    var title: String {
-        switch self {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
         }
     }
 }

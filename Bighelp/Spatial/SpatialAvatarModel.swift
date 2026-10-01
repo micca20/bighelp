@@ -6,7 +6,6 @@ import SwiftUI
 enum SpatialAvatarSceneID {
     static let main = "main"
     static let avatar = "agent-in-room"
-    static let voice = "agent-voice"
 }
 
 extension EnvironmentValues {
@@ -48,6 +47,9 @@ final class SpatialAvatarModel {
     private(set) var errorMessage: String?
     var draft = ""
     var isPromptPresented = false
+    /// A look being tried on in Agent Studio, shown in the room until the
+    /// avatar designer closes.
+    var previewAppearance: CompanionAppearance?
     /// Pinch-and-hold explains how to move and anchor the avatar.
     var isShowingMoveTip = false
     /// Which windows are open, so the avatar reopens the main window only when needed.
@@ -170,6 +172,7 @@ final class SpatialAvatarModel {
             let presentation = workspace.featureStore.makeVoicePresentation(
                 for: sessionID,
                 mode: settings.voiceMode,
+                transcription: settings.voiceTranscription,
                 conversationMode: settings.voiceConversationMode,
                 liveProvider: settings.liveVoiceProvider,
                 liveVoice: settings.liveVoice(for: settings.liveVoiceProvider)

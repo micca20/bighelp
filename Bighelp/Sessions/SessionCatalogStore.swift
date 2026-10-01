@@ -513,6 +513,8 @@ final class SessionCatalogStore {
         let generation = accountGeneration
         try await mutation(record)
         guard generation == accountGeneration else { throw CancellationError() }
+        // A list read before the host removed the chat would put it back.
+        latestLoadGeneration &+= 1
         records.removeAll { $0.id == id }
         pinPreferences.removeValue(forKey: id)
         persistPinPreferences()

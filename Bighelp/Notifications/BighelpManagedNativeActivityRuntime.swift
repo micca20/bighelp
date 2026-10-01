@@ -95,11 +95,24 @@ final class BighelpManagedNativeActivityRuntime {
             entry = current
         } else {
             guard !event.lifecycle.isTerminal, entries.count < 64 else { return }
-            // No activity begins from an isolated stop, notification or history.
-            entry = try makeEntry(host: host, grant: grant, session: session, localTurn: event.turnID,
-                canonicalTurn: canonicalHostTurnID, firstObservedAt: workSnapshot?.work?.observedAt ?? event.occurredAt,
-                observedState: workSnapshot?.work?.contentState)
-            entries[key] = entry
+            // One live card on the Lock Screen at a time: the newest chat's work
+            // replaces an older card (whose reply still arrives as a notification)
+            // instead of stacking a card per chat.
+            for (otherKey, other) in Array(entries) where otherKey != key {
+                try? await cancel(host: other.host, profile: other.profile, storedSessionID: other.session,
+                                  originalLocalTurnID: other.localTurn)
+            }
+            guard !retired.contains(key) else { return }
+            if let raced = entries[key] {
+                // Another update for this chat made its card while older ones were closing.
+                entry = raced
+            } else {
+                // No activity begins from an isolated stop, notification or history.
+                entry = try makeEntry(host: host, grant: grant, session: session, localTurn: event.turnID,
+                    canonicalTurn: canonicalHostTurnID, firstObservedAt: workSnapshot?.work?.observedAt ?? event.occurredAt,
+                    observedState: workSnapshot?.work?.contentState)
+                entries[key] = entry
+            }
         }
         // Coalescing and exact child/parent ownership are in the existing reducer.
         // The driver stops local content writes as soon as cloud ownership begins.

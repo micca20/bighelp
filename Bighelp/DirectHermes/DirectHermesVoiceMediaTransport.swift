@@ -397,7 +397,8 @@ final class DirectHermesPCMStreamingPlayer {
               ) else {
             throw WorkspaceClientError.invalidResponse
         }
-        let claim = try sessionCoordinator.acquire()
+        // Only the voice configuration screen streams: a preview, nothing listening.
+        let claim = try sessionCoordinator.acquire(for: .playback)
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
         do {

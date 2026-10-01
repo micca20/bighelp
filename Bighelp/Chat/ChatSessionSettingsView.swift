@@ -73,6 +73,7 @@ struct ChatSessionSettingsView: View {
             List {
                 identitySection
                 quickActionsSection
+                modelSection
                 // Per-chat reasoning/tool visibility is a technical knob: Nerd Mode only.
                 if nerdModeEnabled { conversationSection }
                 sessionSection
@@ -167,6 +168,21 @@ struct ChatSessionSettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var modelSection: some View {
+        if let controls = model.runtimeControls {
+            Section {
+                ChatModelSummaryRow(controls: controls) {
+                    dismiss()
+                    model.requestSessionControls()
+                }
+            } header: {
+                Text("Model")
+            }
+            .listRowBackground(theme.surface)
+        }
+    }
+
     private var conversationSection: some View {
         Section {
             Toggle("Show thinking", isOn: reasoningVisibility)
@@ -186,9 +202,6 @@ struct ChatSessionSettingsView: View {
     private var sessionSection: some View {
         Section {
             participantsRow
-            if let controls = model.runtimeControls {
-                LabeledContent("Model", value: controls.modelDisplayName)
-            }
             // Host details (project folder, connection, profile) are for Nerd Mode.
             if nerdModeEnabled {
                 if let workspace = model.sessionWorkspaceName, !workspace.isEmpty {

@@ -30,7 +30,7 @@ final class NativeAgentCreationVisualTests: XCTestCase {
             )
             .environment(\.bighelpUIV3Enabled, true)
             .environment(\.nerdModeEnabled, true)
-            .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light, themeID: .bighelp))
+            .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light))
             .environment(\.colorScheme, .light)
         }
         let host = UIHostingController(rootView: content())

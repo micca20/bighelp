@@ -102,6 +102,53 @@ struct DirectHermesConversationTests {
         #expect(!client.needsRecovery)
     }
 
+    /// Text that arrives already typed (a Shortcut, or a command typed out
+    /// without the menu) has no catalog selection, so it goes to slash.exec.
+    /// Hermes refuses skills there with 4018 and names command.dispatch; its own
+    /// clients retry there, and so does bighelp. A second refusal is final.
+    @Test(arguments: [false, true])
+    func typedSkillCommandFallsBackToCommandDispatch(dispatchRefuses: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = DirectTestRPC()
+        rpc.handler = { method, params in
+            switch method {
+            case "slash.exec":
+                #expect(params["command"] == .string("/briefing  today's news"))
+                throw DirectHermesError.rpcRejected(code: 4018)
+            case "command.dispatch":
+                #expect(params["name"] == .string("briefing"))
+                #expect(params["arg"] == .string("today's news"))
+                if dispatchRefuses { throw DirectHermesError.rpcRejected(code: 4018) }
+                return .object(["type": .string("skill"), "message": .string("<skill>Briefing</skill> today's news")])
+            case "prompt.submit":
+                return .object(["status": .string("queued")])
+            default:
+                return .object([:])
+            }
+        }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "saved", title: "Chat", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        model.draft = "/briefing  today's news"
+        await model.send()
+        let methods = rpc.requests.map(\.method).filter { $0 != "session.control.read" }
+        if dispatchRefuses {
+            #expect(methods == ["slash.exec", "command.dispatch"])
+            #expect(model.failureMessage == "Hermes did not run this command. Your text is ready to edit.")
+            #expect(model.draft == "/briefing  today's news")
+        } else {
+            #expect(methods == ["slash.exec", "command.dispatch", "prompt.submit"])
+            #expect(rpc.requests.last?.params["text"] == .string("<skill>Briefing</skill> today's news"))
+            #expect(model.failureMessage == nil)
+        }
+        #expect(!model.isSending)
+        #expect(client.journal.unresolved.isEmpty)
+        #expect(!client.needsRecovery)
+    }
+
     @Test(arguments: ["expanded", "rejected", "unknown", "expanded-rejected"])
     func commandExpansionAndRejectionPreserveAdmissionSafety(outcome: String) async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
@@ -983,6 +1030,60 @@ struct DirectHermesConversationTests {
         turn.cancel()
     }
 
+    /// An agent's reaction lands on the message you just sent while the turn
+    /// runs. That message has no saved row in its ID until a reload, so the
+    /// live `message.reaction` found nothing to attach to. Hermes reports the
+    /// row at Send (`user_row_id`) and again when the turn ends
+    /// (`persisted_turn`); without either, the app never guesses.
+    @Test(arguments: [true, false])
+    func agentReactionShowsOnTheJustSentMessageDuringTheTurn(rowAtSend: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = DirectTestRPC()
+        rpc.handler = { method, _ in
+            guard method == "prompt.submit" else { return .object(["status": .string("queued")]) }
+            return .object(["status": .string("streaming")]
+                .merging(rowAtSend ? ["user_row_id": .integer(8_933)] : [:]) { $1 })
+        }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Native", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        let earlier = TimelineItem(id: "\(client.conversationID):row:8931", role: .human,
+                                   sender: .user(snapshot: .init(name: "You")), content: .message("Hi"),
+                                   metadata: .init(source: "Hermes", delivery: "Saved", sourceOrder: 1))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [earlier])
+        client.model = model
+        model.draft = "React to this message with a heart."
+        let turn = Task { await model.send() }
+        for _ in 0..<200 where !rpc.requests.contains(where: { $0.method == "prompt.submit" }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        client.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
+        client.receive(.init(type: "message.reaction", sessionID: "runtime", payload: [
+            "row_id": .integer(8_933), "role": .string("user"),
+            "reactions": .array([.object(["emoji": .string("❤️"), "author": .string("agent")])]),
+        ], sequence: 2))
+        let sent = try #require(model.items.last { $0.role == .human })
+        #expect(sent.id != earlier.id)
+        func hearts(_ item: TimelineItem) -> [String] {
+            model.nativeMessageReactionPresentation(for: item).reactions.map(\.emoji)
+        }
+        #expect(hearts(sent) == (rowAtSend ? ["❤️"] : []))
+        #expect(hearts(earlier).isEmpty)
+        client.receive(.init(type: "message.complete", sessionID: "runtime", payload: [
+            "text": .string("Done."), "persisted_turn": .object([
+                "user_row_id": .integer(8_933), "row_ids": .array([.integer(8_933), .integer(8_934)]),
+                "final_assistant_row_id": .integer(8_934), "complete": .boolean(true),
+            ]),
+        ], sequence: 3))
+        #expect(hearts(sent) == ["❤️"])
+        #expect(hearts(earlier).isEmpty)
+        let reply = try #require(model.items.last { $0.role == .assistant })
+        #expect(model.nativeMessageReactionPresentation(for: reply).rowID == 8_934)
+        turn.cancel()
+    }
+
     @Test func reactingUsesHermesReactionsWithoutAnExtraTurn() async throws {
         // Hermes records the reaction and tells the agent at its next turn
         // (display.message_reactions). The app must not start a turn of its own.
@@ -1590,7 +1691,7 @@ struct DirectHermesConversationTests {
         #expect(model.nativeSubagents.first?.id == "sa-1")
         #expect(model.nativeSubagents.first?.childSessionID == "child-runtime-1")
         #expect(SessionStatusRailPresentation.items(
-            changes: nil, goal: nil, subagents: [], nativeSubagents: model.nativeSubagents, tasks: nil
+            goal: nil, subagents: [], nativeSubagents: model.nativeSubagents, tasks: nil
         ).map(\.kind) == [.subagents])
 
         client.receive(.init(
@@ -1806,6 +1907,65 @@ struct DirectHermesConversationTests {
         #expect(nextPhase.detail == " continues")
         #expect(nextPhase.lifecycle == .running)
         #expect(model.activityDisclosures.isExpanded(nextPhase))
+    }
+
+    /// Claude's thinking arrives blank, so with tool calls hidden the agent's
+    /// notes are the only thinking on screen. They turn quiet the moment a
+    /// hidden tool starts, and fold with the finished turn.
+    @Test func notesBeforeHiddenToolsReadAsThinkingAndFold() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = try DirectHermesConversationClient(
+            rpc: DirectTestRPC(), hostIdentity: "host", profile: "default", runtimeID: "runtime",
+            storedID: "stored", title: "Native", epoch: "epoch", drafts: DirectHermesDraftStore(root: root)
+        )
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [],
+                              initialActivityVisibility: .init(showReasoning: true, showToolCalls: false))
+        client.model = model
+        var sequence = 0
+        func receive(_ type: String, _ payload: [String: BighelpJSONValue] = [:]) {
+            sequence += 1
+            client.receive(.init(type: type, sessionID: "runtime", payload: payload, sequence: sequence))
+        }
+        func rows() -> [ChatTurnDisplayRow] {
+            ChatCompletedTurnProjection.rows(
+                from: ChatInterimReplies.marking(model.transcriptEntries, isSending: model.isSending,
+                                                 isBotMode: false, activityEvents: model.activityLedger.allEvents),
+                isSending: model.isSending, enabled: true, activityEvents: model.activityLedger.allEvents,
+                interimReplies: .following(model.activityVisibility))
+        }
+        func interimTexts() -> [String] {
+            rows().compactMap { row in
+                guard case .entry(.message(let item)) = row, item.metadata.isInterimReply,
+                      case .message(let text) = item.content else { return nil }
+                return text
+            }
+        }
+        receive("message.start")
+        receive("message.interim", ["text": .string("Checking the lights.")])
+        receive("tool.start", ["tool_id": .string("t1"), "name": .string("terminal")])
+        #expect(interimTexts() == ["Checking the lights."])
+        receive("tool.complete", ["tool_id": .string("t1"), "name": .string("terminal")])
+        receive("message.interim", ["text": .string("That failed, trying Google Home.")])
+        receive("tool.start", ["tool_id": .string("t2"), "name": .string("list_homes")])
+        receive("tool.complete", ["tool_id": .string("t2"), "name": .string("list_homes")])
+        receive("message.delta", ["text": .string("The lights are off.")])
+        receive("message.complete", ["text": .string("The lights are off.")])
+        receive("session.info", ["running": .boolean(false)])
+        #expect(!model.isSending)
+        let finished = rows()
+        #expect(finished.count == 2)
+        guard case .completed(let fold) = try #require(finished.first) else {
+            Issue.record("Expected the notes to fold")
+            return
+        }
+        #expect(fold.expandedEntries.count == 2)
+        guard case .entry(.message(let answer)) = try #require(finished.last) else {
+            Issue.record("Expected the answer after the fold")
+            return
+        }
+        #expect(answer.content == .message("The lights are off."))
+        #expect(!answer.metadata.isInterimReply)
     }
 
     @Test(arguments: [false, true])
@@ -2422,6 +2582,58 @@ struct NativeMidSessionTests {
         #expect(model.taskDrawer?.items.map(\.id) == ["new"])
     }
 
+    /// Before each new turn the host learns who is sending, so the agent knows
+    /// who it's talking with. The message itself goes exactly as typed.
+    @Test func sendSaysWhoIsSendingFirstAndSendsTheTextAsTyped() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let log = SpeakerLog()
+        let rpc = DirectTestRPC()
+        rpc.handler = { method, _ in
+            log.events.append(method)
+            return .object(["status": .string(method == "prompt.submit" ? "streaming" : "queued")])
+        }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Native", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        client.speakerNote = RecordingSpeakerNote(log: log)
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        model.draft = "What's on my calendar?"
+        let turn = Task { await model.send() }
+        for _ in 0..<200 where !rpc.requests.contains(where: { $0.method == "prompt.submit" }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(log.events.filter { ["speaker:default/stored", "prompt.submit"].contains($0) }
+                == ["speaker:default/stored", "prompt.submit"])
+        let submit = try #require(rpc.requests.last(where: { $0.method == "prompt.submit" }))
+        #expect(submit.params["text"]?.string == "What's on my calendar?")
+        turn.cancel()
+    }
+
+    /// A slow or unreachable host never holds a message: it goes without a name.
+    @Test func aSlowSpeakerNoteNeverHoldsTheMessage() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpc = DirectTestRPC()
+        rpc.handler = { method, _ in .object(["status": .string(method == "prompt.submit" ? "streaming" : "queued")]) }
+        let client = try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Native", epoch: "epoch", drafts: .init(root: root))
+        defer { client.suspend() }
+        client.speakerNote = RecordingSpeakerNote(log: SpeakerLog(), delay: .seconds(30))
+        let model = ChatModel(conversationID: client.conversationID, client: client, initialItems: [])
+        client.model = model
+        model.draft = "Hello"
+        let started = ContinuousClock.now
+        let turn = Task { await model.send() }
+        for _ in 0..<500 where !rpc.requests.contains(where: { $0.method == "prompt.submit" }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(rpc.requests.contains(where: { $0.method == "prompt.submit" }))
+        #expect(ContinuousClock.now - started < .seconds(4))
+        turn.cancel()
+    }
+
     private func makeClient(_ rpc: DirectTestRPC, root: URL) throws -> DirectHermesConversationClient {
         try DirectHermesConversationClient(rpc: rpc, hostIdentity: "host", profile: "default", runtimeID: "runtime",
             storedID: "saved", title: "Chat", epoch: "epoch", drafts: DirectHermesDraftStore(root: root))
@@ -2455,4 +2667,21 @@ struct NativeMidSessionTests {
         throw DirectHermesError.notConnected
     }
     func disconnect() async { disconnectCount += 1 }
+}
+
+@MainActor private final class SpeakerLog {
+    var events: [String] = []
+}
+
+@MainActor private final class RecordingSpeakerNote: ChatSpeakerNoting {
+    let log: SpeakerLog
+    let delay: Duration?
+    init(log: SpeakerLog, delay: Duration? = nil) {
+        self.log = log
+        self.delay = delay
+    }
+    func note(agentID: String, storedSessionID: String) async {
+        if let delay { try? await Task.sleep(for: delay) }
+        log.events.append("speaker:\(agentID)/\(storedSessionID)")
+    }
 }

@@ -289,6 +289,7 @@ private struct PersonalityEditorView: View {
     @State private var tone: String
     @State private var style: String
     @State private var validationMessage: String?
+    @State private var expandsInstructions = false
 
     init(store: PersonalityStore, presentation: PersonalityEditorPresentation) {
         self.store = store
@@ -318,13 +319,23 @@ private struct PersonalityEditorView: View {
                 Text("Names use lowercase letters, numbers, hyphens, or underscores.")
             }
 
-            Section("Instructions") {
+            Section {
                 TextField(
                     "How should this personality behave?",
                     text: $systemPrompt,
                     axis: .vertical
                 )
                 .lineLimit(6...16)
+                .accessibilityIdentifier("personality.editor.instructions")
+            } header: {
+                HStack {
+                    Text("Instructions")
+                    Spacer()
+                    FocusedTextEditorButton(title: "Instructions",
+                                            identifier: "personality.editor.instructions.expand") {
+                        expandsInstructions = true
+                    }
+                }
             }
 
             Section("Advanced") {
@@ -339,6 +350,14 @@ private struct PersonalityEditorView: View {
                 }
             }
         }
+        .focusedTextEditor(
+            isPresented: $expandsInstructions,
+            title: "Instructions",
+            text: $systemPrompt,
+            placeholder: "How should this personality behave?",
+            identifier: "personality.editor.instructions.expand",
+            onSave: store.isSaving ? nil : { save() }
+        )
         .navigationTitle(isNew ? "New Personality" : "Edit Personality")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

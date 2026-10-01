@@ -42,6 +42,7 @@ final class RawConfigurationStore {
     var remainingBytes: Int {
         DirectHermesHostOperationsClient.maximumRawConfigurationBytes - draft.utf8.count
     }
+    var canSave: Bool { canEdit && hasChanges && remainingBytes >= 0 }
 
     func load() async {
         guard ownsScope, !isSaving else { return }

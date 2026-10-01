@@ -8,15 +8,23 @@ struct ChatCompletedTurn: Identifiable {
     let entries: [ChatTranscriptEntry]
     let elapsedSeconds: TimeInterval?
 
-    /// All folded work as one activity turn, so reasoning on either side of an
-    /// interim message still reads as one run inside the fold.
-    @MainActor var mergedActivity: ChatTranscriptEntry? {
-        let turns = entries.compactMap { entry -> ChatActivityTurn? in
-            guard case .activity(let turn) = entry else { return nil }
-            return turn
+    /// The fold's content in order. Work on either side of a message left
+    /// outside the fold reads as one run; notes folded with the work (tool
+    /// calls hidden) keep their place between it.
+    @MainActor var expandedEntries: [ChatTranscriptEntry] {
+        var result: [ChatTranscriptEntry] = []
+        for entry in entries {
+            if case .activity(let turn) = entry, case .activity(let previous)? = result.last {
+                result[result.count - 1] = .activity(ChatActivityTurn(id: previous.id, events: previous.events + turn.events))
+            } else {
+                result.append(entry)
+            }
         }
-        guard let first = turns.first else { return nil }
-        return .activity(ChatActivityTurn(id: first.id, events: turns.flatMap(\.events)))
+        return result
+    }
+
+    var foldsMessages: Bool {
+        entries.contains { if case .message = $0 { true } else { false } }
     }
 
     var label: String {
@@ -44,13 +52,26 @@ enum ChatTurnDisplayRow: Identifiable {
     }
 }
 
+/// Where a finished turn's interim notes go. For Claude they're the only
+/// readable reasoning (its thinking is saved blank), so they follow Show
+/// reasoning, not Show tool calls: into the fold with the work, or out of
+/// sight. A turn still running keeps them in place either way.
+enum ChatInterimReplyPlacement: Equatable, Sendable {
+    case inline, fold, hidden
+
+    static func following(_ visibility: ChatActivityVisibility) -> Self {
+        visibility.showReasoning ? .fold : .hidden
+    }
+}
+
 @MainActor
 enum ChatCompletedTurnProjection {
     static func rows(
         from entries: [ChatTranscriptEntry],
         isSending: Bool,
         enabled: Bool,
-        activityEvents: [ChatActivityEvent] = []
+        activityEvents: [ChatActivityEvent] = [],
+        interimReplies: ChatInterimReplyPlacement = .inline
     ) -> [ChatTurnDisplayRow] {
         // Incremental activity updates can leave a terminal reasoning marker
         // in the cached transcript after its content has been settled away.
@@ -86,9 +107,10 @@ enum ChatCompletedTurnProjection {
             }
             // Assistant text has no trustworthy "disposable progress" marker.
             // A reply before clarify or verification can be the useful answer,
-            // so every message stays visible, in order. All of the turn's
-            // reasoning and tool calls go into one fold, in order, placed where
-            // the work began.
+            // so every message that isn't an interim note stays visible, in
+            // order. All of the turn's reasoning and tool calls go into one
+            // fold, in order, placed where the work began; interim notes join
+            // it or leave with Show reasoning (`ChatInterimReplyPlacement`).
             var folded: [ChatTranscriptEntry] = []
             var turnRows: [ChatTurnDisplayRow] = []
             var foldPosition: Int?
@@ -104,8 +126,16 @@ enum ChatCompletedTurnProjection {
                         if foldPosition == nil { foldPosition = turnRows.count }
                         folded.append(entry)
                     }
-                case .message:
-                    turnRows.append(.entry(entry))
+                case .message(let item):
+                    switch item.metadata.isInterimReply ? interimReplies : .inline {
+                    case .inline:
+                        turnRows.append(.entry(entry))
+                    case .fold:
+                        if foldPosition == nil { foldPosition = turnRows.count }
+                        folded.append(entry)
+                    case .hidden:
+                        break
+                    }
                 }
             }
             if let foldPosition, let first = folded.first {
@@ -203,11 +233,14 @@ struct ChatCompletedTurnView<Content: View>: View {
             .buttonStyle(.plain)
             .accessibilityLabel(turn.label)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Hides the completed work." : "Shows thinking and tool calls. Assistant messages stay visible.")
+            .accessibilityHint(isExpanded ? "Hides the completed work."
+                : turn.foldsMessages ? "Shows the agent's thinking and notes." : "Shows thinking and tool calls. Assistant messages stay visible.")
             .accessibilityIdentifier("chat.\(turn.id)")
 
-            if isExpanded, let activity = turn.mergedActivity {
-                content(activity)
+            if isExpanded {
+                ForEach(turn.expandedEntries) { entry in
+                    content(entry)
+                }
             }
         }
     }

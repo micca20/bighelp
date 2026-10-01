@@ -472,8 +472,8 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
         XCTAssertTrue(shows("Saved while in the background", within: 20), "Returning to the app must reload the open chat.")
         record("3-foreground")
 
-        // 4. Step into the chat's people sheet, then close it.
-        openChatInfo(in: app)
+        // 4. Step into the chat's files, then close them.
+        chatMenuItem("chat.files", in: app).tap()
         sleep(2)
         appendSavedReply(to: "Return A", "Saved while the details were open")
         let done = app.buttons["Done"].firstMatch
@@ -564,14 +564,11 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
                 nerd.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
             }
         }
-        // Settings › Colors (bubble color and page picks) and its theme list.
+        // Settings › Appearance (bubble color and page picks).
         let colors = app.buttons["settings.themes"]
         for _ in 0..<6 where !(colors.exists && colors.isHittable) { app.swipeDown() }
         if colors.exists && colors.isHittable {
-            colors.tap(); alive("colors")
-            let more = app.buttons["appearance.more-themes"]
-            for _ in 0..<4 where !(more.exists && more.isHittable) { app.swipeUp() }
-            if more.exists && more.isHittable { more.tap(); alive("colors-more-themes") }
+            colors.tap(); alive("appearance")
         }
         openRootTab("tab.agents", in: app)
         if app.buttons["agents.create"].waitForExistence(timeout: 5), app.buttons["agents.create"].isEnabled {
@@ -1247,8 +1244,7 @@ final class NativeWorkspaceProductionUITests: BighelpUITestCase {
             return
         }
         app.buttons["home.drawer.open"].tap()
-        for id in ["menu.agents", "menu.chats",
-                   "menu.scheduled-tasks", "menu.hermes-tools"] {
+        for id in ["menu.agents", "menu.chats", "menu.scheduled-tasks"] {
             XCTAssertTrue(app.buttons[id].exists, id)
         }
         app.buttons["menu.done"].tap()

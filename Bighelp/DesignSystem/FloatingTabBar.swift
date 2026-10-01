@@ -79,7 +79,15 @@ struct FloatingTabBar: View {
     }
 
     var body: some View {
-        HStack(spacing: BighelpTokens.space8) {
+        // New chat floats centered above the tabs, so the tab row keeps the
+        // same width on every screen.
+        VStack(spacing: BighelpTokens.space8) {
+            if let onNewChat {
+                RootComposeButton { onNewChat() }
+                    .accessibilityShowsLargeContentViewer {
+                        Label(Self.newChatVisibleLabel, systemImage: "square.and.pencil")
+                    }
+            }
             // Five icons in one row, like a dock; names stay in VoiceOver and
             // the large content viewer.
             navigationRow(constrainsWidth: true) {
@@ -90,12 +98,6 @@ struct FloatingTabBar: View {
             .padding(6)
             .bighelpNavigationGlass(in: Capsule())
             .sensoryFeedback(.selection, trigger: tabChanges)
-            if let onNewChat {
-                RootComposeButton { onNewChat() }
-                    .accessibilityShowsLargeContentViewer {
-                        Label(Self.newChatVisibleLabel, systemImage: "square.and.pencil")
-                    }
-            }
         }
         .frame(maxWidth: 620)
         .accessibilityElement(children: .contain)
@@ -309,6 +311,69 @@ private struct NavigationSurface<S: InsettableShape>: ViewModifier {
         }
     }
 }
+
+#if os(visionOS)
+/// Vision Pro's tabs: a vertical glass strip beside the window, where visionOS
+/// puts its own tab bars. Each target is 60pt and lights up where you look,
+/// well away from the window's move and close controls under it.
+struct VisionTabOrnament: View {
+    @Binding var selection: AppTab
+    var unread: Set<AppTab> = []
+    var onNewChat: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: BighelpTokens.space8) {
+            ForEach(AppTab.allCases) { tab in
+                let isSelected = selection == tab
+                Button {
+                    selection = tab
+                } label: {
+                    Image(systemName: tab.systemImage(selected: isSelected))
+                        .font(.title2.weight(.semibold))
+                        .frame(width: 60, height: 60)
+                        .background {
+                            if isSelected { Circle().fill(.white.opacity(0.22)) }
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            if unread.contains(tab), !isSelected {
+                                Circle().fill(Color.accentColor).frame(width: 10, height: 10).padding(8)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .buttonBorderShape(.circle)
+                .contentShape(.hoverEffect, Circle())
+                .hoverEffect(.highlight)
+                .help(tab.title)
+                .accessibilityLabel(tab.title)
+                .accessibilityValue(unread.contains(tab) && !isSelected ? "New" : "")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityIdentifier(tab.accessibilityIdentifier)
+            }
+            if let onNewChat {
+                Divider().frame(width: 36)
+                Button(action: onNewChat) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.title2.weight(.semibold))
+                        .frame(width: 60, height: 60)
+                }
+                .buttonStyle(.plain)
+                .buttonBorderShape(.circle)
+                .contentShape(.hoverEffect, Circle())
+                .hoverEffect(.highlight)
+                .help(FloatingTabBar.newChatVisibleLabel)
+                .accessibilityLabel(FloatingTabBar.newChatAccessibilityLabel)
+                .accessibilityIdentifier("root.new-chat")
+            }
+        }
+        .padding(BighelpTokens.space12)
+        .glassBackgroundEffect(in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Primary navigation")
+        .accessibilityIdentifier("primary-navigation")
+    }
+}
+#endif
 
 private extension AppTab {
     var title: String {

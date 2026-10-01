@@ -190,7 +190,7 @@ final class DirectHermesNativePluginClient {
         let requestGuard = try DirectHermesNativeRequestGuard(etag: context.etag)
         let request = DirectHermesHTTPRequest(
             path: "/api/plugins/loopdy/native/" + route.path, method: .post, body: payload,
-            maximumResponseBytes: route.maximumResponseBytes
+            maximumResponseBytes: route.maximumResponseBytes, timeout: route.timeout
         )
         let response: DirectHermesHTTP.Response
         do {
@@ -250,6 +250,7 @@ final class DirectHermesNativePluginClient {
         let feature: String
         let isMutation: Bool
         var maximumResponseBytes = DirectHermesWire.maximumMessageBytes
+        var timeout: TimeInterval = 20
     }
 
     private static func route(_ operation: WorkspaceOperation) throws -> Route {
@@ -316,8 +317,30 @@ final class DirectHermesNativePluginClient {
             return Route(path: "board/approvals", feature: "native-agent-board-v1", isMutation: false,
                          maximumResponseBytes: 2 * 1_024 * 1_024)
         case .usageList:
+            // The host asks every provider before answering: finding them, then up to 20 seconds.
             return Route(path: "usage/list", feature: "native-provider-usage-v1", isMutation: false,
-                         maximumResponseBytes: 196_608)
+                         maximumResponseBytes: 196_608, timeout: 60)
+        case .peopleSpeaking:
+            // Sent before each message; a slow host never holds a message for long.
+            return Route(path: "people/speaking", feature: "native-people-v1", isMutation: true,
+                         maximumResponseBytes: 16_384, timeout: 5)
+        case .providerSignInList:
+            // Claude Code answers its own status check on the host (a few seconds at most).
+            return Route(path: "provider-sign-in/list", feature: "native-provider-sign-in-v1", isMutation: false,
+                         maximumResponseBytes: 65_536, timeout: 30)
+        case .providerSignInStart:
+            // The host waits up to 12 seconds for the provider's tool to show its link.
+            return Route(path: "provider-sign-in/start", feature: "native-provider-sign-in-v1", isMutation: true,
+                         maximumResponseBytes: 16_384, timeout: 30)
+        case .providerSignInStatus:
+            return Route(path: "provider-sign-in/status", feature: "native-provider-sign-in-v1", isMutation: false,
+                         maximumResponseBytes: 16_384)
+        case .providerSignInSubmit:
+            return Route(path: "provider-sign-in/submit", feature: "native-provider-sign-in-v1", isMutation: true,
+                         maximumResponseBytes: 16_384)
+        case .providerSignInCancel:
+            return Route(path: "provider-sign-in/cancel", feature: "native-provider-sign-in-v1", isMutation: true,
+                         maximumResponseBytes: 16_384)
         case .boardIdentity:
             return Route(path: "board/identity", feature: "native-agent-board-v1", isMutation: false,
                          maximumResponseBytes: 2 * 1_024 * 1_024)

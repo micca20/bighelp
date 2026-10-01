@@ -216,6 +216,7 @@ final class WebhookEditorStore {
 struct WebhookEditorView: View {
     @Bindable var store: WebhookEditorStore
     @State private var presentsCreate = false
+    @State private var search = ""
 
     var body: some View {
         Group {
@@ -228,11 +229,12 @@ struct WebhookEditorView: View {
                     }
                     status
                     if let catalog = store.catalog {
-                        platform(catalog)
+                        if !ManagementSearch.isActive(search) { platform(catalog) }
                         subscriptions(catalog)
                     }
                 }
                 .listStyle(.insetGrouped)
+                .searchable(text: $search, prompt: "Search webhooks")
                 .refreshable { await store.refresh() }
             } else {
                 ContentUnavailableView(
@@ -318,7 +320,13 @@ struct WebhookEditorView: View {
 
     private func subscriptions(_ catalog: HermesWebhookCatalog) -> some View {
         Section("Webhooks") {
-            ForEach(catalog.subscriptions) { webhook in
+            let shown = catalog.subscriptions.filter {
+                ManagementSearch.matches(search, $0.name, $0.description, $0.events.joined(separator: " "))
+            }
+            if ManagementSearch.isActive(search), shown.isEmpty {
+                ContentUnavailableView.search(text: search.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            ForEach(shown) { webhook in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(webhook.name).font(.headline)

@@ -20,7 +20,7 @@ final class PrimaryNavigationSelectionTests: XCTestCase {
             let content = FloatingTabBar(selection: .constant(tab), onNewChat: {})
                 .frame(width: 402, height: 110)
                 .background(Color.white)
-                .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light, themeID: .bighelp))
+                .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light))
                 .environment(\.colorScheme, .light)
             let host = UIHostingController(rootView: content)
             host.safeAreaRegions = []

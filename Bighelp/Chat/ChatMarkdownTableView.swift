@@ -1,17 +1,34 @@
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 /// A Markdown pipe table in a chat: a header row and rows of cells that wrap
 /// at a readable width. A table wider than the bubble scrolls sideways.
+/// Double-tap a cell to select its words; the button at the top right copies
+/// the whole table.
 struct ChatMarkdownTableView: View {
     let table: MarkdownTable
     var textColor: Color?
 
     @BighelpThemeReader private var theme: BighelpTheme
+    @Environment(\.openURL) private var openURL
+    @State private var copiedAt: Date?
 
     /// Cells wrap here instead of growing into one long line.
     static let maximumColumnWidth: CGFloat = 220
 
     var body: some View {
+        // The copy button sits just above the table's top right, so it never
+        // covers a column name when a wide table scrolls under it.
+        VStack(alignment: .trailing, spacing: BighelpTokens.space4) {
+            copyButton
+            grid
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chat.markdown-table")
+    }
+
+    private var grid: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             ChatTableLayout(columns: table.header.count, maximumColumnWidth: Self.maximumColumnWidth) {
                 ForEach(table.header.indices, id: \.self) { column in
@@ -34,16 +51,41 @@ struct ChatMarkdownTableView: View {
             .padding(BighelpTokens.hairline)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("chat.markdown-table")
+    }
+
+    private var copyButton: some View {
+        Button {
+            ChatTableCopy.copy(table)
+            BighelpHaptics.success()
+            UIAccessibility.post(notification: .announcement, argument: "Table copied")
+            let now = Date.now
+            withAnimation(.snappy) { copiedAt = now }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                if copiedAt == now { withAnimation(.snappy) { copiedAt = nil } }
+            }
+        } label: {
+            Image(systemName: copiedAt == nil ? "doc.on.doc" : "checkmark")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(copiedAt == nil ? theme.secondaryText : theme.action)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 26, height: 26)
+                .background(theme.primaryText.opacity(0.06), in: .circle)
+                // A comfortable target around the small icon, without adding height.
+                .frame(width: 44, height: 26)
+                .contentShape(.rect.inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copiedAt == nil ? "Copy table" : "Table copied")
+        .accessibilityIdentifier("chat.markdown-table.copy")
     }
 
     private func cell(_ markdown: String, column: Int, isHeader: Bool, isLastRow: Bool) -> some View {
         let alignment = table.alignments.indices.contains(column) ? table.alignments[column] : .leading
-        return Text(ChatInlineMarkdown.attributedText(markdown))
-            .bighelpMessageFont(.body, weight: isHeader ? .semibold : nil)
-            .foregroundStyle(textColor ?? theme.primaryText)
-            .multilineTextAlignment(textAlignment(alignment))
+        return ChatTableCellText(
+            markdown: markdown, isHeader: isHeader, alignment: nativeAlignment(alignment),
+            textColor: textColor ?? theme.primaryText, theme: theme, openURL: openURL
+        )
             .padding(.horizontal, BighelpTokens.space12)
             .padding(.vertical, BighelpTokens.space8)
             // The layout sizes every cell to its column and row; fill it so the
@@ -66,11 +108,11 @@ struct ChatMarkdownTableView: View {
         return name.isEmpty ? value : "\(name): \(value)"
     }
 
-    private func textAlignment(_ alignment: MarkdownTable.Alignment) -> TextAlignment {
+    private func nativeAlignment(_ alignment: MarkdownTable.Alignment) -> NSTextAlignment {
         switch alignment {
-        case .leading: .leading
+        case .leading: .natural
         case .center: .center
-        case .trailing: .trailing
+        case .trailing: .right
         }
     }
 
@@ -80,6 +122,118 @@ struct ChatMarkdownTableView: View {
         case .center: .center
         case .trailing: .trailing
         }
+    }
+}
+
+/// One cell as native text, like the rest of the message: double-tap selects
+/// a word, drag the handles for more, and Copy is in the menu.
+struct ChatTableCellText: UIViewRepresentable {
+    let markdown: String
+    let isHeader: Bool
+    let alignment: NSTextAlignment
+    let textColor: Color
+    let theme: BighelpTheme
+    let openURL: OpenURLAction
+
+    func makeCoordinator() -> Coordinator { Coordinator(openURL: openURL) }
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView(usingTextLayoutManager: false)
+        view.delegate = context.coordinator
+        view.isEditable = false
+        view.isSelectable = true
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.isOpaque = false
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.textContainer.lineBreakMode = .byWordWrapping
+        view.adjustsFontForContentSizeCategory = true
+        view.setContentHuggingPriority(.required, for: .vertical)
+        view.accessibilityIdentifier = "chat.markdown-table.cell"
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.openURL = openURL
+        view.tintColor = UIColor(theme.action)
+        view.linkTextAttributes = [.foregroundColor: UIColor(theme.action),
+                                   .underlineStyle: NSUnderlineStyle.single.rawValue]
+        let text = ChatNativeMarkdownAttributedBuilder.tableCell(markdown, isHeader: isHeader, alignment: alignment, style: .init(
+            primaryText: UIColor(textColor), secondaryText: UIColor(theme.secondaryText),
+            accent: UIColor(theme.action), codeBackground: UIColor(theme.primaryText.opacity(0.07)),
+            proseLineSpacing: 0, traitCollection: view.traitCollection, theme: theme))
+        if view.attributedText?.isEqual(to: text) != true {
+            view.attributedText = text
+            view.invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// Unwrapped width when asked for its ideal size, so columns fit their text.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? .greatestFiniteMagnitude
+        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: ceil(min(size.width, width)), height: ceil(size.height))
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var openURL: OpenURLAction
+
+        init(openURL: OpenURLAction) { self.openURL = openURL }
+
+        /// Links open in the browser chosen in Settings, like the rest of the chat.
+        func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem,
+                      defaultAction: UIAction) -> UIAction? {
+            guard case .link(let url) = textItem.content else { return defaultAction }
+            return UIAction { [openURL] _ in openURL(url) }
+        }
+    }
+}
+
+/// The whole table on the clipboard: a Markdown table for Messages and Notes,
+/// tab-separated text for Numbers and Sheets, and an HTML table for Mail.
+enum ChatTableCopy {
+    static func copy(_ table: MarkdownTable) {
+        UIPasteboard.general.setItems([[
+            UTType.plainText.identifier: markdown(table),
+            UTType.tabSeparatedText.identifier: tabSeparated(table),
+            UTType.html.identifier: html(table),
+        ]])
+    }
+
+    static func markdown(_ table: MarkdownTable) -> String {
+        func row(_ cells: [String]) -> String {
+            "| " + cells.map { plain($0).replacingOccurrences(of: "|", with: "\\|") }.joined(separator: " | ") + " |"
+        }
+        let rule = "|" + table.header.indices.map { column in
+            switch table.alignments.indices.contains(column) ? table.alignments[column] : .leading {
+            case .leading: " --- "
+            case .center: " :---: "
+            case .trailing: " ---: "
+            }
+        }.joined(separator: "|") + "|"
+        return ([row(table.header), rule] + table.rows.map(row)).joined(separator: "\n")
+    }
+
+    static func tabSeparated(_ table: MarkdownTable) -> String {
+        ([table.header] + table.rows).map { cells in
+            cells.map { plain($0).replacingOccurrences(of: "\t", with: " ") }.joined(separator: "\t")
+        }.joined(separator: "\n")
+    }
+
+    static func html(_ table: MarkdownTable) -> String {
+        func escaped(_ text: String) -> String {
+            plain(text).replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+        }
+        let head = "<tr>" + table.header.map { "<th>\(escaped($0))</th>" }.joined() + "</tr>"
+        let body = table.rows.map { "<tr>" + $0.map { "<td>\(escaped($0))</td>" }.joined() + "</tr>" }.joined()
+        return "<table><thead>\(head)</thead><tbody>\(body)</tbody></table>"
+    }
+
+    /// A cell's words without Markdown marks.
+    private static func plain(_ markdown: String) -> String {
+        MarkdownDocument(markdown).visiblePlainText.replacingOccurrences(of: "\n", with: " ")
     }
 }
 

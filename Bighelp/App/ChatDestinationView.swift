@@ -8,6 +8,7 @@ struct ChatDestinationView: View {
     let model: ChatModel
     @State private var sessionAppearance: SessionAppearanceStore?
     @State private var isSessionFilesPresented = false
+    @State private var isChatAppearancePresented = false
     @State private var requestsSessionFilesAfterDetails = false
     @State private var isNativeAttentionPresented = false
     /// Briefly after the chat opens or the app returns (a Dynamic Island or
@@ -61,6 +62,9 @@ struct ChatDestinationView: View {
     let onOpenSession: (SessionSummary) -> Void
     let onSelectTab: (AppTab) -> Void
     let onOpenScheduledTasks: () -> Void
+    /// ☰ lists Projects and Kanban when the host has them.
+    let onOpenProjects: (() -> Void)?
+    let onOpenKanban: (() -> Void)?
     let onSelectAgent: (AgentProfile) -> Void
     let onOpenAgentSessions: (String) -> Void
     let onOpenApproval: (ApprovalRequest) -> Void
@@ -134,6 +138,8 @@ struct ChatDestinationView: View {
         onOpenSession: @escaping (SessionSummary) -> Void,
         onSelectTab: @escaping (AppTab) -> Void,
         onOpenScheduledTasks: @escaping () -> Void,
+        onOpenProjects: (() -> Void)? = nil,
+        onOpenKanban: (() -> Void)? = nil,
         onSelectAgent: @escaping (AgentProfile) -> Void,
         onOpenAgentSessions: @escaping (String) -> Void,
         onOpenApproval: @escaping (ApprovalRequest) -> Void,
@@ -166,6 +172,8 @@ struct ChatDestinationView: View {
         self.onOpenSession = onOpenSession
         self.onSelectTab = onSelectTab
         self.onOpenScheduledTasks = onOpenScheduledTasks
+        self.onOpenProjects = onOpenProjects
+        self.onOpenKanban = onOpenKanban
         self.onSelectAgent = onSelectAgent
         self.onOpenAgentSessions = onOpenAgentSessions
         self.onOpenApproval = onOpenApproval
@@ -176,22 +184,9 @@ struct ChatDestinationView: View {
         chatCanvas
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.canvas")
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let native = model.nativeConversationClient,
-               !native.prompts.isEmpty {
-                Button {
-                    isNativeAttentionPresented = true
-                } label: {
-                    Label("Hermes needs your response",
-                          systemImage: "exclamationmark.bubble")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .accessibilityIdentifier("direct-hermes.attention")
-            }
-        }
-        .sheet(isPresented: $isNativeAttentionPresented) {
-            if let native = model.nativeConversationClient { DirectHermesAttentionView(client: native) }
-        }
+        .chatAttention(client: model.nativeConversationClient,
+                       agentName: identity?.name ?? model.workingAgentName,
+                       isPresented: $isNativeAttentionPresented, canPopUp: canPopUpAttention)
         .onChange(of: currentAppearanceScope, initial: true) { _, _ in reconcileAppearanceStore() }
         .onAppear {
             reconcileAppearanceStore()
@@ -230,7 +225,7 @@ struct ChatDestinationView: View {
         return !responseHapticsCoveredByRoot
             && !isNativeAttentionPresented
             && !isWorkspacePresented && !isVoiceWorkspacePresented
-            && voicePresentation == nil && !isPeopleAndChatPresented
+            && voicePresentation == nil && !isPeopleAndChatPresented && !isChatAppearancePresented
             && !attachmentFlow.isActionMenuPresented && !isPhotoPickerPresented
             && !isFilePickerPresented && !isCameraPickerPresented && !isDocumentScannerPresented
             && !isHermesWorkspacePickerPresented && !isProjectChangesPresented
@@ -243,8 +238,22 @@ struct ChatDestinationView: View {
         appState.path.last == .chat(conversationID: model.conversationID)
             && !responseHapticsCoveredByRoot && !isNativeAttentionPresented
             && !isWorkspacePresented && !isVoiceWorkspacePresented && voicePresentation == nil
-            && !isPeopleAndChatPresented && !isSessionFilesPresented
+            && !isPeopleAndChatPresented && !isSessionFilesPresented && !isChatAppearancePresented
             && !isHermesWorkspacePickerPresented && !isProjectChangesPresented
+    }
+
+    /// A question or approval may pop up over the chat: it's on screen, the app
+    /// is in front, and nothing else (a picker, a sheet, voice) is up.
+    private var canPopUpAttention: Bool {
+        scenePhase == .active && voicePresentation == nil
+            && appState.path.last == .chat(conversationID: model.conversationID)
+            && !responseHapticsCoveredByRoot
+            && !isWorkspacePresented && !isVoiceWorkspacePresented
+            && !isPeopleAndChatPresented && !isSessionFilesPresented && !isChatAppearancePresented
+            && !isHermesWorkspacePickerPresented && !isProjectChangesPresented
+            && !isNativeSessionControlsPresented && !attachmentFlow.isActionMenuPresented
+            && !isPhotoPickerPresented && !isFilePickerPresented
+            && !isCameraPickerPresented && !isDocumentScannerPresented
     }
 
     /// Coming back to this chat reloads it exactly like Force Refresh, so it is
@@ -263,6 +272,7 @@ struct ChatDestinationView: View {
         voicePresentation = featureStore.makeVoicePresentation(
             for: model.conversationID,
             mode: settings.voiceMode,
+            transcription: settings.voiceTranscription,
             conversationMode: .turnBased,
             liveProvider: settings.liveVoiceProvider,
             liveVoice: settings.liveVoice(for: settings.liveVoiceProvider)
@@ -304,6 +314,7 @@ struct ChatDestinationView: View {
                 voicePresentation = featureStore.makeVoicePresentation(
                     for: model.conversationID,
                     mode: settings.voiceMode,
+                    transcription: settings.voiceTranscription,
                     conversationMode: settings.voiceConversationMode,
                     liveProvider: settings.liveVoiceProvider,
                     liveVoice: settings.liveVoice(for: settings.liveVoiceProvider)
@@ -311,6 +322,9 @@ struct ChatDestinationView: View {
             },
             onApprovalTap: onOpenApproval,
             onPeopleTap: { isPeopleAndChatPresented = true },
+            onChatFilesTap: { isSessionFilesPresented = true },
+            onChatAppearanceTap: sessionAppearance == nil ? nil : { isChatAppearancePresented = true },
+            onSessionToolsTap: nativeSessionControls == nil ? nil : { isNativeSessionControlsPresented = true },
             onWorkspaceTap: { presentWorkspace() },
             // "Go to…" (Quick Workspace) is an advanced host tool: Nerd Mode only.
             showsWorkspaceButton: settings.nerdModeEnabled,
@@ -470,6 +484,12 @@ struct ChatDestinationView: View {
         }
         .sheet(isPresented: $isSessionFilesPresented) {
             ChatSessionFilesView(model: model)
+        }
+        .sheet(isPresented: $isChatAppearancePresented) {
+            if let sessionAppearance {
+                NavigationStack { SessionAppearanceView(store: sessionAppearance) }
+                    .presentationDragIndicator(.visible)
+            }
         }
         .onChange(of: voicePresentation != nil) { _, isPresented in
             if isPresented { VoiceLaunchState.shared.finish() }
@@ -647,6 +667,7 @@ struct ChatDestinationView: View {
             voicePresentation = featureStore.makeVoicePresentation(
                 for: model.conversationID,
                 mode: settings.voiceMode,
+                transcription: settings.voiceTranscription,
                 conversationMode: settings.voiceConversationMode,
                 liveProvider: settings.liveVoiceProvider,
                 liveVoice: settings.liveVoice(for: settings.liveVoiceProvider)
@@ -864,7 +885,8 @@ struct ChatDestinationView: View {
                     dismissWorkspace()
                     onOpenScheduledTasks()
                 },
-                onOpenWorkspaceHub: { openTab(.workspace) },
+                onOpenProjects: onOpenProjects.map { open in { dismissWorkspace(); open() } },
+                onOpenKanban: onOpenKanban.map { open in { dismissWorkspace(); open() } },
                 onOpenWorkspaces: openHermesWorkspaces,
                 onSelectAgent: { agent in
                     dismissWorkspace()
@@ -906,7 +928,8 @@ struct ChatDestinationView: View {
                 onOpenScheduledTasks: {
                     closeVoiceAnd(onOpenScheduledTasks)
                 },
-                onOpenWorkspaceHub: { closeVoiceAnd { onSelectTab(.workspace) } },
+                onOpenProjects: onOpenProjects.map { open in { closeVoiceAnd(open) } },
+                onOpenKanban: onOpenKanban.map { open in { closeVoiceAnd(open) } },
                 onOpenWorkspaces: {
                     closeVoiceAnd { presentHermesWorkspacePicker() }
                 },

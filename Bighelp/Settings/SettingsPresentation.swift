@@ -58,9 +58,12 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
     case workspace
     case agentsAndPersonalities
     case chat
+    case voice
     case notifications
+    case providerUsage
     case permissions
     case connectivityAndNotifications
+    case companion
     case help
     case watch
 
@@ -71,11 +74,14 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .accountAndDevices: "Account & Devices"
         case .workspace: "Workspace"
         case .agentsAndPersonalities: "Agents & Personalities"
-        case .chat: "Chat & Voice"
+        case .chat: "Chat"
+        case .voice: "Voice"
         case .notifications: "Notifications"
+        case .providerUsage: "Provider usage"
         case .appearance: "Appearance"
         case .permissions: "Permissions"
         case .connectivityAndNotifications: "Hosts"
+        case .companion: "Companion pet"
         case .help: "Help & feedback"
         case .watch: "Apple Watch"
         }
@@ -86,11 +92,14 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .accountAndDevices: "Profile, bighelp Link, and paired devices"
         case .workspace: "Sessions, scheduled tasks, and gestures"
         case .agentsAndPersonalities: "Manage how Hermes agents present themselves"
-        case .chat: "Reasoning, tool calls, inline UI, and voice"
-        case .notifications: "Optional host enrollment, iOS access, and provider topics"
-        case .appearance: "Theme, color mode, chat layout and Reflective Vision"
-        case .permissions: "iOS access, status, and recovery"
+        case .chat: "Haptics, reactions and the Dynamic Island"
+        case .voice: "How voice chats sound"
+        case .notifications: "Alerts from your agents"
+        case .providerUsage: "Which plans and balances show"
+        case .appearance: "Colors, light and dark, chat layout"
+        case .permissions: "Microphone, camera, photos and more"
         case .connectivityAndNotifications: "The computers your agents run on"
+        case .companion: "Character, motion and agent"
         case .help: "Report a problem, guides and version"
         case .watch: "Pairing and connection"
         }
@@ -101,14 +110,44 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .accountAndDevices: "person.crop.circle.badge.checkmark"
         case .workspace: "rectangle.3.group"
         case .agentsAndPersonalities: "theatermasks"
-        case .chat: "bubble.left.and.text.bubble.right"
-        case .notifications: "bell.badge"
-        case .appearance: "paintpalette"
-        case .permissions: "hand.raised"
+        case .chat: "bubble.left.and.bubble.right.fill"
+        case .voice: "waveform"
+        case .notifications: "bell.badge.fill"
+        case .providerUsage: "gauge.with.dots.needle.50percent"
+        case .appearance: "paintpalette.fill"
+        case .permissions: "hand.raised.fill"
         case .connectivityAndNotifications: "desktopcomputer"
-        case .help: "questionmark.circle"
+        case .companion: "pawprint.fill"
+        case .help: "questionmark.circle.fill"
         case .watch: "applewatch"
         }
     }
 
+    /// Tile colors, so rows are easy to tell apart at a glance.
+    var tintHex: String? {
+        switch self {
+        case .appearance: "8E6BD8"
+        case .chat: "3F7FD9"
+        case .voice: "E0533D"
+        case .notifications: "E5484D"
+        case .providerUsage: "2F9E6B"
+        case .connectivityAndNotifications: "5B6B7F"
+        case .permissions: "3478F6"
+        case .watch: "6E6E73"
+        case .companion: "F28B32"
+        case .help: "2E9CA6"
+        default: nil
+        }
+    }
+
+    /// Existing tests and deep links know these rows by their older names.
+    var accessibilityIdentifier: String {
+        switch self {
+        case .appearance: "settings.themes"
+        case .voice: "settings.chat.voice-settings"
+        case .providerUsage: "settings.provider-usage"
+        case .companion: "companion-settings-entry"
+        default: "settings.menu.\(rawValue)"
+        }
+    }
 }

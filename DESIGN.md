@@ -25,10 +25,12 @@ are historical (`docs/ui-v3-design.md`).
 - Light: cream canvas #FFF9F5, white cards, #F3ECE6 incoming bubbles, ink #1C1A19. Dark: #121110 canvas,
   #1E1C1B / #292624 surfaces, cream text. Actions are lavender-purple (#7B52E0 light, #C9B6FF dark); outgoing
   bubbles #7B52E0 with white text. All of this lives in `BighelpTheme` so screens read theme tokens, not system colors.
-- Settings › Appearance › **Colors** (`AppearanceStudioView`) is the everyday theme editor: a live light/dark preview,
-  12 bubble colors (`BighelpBubbleColor`, Lavender is Ember's own), the light page (Cream #FFF9F5 or Paper #FFFFFF)
-  and the dark page (Graphite #1C1C1F or Black #000000). High contrast keeps its own pages. Custom themes, import,
-  export, fonts and logos sit one tap deeper under More themes; picking one of those clears the bubble color.
+- Settings › **Appearance** (`AppearanceStudioView`) is the one place for the look: a live light/dark preview,
+  12 bubble colors (`BighelpBubbleColor`, Lavender is Ember's own), the light page (Cream #FFF9F5 or Paper #FFFFFF),
+  the dark page (Graphite #1C1C1F or Black #000000), Automatic/Light/Dark and Chat layout. High contrast keeps its
+  own pages. There are no other themes: the old theme list (Nous, Superpilot, custom themes with import, export,
+  fonts and logos) was removed because picking a bubble color quietly replaced it. First-run setup offers the same
+  bubble colors (`AppearanceBubbleGrid`).
 - Agents are organic blobs and glossy orbs in their own palette color (`AgentPersonaAvatar`, via `AvatarView`).
   The avatar is the live status indicator: idle, listening, thinking, replying, all set, has an update
   (`AgentLiveState`). States must come from real data.
@@ -40,15 +42,23 @@ are historical (`docs/ui-v3-design.md`).
   from `Bighelp/Resources/AvatarKit.json`, acting out the agent's state (listening, thinking, waiting on you,
   talking, happy, sleeping) plus extra moves for its current work. The look is saved as the agent's avatar picture and as its
   chat companion.
+- Menu, Hermes tools and Settings icons are bighelp's own line glyphs (`Design/Glyphs`, `BighelpGlyph`): a 24-pt
+  grid, round 2-pt strokes and the brand's dot, with agents drawn as the orb with two eyes. Call sites still name SF
+  Symbols; ones without a glyph fall back to the symbol. Edit `glyphs.py`, then run `export_assets.py`.
 - Product type is SF Pro. Root screens use large titles; section captions are small, bold, letterspaced and muted.
 
 ## Navigation and simplicity
 
 iPhone is an agent home. The bottom bar is **Chat, Feed, Ideas, Goals, Apps**, all for the selected agent.
-Chat opens that agent's latest chat with its live avatar big at the top: tap the avatar for its profile (Activity,
-Approvals, Schedules, Identity), tap the name to switch agents or open a group chat, and ☰ for new chats, Agents,
-Scheduled tasks, Settings and recent chats. The header's compose button starts a chat: one agent picked is a 1:1
-chat, two or more a group. The avatar reacts to what the agent is doing (thinking, writing code, browsing, making
+Chat opens that agent's latest chat with its live avatar big at the top: tap the avatar for its profile (This chat's
+model and reasoning, then Activity, Approvals, Schedules, Identity), tap the name to switch agents or open a group
+chat, and ☰ for everything else. ☰'s first screen fits without
+scrolling: the host as one switcher row on top, then New chat (Group beside it), Agents, Projects, Kanban, Scheduled
+tasks and Settings, then Recent chats with See all. Provider usage and Nerd Mode's folder sit under More at the bottom.
+Keep it that short: a new destination goes where people already look, not on the first screen. A tap on the
+header's compose button starts a new chat with this agent right away; touch and hold picks agents: one is a 1:1
+chat, two or more a group. On the chat list, New chat floats centered above the bottom bar, which keeps the
+same width as on every other screen. The avatar reacts to what the agent is doing (thinking, writing code, browsing, making
 images…), driven by the running tool (`AgentActivityKind`, shared with the island as `BighelpActivityPose`). On
 phones with a Dynamic Island, the island names the work. In the app it grows into a stage
 (`AgentActivityIsland` + `IslandStage`): the name and the work beside the camera, and underneath, the pet acting
@@ -60,15 +70,27 @@ a fixed category). Every phone chat uses this big-avatar header; only the Chat t
 bar, any other chat (from the list, Feed, a task) has Back. Chat Info lives in ⋯ › People & Chat, and the line under
 the name says "Updating…" while a chat reloads from Hermes. iPad works the same way, with no always-open sidebar:
 ☰ slides the menu in from the leading edge, and chats use the width of the screen. On Vision Pro bighelp always
-starts in its own window; the agent can also stand in the room in its own volume (Settings › In your space), and
-☰ › Simple mode leaves just the agent, with Open bighelp under it to come back. The avatar never opens by itself.
+starts in its own window. The tabs sit in a strip beside the window (`VisionTabOrnament`), clear of the system's
+move and close controls under it; ☰ opens the menu as a column inside the window and the page beside it narrows
+(`VisionSideMenu`). Everything you look at and pinch is at least 56pt, and Appearance › Transparency sets how much
+of the room shows through the window. Titles and toolbar buttons use the app's ink in light mode, since the system
+draws them white. The agent can also stand in the room as a 3D character in its own volume (Settings › In your
+space): kit characters are sculpted from their own art like vinyl toys, round bodies with faces laid on them
+(`SpatialAvatarSculpt`), with no backdrop, a real shadow, the same moods as in the app, and a slow look around.
+It opens within reach; pinch it to make it hop, drag to turn it, and drag a corner of its volume to make it
+bigger or smaller. It wears the Agent Studio headwear and pattern and plays the chosen moves. The avatar designer
+shows the same 3D character beside its choices, with moods to try (listening, thinking, talking, happy, sleepy)
+and See it in your room, which puts the look being designed into the room at full size. ☰ › More › Simple mode leaves just
+the agent, with Open bighelp under it to come back. The avatar never opens by itself.
 
 Widgets (`BighelpActivityShared`, rendered by the Live Activity extension) use the Colors picks through
 `BighelpWidgetSnapshot` palettes and show real agent pictures (`BighelpActivityAvatarStore`). **Your Agent** is the
 lead widget: the agent's face ringed while it works with a badge for the work, its latest Feed posts and Goals,
 New chat, and Chat/Feed/Ideas/Goals links (`loopdy://agent/<tab>`); it also comes in Lock Screen sizes. Active
 Chats, Scheduled Tasks, New Chat and Recent Chats share the same look. Tinted and Lock Screen modes fall back to
-system styles.
+system styles. **Kanban** shows cards from the boards, filtered by board, status and agent and grouped by status,
+agent or board; tapping a card opens it in the app. On Vision Pro the same widgets sit on a wall or table as glass,
+without the Lock Screen sizes.
 
 Apps: **Artifacts** lists what the agent made or changed lately, newest first, from one plugin request
 (`files.recent`, plugin 2.15+): its `write_file`/`patch` history and deliveries plus new top-level files. It never
@@ -79,12 +101,23 @@ generated (`attachments.recent`), then pictures from its posts; tap one for the 
 The app icon badge means "something arrived while you were away": pushes set it, opening bighelp clears it
 (`BighelpAppBadge`). The app never sets a count of its own, so it can't get stuck on items the user can't see.
 
+**Apple Watch** is a remote for bighelp on the iPhone, in the same dark palette (lavender actions and your own
+messages, Ember's mark). Home puts **Talk to** your agent first (dictate or type; replies are read aloud unless the
+speaker button is off), then **Needs you** (approvals showing exactly what they're for, wider approvals asking
+again; questions with their choices or a spoken answer), recent **Chats**, and the agent's **Feed, Ideas and Goals**
+with each item's full text. Change agent sits at the bottom. **Open on iPhone** goes straight there when bighelp is
+open, or taps through from a notification; Handoff offers it too. Anything too big for the Watch says to answer on
+the iPhone.
+
+**CarPlay** is voice only: opening bighelp in the car starts a new chat with the default agent and listens. The
+car screen says Connecting, Listening, Thinking or Speaking, with End and Mute; Talk starts again.
+
 Shortcuts run with bighelp closed, in the background or open. The app closes its host connection in the
 background, so a Shortcut first proves the host answers (the agent list) and reconnects once if not.
 
 Reactions use Hermes' own: the app saves them with `message.react`, and with Settings › Chat › "Agents see your
 reactions" on (the host's `display.message_reactions`), Hermes tells the agent at its next turn. The app sends no
-note or turn of its own. Agents tapback through the plugin's `loopdy_react_to_message`. A reply that is only a
+note or turn of its own. Agents tapback through the plugin's `bighelp_react_to_message`. A reply that is only a
 silence marker follows Hermes' rules (`ChatSilentReply`).
 
 Feed, Ideas and Goals start empty. They fill only when the user asks the agent for updates; the agent then posts
@@ -98,16 +131,48 @@ unseen. The agent reads the ratings and reasons before it posts (plugin 2.19.0).
 **Projects** (☰ › Projects) are Hermes projects shown the way Claude shows them: cards with the project's emoji
 and color, description and recent use; a project page with **New chat in this project**, its chats and its
 folders. A chat started there runs in the project's folder (Hermes files chats by folder, and the project becomes
-the current one). Folder and Git management stay in Nerd Mode's Hermes Tools. Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Settings shows basics first
-(you, assistants/default model/providers, appearance, chat & voice, notifications, Hermes connection). Host
-administration — files, gateways/messaging, plugins, MCP, memory, logs, activity, direct links, display & data —
-is hidden until **Nerd Mode** is turned on in Settings, which reveals an Advanced section and the More drawer.
+the current one). Folder and Git management stay in Settings › Hermes tools (Nerd Mode). 
+
+**Kanban** (☰ › Kanban, above Scheduled tasks) is Hermes' Kanban plugin, shown only when the host has it. Five lanes
+in plain words: Later (triage, to-do, scheduled), Ready (an agent picks these up next), Working (only Hermes starts
+work, so nothing is dropped here), Needs you (blocked or waiting for review) and Done. Cards show who has them with
+their avatar, a pulse while they work, and why they need you ("Has a question", "Ready for review", "Got stuck").
+Drag a card to another lane (iPhone: onto a lane tab; every move is also in the card's long-press menu); moves show
+at once and snap back with a plain reason if Hermes refuses. A card opens a sheet with Approve / Ask for changes,
+Answer, Try again or "Give it to another agent", its thread, priority and agent. The board switcher, agent filter
+and search sit at the top. New cards default to Later, which spends nothing; Auto plan and Start now say they use
+the AI provider. On iPhone the board opens on Needs you as one lane at a time; iPad shows all five. Vision Pro opens
+the board in its own glass window beside bighelp: look at a card, pinch and drag it, and it lifts toward you while
+the lane under it lights up.
+
+Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Agents opens on the
+**Pinned** agents: each shows its role under the name (one line, trailing off), or what it's doing when it's busy.
+Touch and hold lifts an agent: drag it to reorder (the order is kept per host), or let go to see its actions.
+
+**Settings** is one short list where every row opens one page: you, Assistants (default model, providers,
+personalities), then Appearance, Chat, Voice, Notifications and Provider usage, then Hosts, Permissions, Apple
+Watch, Companion pet and Help. Don't add sections that compete with these; add to the page a row already opens.
+Host administration — files, gateways/messaging, plugins, MCP, memory, logs, activity — is hidden until **Nerd
+Mode** is on, which adds a Hermes section at the bottom: **System** (Update Hermes with how many commits behind,
+Restart Hermes Gateway, the plugin's Update button, then everything else folded away) and **Hermes tools** (the
+searchable list of the host's tools). There's no separate Hermes Tools entry in ☰. Pages lead with the action
+people come for (`BighelpActionRow`) and keep explanations to one line.
 
 Nerd Mode (`settings.nerdModeEnabled`, also the `nerdModeEnabled` environment value) also gates technical detail
 inside everyday screens: the chat ⋯ Advanced submenu, the chat Info sheet's visibility toggles and host details,
 Project Changes, the token-context ring and subagent rail, Skills/Workspace/Session rows in the + sheet, Agent
-Studio's Advanced page and templates, the task editor/detail Advanced groups, and the Chat details defaults in
-Settings. Everyday controls must never live only behind it.
+Studio's Advanced page and templates, the task editor/detail Advanced groups, and the extra sections on
+Settings › Chat. Everyday controls must never live only behind it.
+
+A chat's model and reasoning (`ChatModelSummaryRow`) show in the avatar's profile, at the top of Info and at the top of
+the context pop-up, each with Change into Model & reasoning. Showing them reads the reasoning once, never while the agent
+is replying. Deleting an agent stops its reply and clears its unsent drafts on this device instead of refusing; only a
+group chat that includes it holds the delete back, by name.
+
+Long instructions (an agent's SOUL, a personality) have an expand icon that opens them full screen
+(`FocusedTextEditorButton` + `focusedTextEditor`). Edits go straight into the form; Done keeps them and Save saves the
+form. Present that editor from the form's root: a full-screen cover hung on a list section header never got the
+keyboard.
 
 ## Protected behavior
 

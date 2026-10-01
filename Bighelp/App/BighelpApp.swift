@@ -36,10 +36,13 @@ struct BighelpApp: App {
     private let cardCatalogInstalledVersions: [String: Int]
     @State private var featureStore: ShellFeatureStore
     private let subagentStreamAcceptanceFixture: SubagentStreamAcceptanceFixtureController?
-    private let watchApprovalBridge: BighelpWatchApprovalBridge?
+    #if os(iOS)
+    private let watchRelay: WatchRelay
+    #endif
     @State private var newChatCoordinator: NewChatCoordinator
     private let shortcutService: BighelpShortcutService
     @State private var reflectiveVisionCamera: ReflectiveVisionCamera
+    @State private var visionSideMenu = VisionSideMenu()
     @State private var providerLogoStore: ProviderLogoStore?
     #if os(visionOS)
     @State private var spatialAvatar: SpatialAvatarModel
@@ -70,6 +73,11 @@ struct BighelpApp: App {
         }
         #endif
         let composition = BighelpAppComposition()
+        #if DEBUG
+        if arguments.contains("-use-demo-fixtures") {
+            LinkPreviewStore.shared = LinkPreviewStore(loader: .fixture, directory: nil)
+        }
+        #endif
         var usesRemoteProviderLogos = !arguments.contains("-use-demo-fixtures")
             && !arguments.contains("-disable-demo-delays")
             && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
@@ -201,7 +209,12 @@ struct BighelpApp: App {
         bighelpCardDataClient = composition.bighelpCardDataClient
         _featureStore = State(initialValue: composition.featureStore)
         subagentStreamAcceptanceFixture = composition.subagentStreamAcceptanceFixture
-        watchApprovalBridge = composition.watchApprovalBridge
+        #if os(iOS)
+        let watchRelay = Self.makeWatchRelay(composition, connections: connections, arguments: arguments)
+        watchRelay.activate()
+        self.watchRelay = watchRelay
+        Self.configureCarPlay(composition, arguments: arguments)
+        #endif
         _newChatCoordinator = State(initialValue: composition.newChatCoordinator)
         shortcutService = composition.shortcutService
         _reflectiveVisionCamera = State(initialValue: ReflectiveVisionCamera())
@@ -209,8 +222,60 @@ struct BighelpApp: App {
         clearLocalCache = composition.clearLocalCache
         #if os(visionOS)
         _spatialAvatar = State(initialValue: Self.makeSpatialAvatar(composition, arguments: arguments))
+        BighelpVisionChrome.useReadableNavigationColors()
         #endif
     }
+
+    #if os(iOS)
+    /// The Watch talks through the same live host as Shortcuts, so it works
+    /// with bighelp closed; demo runs use the local fixtures.
+    private static func makeWatchRelay(_ composition: BighelpAppComposition, connections: WorkspaceConnectionStore,
+                                       arguments: [String]) -> WatchRelay {
+        #if DEBUG
+        if arguments.contains("-use-demo-fixtures") {
+            let demo = BighelpShortcutWorkspace(
+                appState: composition.appState, agents: composition.agentDirectory,
+                runtimeDefaults: composition.agentRuntimeDefaults, catalog: composition.sessionCatalog,
+                featureStore: composition.featureStore, newChatCoordinator: composition.newChatCoordinator)
+            let boards = DemoAgentBoardClient()
+            return WatchRelay(workspace: { demo }, boards: { boards }, hasHost: { true }, hostKey: { "demo" })
+        }
+        #endif
+        let shortcuts = composition.shortcutService
+        return WatchRelay(
+            workspace: { try await shortcuts.connectedWorkspace() },
+            boards: {
+                guard let owner = connections.owner, let workspace = connections.workspace,
+                      connections.capabilities.supports(.agentBoard, owner: owner) else { return nil }
+                return DirectHermesAgentBoardClient(
+                    workspace: workspace, owner: owner,
+                    supportsFeedback: connections.capabilities.supports(.agentBoardFeedback, owner: owner))
+            },
+            hasHost: { connections.hosts.selectedHostID != nil },
+            hostKey: { WatchRelay.hostKey(for: connections.hosts.selectedHostID) }
+        )
+    }
+    #endif
+
+    #if os(iOS)
+    /// CarPlay's voice chat talks through the same live host as Shortcuts;
+    /// demo runs use the local fixtures.
+    private static func configureCarPlay(_ composition: BighelpAppComposition, arguments: [String]) {
+        BighelpCarPlayServices.settings = composition.settings
+        #if DEBUG
+        if arguments.contains("-use-demo-fixtures") {
+            let demo = BighelpShortcutWorkspace(
+                appState: composition.appState, agents: composition.agentDirectory,
+                runtimeDefaults: composition.agentRuntimeDefaults, catalog: composition.sessionCatalog,
+                featureStore: composition.featureStore, newChatCoordinator: composition.newChatCoordinator)
+            BighelpCarPlayServices.workspace = { demo }
+            return
+        }
+        #endif
+        let shortcuts = composition.shortcutService
+        BighelpCarPlayServices.workspace = { try await shortcuts.connectedWorkspace() }
+    }
+    #endif
 
     #if os(visionOS)
     /// The agent in the room talks through the same live host as Shortcuts;
@@ -281,9 +346,17 @@ struct BighelpApp: App {
                 #if DEBUG && targetEnvironment(simulator)
                 HostPluginUpdateFixture.rootView()
                 #endif
+            } else if isSystemPageFixture {
+                #if DEBUG && targetEnvironment(simulator)
+                SystemPageFixture.rootView()
+                #endif
             } else if isSecureInputFixture {
                 #if DEBUG && targetEnvironment(simulator)
                 DirectHermesSecurePromptFixture.rootView()
+                #endif
+            } else if isCarPlaySessionFixture {
+                #if DEBUG && os(iOS) && targetEnvironment(simulator)
+                CarPlaySessionFixture.rootView()
                 #endif
             } else {
             @Bindable var navigation = nativeWorkspaces.current?.appState ?? appState
@@ -333,9 +406,12 @@ struct BighelpApp: App {
                     NavigationStack(path: $navigation.path) {
                         rootShell(native: native, navigation: navigation)
                     }
+                    .modifier(VisionSideMenuHost(menu: visionSideMenu))
                     // Around the Dynamic Island: which agent is working, on what.
                     .environment(\.agentActivityInIsland, agentIsland.isAvailable)
                     .overlay(alignment: .top) { AgentActivityIslandLayer(model: agentIsland) }
+                    // Reconnecting after time away, shown without closing what's open.
+                    .overlay { ConnectionIslandLayer().allowsHitTesting(false) }
                     .modifier(VoiceLaunchCoverOverlay())
                     .statusBarHidden(agentIsland.hidesStatusBar)
                     .animation(.snappy, value: agentIsland.hidesStatusBar)
@@ -374,6 +450,7 @@ struct BighelpApp: App {
             #if os(visionOS)
             .modifier(SpatialAvatarMainWindowHooks(model: spatialAvatar))
             // No app-wide tint here: visionOS would fill every toolbar button with it.
+            .modifier(BighelpVisionInk())
             #else
             // Lavender (asset AccentColor, light/dark) for every control that
             // doesn't set its own tint, including switches that default to green.
@@ -437,6 +514,9 @@ struct BighelpApp: App {
                     }
                 }
                 if phase == .active { BighelpBackgroundGrace.shared.cancel() }
+                #if os(iOS)
+                if phase == .active { Task { await BighelpActivityKitDriver.dismissFinishedActivities() } }
+                #endif
                 Task { @MainActor in
                     // A newer scene transition may have arrived before this task starts.
                     guard scenePhase == phase else { return }
@@ -468,6 +548,7 @@ struct BighelpApp: App {
         #if os(visionOS)
         SpatialAvatarScenes(model: spatialAvatar, settings: settings, companion: companion,
                             companionAgentScope: companionAgentScope, permissionCenter: permissionCenter)
+        KanbanWindowScene(settings: settings, companion: companion, companionAgentScope: companionAgentScope)
         #endif
     }
 
@@ -487,9 +568,25 @@ struct BighelpApp: App {
         #endif
     }
 
+    private var isSystemPageFixture: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(SystemPageFixture.launchArgument)
+        #else
+        false
+        #endif
+    }
+
     private var isSecureInputFixture: Bool {
         #if DEBUG && targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains(DirectHermesSecurePromptFixture.launchArgument)
+        #else
+        false
+        #endif
+    }
+
+    private var isCarPlaySessionFixture: Bool {
+        #if DEBUG && os(iOS) && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(CarPlaySessionFixture.launchArgument)
         #else
         false
         #endif

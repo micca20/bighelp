@@ -58,6 +58,33 @@ struct ChatInterimRepliesTests {
         #expect(interimIDs(ChatInterimReplies.marking(entries, isSending: false, isBotMode: true)).isEmpty)
     }
 
+    /// With tool calls hidden the transcript shows no work, but the agent kept
+    /// working after its notes (Claude's thinking arrives blank, so the notes
+    /// are the only thinking people see). Hidden work still makes them interim.
+    @Test func hiddenWorkStillMarksTheNotesBeforeIt() {
+        func ordered(_ id: String, _ order: Int, human: Bool = false) -> ChatTranscriptEntry {
+            .message(TimelineItem(id: id, role: human ? .human : .assistant,
+                                  sender: human ? .user(snapshot: .init(name: "You")) : agent,
+                                  content: .message(id), metadata: .init(sourceOrder: order)))
+        }
+        func hiddenTool(_ id: String, _ order: Int) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: "s", turnID: "t", kind: .tool, lifecycle: .succeeded,
+                              title: "Tool", summary: nil, detail: nil, occurredAt: order, sourceOrder: order)
+        }
+        let finished = [ordered("q1", 1, human: true), ordered("note", 2), ordered("answer", 5),
+                        ordered("q2", 6, human: true), ordered("plain", 7)]
+        let hidden = [hiddenTool("t1", 3), hiddenTool("t2", 4)]
+        #expect(interimIDs(ChatInterimReplies.marking(finished, isSending: false, isBotMode: false,
+                                                      activityEvents: hidden)) == ["note"])
+        // Live: the note turns quiet as soon as a hidden tool starts after it.
+        let live = [ordered("q", 1, human: true), ordered("note", 2)]
+        #expect(interimIDs(ChatInterimReplies.marking(live, isSending: true, isBotMode: false,
+                                                      activityEvents: [hiddenTool("t", 3)])) == ["note"])
+        // Work from another turn never reaches back into this one.
+        #expect(interimIDs(ChatInterimReplies.marking(finished, isSending: false, isBotMode: false,
+                                                      activityEvents: [hiddenTool("later", 8)])).isEmpty)
+    }
+
     @Test func theInterimMarkIsNeverSaved() throws {
         guard case .message(let item) = reply("a") else { return }
         let data = try JSONEncoder().encode(item.markedInterim())

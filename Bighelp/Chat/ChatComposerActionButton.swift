@@ -20,6 +20,12 @@ enum AdaptiveComposerActionPresentation {
     static let tintOpacity = 0.82
     /// Painted circle inside the 44pt hit area, matching the attach control.
     static let diameter: CGFloat = ComposerFieldMetrics.controlDiameter
+    /// Touches this far outside the button still count: Send and Voice sit at
+    /// the screen's edge, where fingers land a little off.
+    static let hitSlop: CGFloat = 8
+    /// A tap may drift this far before it stops being a tap. SwiftUI's own tap
+    /// allows much less, so a slightly moving finger missed Send.
+    static let tapSlop: CGFloat = 28
 }
 
 struct AdaptiveComposerActionButton: View {
@@ -56,18 +62,25 @@ struct AdaptiveComposerActionButton: View {
                 Button(action: perform) {
                     actionContent
                         .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
-                        .contentShape(.interaction, Rectangle())
+                        .contentShape(.interaction,
+                                      Rectangle().inset(by: -AdaptiveComposerActionPresentation.hitSlop))
+                        .contentShape(.accessibility, Rectangle())
                 }
                 .buttonStyle(.bighelpPress)
                 .disabled(!isEnabled)
             } else {
                 actionContent
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
-                    .contentShape(.interaction, Rectangle())
+                    .contentShape(.interaction,
+                                  Rectangle().inset(by: -AdaptiveComposerActionPresentation.hitSlop))
+                    .contentShape(.accessibility, Rectangle())
                     .gesture(midSessionHoldGesture)
                     .simultaneousGesture(
-                        TapGesture().onEnded {
-                            guard isEnabled, !holdThresholdReached else { return }
+                        // Released before the hold unlocked, without wandering off: a tap.
+                        DragGesture(minimumDistance: 0).onEnded { value in
+                            let drift = hypot(value.translation.width, value.translation.height)
+                            guard isEnabled, !holdThresholdReached,
+                                  drift <= AdaptiveComposerActionPresentation.tapSlop else { return }
                             perform()
                         }
                     )

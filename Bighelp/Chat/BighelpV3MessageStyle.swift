@@ -9,6 +9,10 @@ enum BighelpV3MessagePresentation {
     static let richContentMaximumWidthFraction: CGFloat = 0.94
     static let horizontalContentPadding: CGFloat = 14
     static let bubbleRadius: CGFloat = 20
+    /// Link previews stay card-sized on iPad's wider lane.
+    static let linkPreviewMaximumWidth: CGFloat = 300
+    /// Videos get a little more room to watch in place.
+    static let videoPreviewMaximumWidth: CGFloat = 360
     static let tailRadius: CGFloat = 6
 
     static func maximumWidthFraction(role: TimelineRole, hasRichContent: Bool) -> CGFloat {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Light mode's page color.
 enum BighelpLightBackground: String, CaseIterable, Identifiable, Sendable {
@@ -64,4 +65,24 @@ enum BighelpBubbleColor: String, CaseIterable, Identifiable, Sendable {
 
     /// What the swatch shows (Lavender's daytime violet).
     var swatchHex: String { hex ?? "7B52E0" }
+}
+
+/// A bubble color you pick yourself, kept as six-digit hex ("0E7C66"). Like
+/// the others it keeps its hue and adjusts only as far as contrast needs.
+enum BighelpCustomBubbleColor {
+    static func validated(_ value: String?) -> String? {
+        guard var hex = value?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard hex.count == 6, hex.allSatisfy(\.isHexDigit) else { return nil }
+        return hex.uppercased()
+    }
+
+    /// The picker's color in sRGB; wide-gamut values are clamped.
+    static func hex(from color: Color) -> String {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
+        UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: nil)
+        return [red, green, blue]
+            .map { String(format: "%02X", Int((min(max($0, 0), 1) * 255).rounded())) }
+            .joined()
+    }
 }

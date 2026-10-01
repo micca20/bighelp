@@ -296,6 +296,10 @@ final class NativeWorkspaceRuntime {
         }
         let mediaResolver = WorkspaceGeneratedMediaProxy(box: generatedMediaBox)
         bridge.attachmentResolver = mediaResolver
+        bridge.speakerNote = DirectHermesChatSpeakerNote(
+            currentWorkspace: { [weak connections] in connections?.workspace },
+            name: { [weak userIdentity] in userIdentity?.identity.name ?? "" }
+        )
         let features = ShellFeatureStore(
             timing: .immediate, catalog: sessions, agents: agents, agentRuntimeDefaults: defaults,
             allowsNewChatAgentDefaults: false,
@@ -329,7 +333,12 @@ final class NativeWorkspaceRuntime {
                 }
                 let output = DirectHermesVoiceSpeechOutput(workspace: workspace, owner: owner,
                     profileID: coordinate.profileID, currentOwner: { [weak connections] in connections?.owner })
-                return DirectHermesVoiceSessionClient(conversation: conversation, output: output, speechRate: { settings.voiceSpeed.hermesTTSSpeed })
+                let transcriber = connections.hosts.selectedWorkspace?.nativeClient?.makeVoiceTranscriber(
+                    profileID: coordinate.profileID, owner: owner,
+                    currentOwner: { [weak connections] in connections?.owner })
+                return DirectHermesVoiceSessionClient(conversation: conversation, output: output,
+                                                      speechRate: { settings.voiceSpeed.hermesTTSSpeed },
+                                                      transcriber: transcriber)
             },
             sessionControlMessaging: sessionControls,
             slashCommandCatalogClient: WorkspaceSlashCommandCatalogProxy(box: slashCommandsBox),
@@ -411,8 +420,13 @@ final class NativeWorkspaceRuntime {
         }
         if let promptStore = currentPromptStore() {
             observedPromptStore = promptStore
-            promptStore.addObserver(id: promptObserverID) { [weak features, weak connections] in
+            promptStore.addObserver(id: promptObserverID) { [weak features, weak connections, weak promptStore, weak agents] in
                 guard connections?.owner?.authority == authority else { return }
+                if let promptStore {
+                    BighelpPromptAlerts.shared.receive(promptStore.waitingPrompts()) { profile in
+                        agents?.profiles.first { $0.id == profile }?.name
+                    }
+                }
                 Task { @MainActor [weak features] in
                     await features?.dashboardModel.refreshAfterExternalChange()
                 }

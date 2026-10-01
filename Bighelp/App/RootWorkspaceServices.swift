@@ -13,6 +13,12 @@ extension RootShellView {
         return nil
     }
 
+    /// A screen opened for this computer and sign-in stays up through a
+    /// reconnect, including while the connection is on its way back.
+    func isCurrentSignIn(_ owner: WorkspaceOwner) -> Bool {
+        (currentWorkspaceOwner?.signIn ?? workspaceSignIn) == owner.signIn
+    }
+
     var currentWorkspaceCapabilities: WorkspaceCapabilities {
         if workspaceConnections?.isDirectSelected == true {
             return workspaceConnections?.capabilities ?? .disconnected

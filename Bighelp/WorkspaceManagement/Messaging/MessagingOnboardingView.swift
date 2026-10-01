@@ -12,6 +12,7 @@ struct MessagingOnboardingView: View {
     @State private var whatsAppAllowedUsers = ""
     @State private var confirmsApply = false
     @State private var confirmsCancel = false
+    @State private var search = ""
 
     var body: some View {
         Group {
@@ -23,11 +24,23 @@ struct MessagingOnboardingView: View {
                     }
                     status
                     if let catalog = store.catalog {
-                        platformSection(catalog)
-                        onboardingSection
+                        if ManagementSearch.isActive(search) {
+                            let platforms = catalog.platforms.filter {
+                                ManagementSearch.matches(search, $0.name, $0.description)
+                            }
+                            if platforms.isEmpty {
+                                ManagementSearchEmptySection(search: search)
+                            } else {
+                                platformSection(platforms)
+                            }
+                        } else {
+                            platformSection(catalog.platforms)
+                            onboardingSection
+                        }
                     }
                 }
                 .listStyle(.insetGrouped)
+                .searchable(text: $search, prompt: "Search platforms")
                 .refreshable { await store.refresh() }
             } else {
                 ContentUnavailableView(
@@ -103,9 +116,9 @@ struct MessagingOnboardingView: View {
         }
     }
 
-    private func platformSection(_ catalog: HermesMessagingCatalog) -> some View {
+    private func platformSection(_ platforms: [HermesMessagingPlatform]) -> some View {
         Section("Platforms") {
-            ForEach(catalog.platforms) { platform in
+            ForEach(platforms) { platform in
                 NavigationLink {
                     MessagingPlatformConfigurationView(store: store, platformID: platform.id)
                 } label: {

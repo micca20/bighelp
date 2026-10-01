@@ -7,6 +7,7 @@ struct MCPManagementView: View {
     let profileName: String
     @State private var showsAdd = false
     @State private var catalogCandidate: MCPCatalogEntry?
+    @State private var search = ""
 
     var body: some View {
         List {
@@ -17,59 +18,68 @@ struct MCPManagementView: View {
                 retry: { Task { await model.load() } }
             )
             if let snapshot = model.snapshot {
-                Section("Your servers") {
-                    if snapshot.servers.isEmpty { Text("No MCP servers configured.").foregroundStyle(.secondary) }
-                    ForEach(snapshot.servers) { server in
-                        NavigationLink {
-                            MCPServerDetailView(model: model, serverName: server.name)
-                        } label: {
-                            VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                Text(server.name)
-                                Text("\(server.transport.uppercased()) • \(server.isEnabled ? "Enabled" : "Disabled")")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                if let runtime = model.runtimeStatus(for: server.name) {
-                                    Text("Runtime: \(runtime.state.displayName) • \(runtime.toolCount) tools")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(minHeight: BighelpTokens.hitTarget)
-                        }
-                    }
-                    Button("Add server", systemImage: "plus") { showsAdd = true }
-                        .disabled(model.isBusy)
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                let servers = snapshot.servers.filter { ManagementSearch.matches(search, $0.name, $0.transport) }
+                let catalog = snapshot.catalog.filter {
+                    ManagementSearch.matches(search, $0.name, $0.summary, $0.transport)
                 }
-
-                Section {
-                    ForEach(snapshot.catalog) { entry in
-                        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                            HStack {
-                                Text(entry.name).font(.headline)
-                                Spacer()
-                                if entry.isInstalled { Image(systemName: "checkmark.circle.fill").accessibilityLabel("Installed") }
+                if ManagementSearch.isActive(search), servers.isEmpty, catalog.isEmpty {
+                    ManagementSearchEmptySection(search: search)
+                } else {
+                    Section("Your servers") {
+                        if snapshot.servers.isEmpty { Text("No MCP servers configured.").foregroundStyle(.secondary) }
+                        ForEach(servers) { server in
+                            NavigationLink {
+                                MCPServerDetailView(model: model, serverName: server.name)
+                            } label: {
+                                VStack(alignment: .leading, spacing: BighelpTokens.space4) {
+                                    Text(server.name)
+                                    Text("\(server.transport.uppercased()) • \(server.isEnabled ? "Enabled" : "Disabled")")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    if let runtime = model.runtimeStatus(for: server.name) {
+                                        Text("Runtime: \(runtime.state.displayName) • \(runtime.toolCount) tools")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(minHeight: BighelpTokens.hitTarget)
                             }
-                            if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
-                            Text("\(entry.transport.uppercased()) • \(entry.authType)")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Button(entry.isInstalled ? "Already installed" : "Review installation") {
-                                catalogCandidate = entry
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(entry.isInstalled || model.isBusy)
                         }
-                        .padding(.vertical, BighelpTokens.space4)
+                        Button("Add server", systemImage: "plus") { showsAdd = true }
+                            .disabled(model.isBusy)
+                            .frame(minHeight: BighelpTokens.hitTarget)
                     }
-                } header: { Text("Add from catalog") }
-                  footer: { Text("Only declared fields are sent to Hermes. Secrets are not saved in bighelp.") }
 
-                if !snapshot.diagnostics.isEmpty {
-                    Section("Advanced · Catalog diagnostics") {
-                        ForEach(snapshot.diagnostics, id: \.self) { Text($0).font(.footnote) }
+                    Section {
+                        ForEach(catalog) { entry in
+                            VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                                HStack {
+                                    Text(entry.name).font(.headline)
+                                    Spacer()
+                                    if entry.isInstalled { Image(systemName: "checkmark.circle.fill").accessibilityLabel("Installed") }
+                                }
+                                if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
+                                Text("\(entry.transport.uppercased()) • \(entry.authType)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Button(entry.isInstalled ? "Already installed" : "Review installation") {
+                                    catalogCandidate = entry
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(entry.isInstalled || model.isBusy)
+                            }
+                            .padding(.vertical, BighelpTokens.space4)
+                        }
+                    } header: { Text("Add from catalog") }
+                      footer: { Text("Only declared fields are sent to Hermes. Secrets are not saved in bighelp.") }
+
+                    if !snapshot.diagnostics.isEmpty, !ManagementSearch.isActive(search) {
+                        Section("Advanced · Catalog diagnostics") {
+                            ForEach(snapshot.diagnostics, id: \.self) { Text($0).font(.footnote) }
+                        }
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .searchable(text: $search, prompt: "Search MCP servers")
         .refreshable { await model.load() }
         .task { if model.snapshot == nil { await model.load() } }
         .sheet(isPresented: $showsAdd) {
@@ -240,6 +250,7 @@ private struct MCPServerDetailView: View {
     let serverName: String
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var confirmsRemoval = false
     @State private var showsCredentialUpdate = false
 
@@ -301,11 +312,16 @@ private struct MCPServerDetailView: View {
                 if let probe = model.probes[server.name] {
                     Section("Advanced · Latest test") {
                         LabeledContent("Result", value: probe.succeeded ? "Connected" : "Failed")
-                        LabeledContent("Tools", value: probe.tools.count.formatted())
+                        LabeledContent("Tools on this server", value: probe.toolCount.formatted())
                         LabeledContent("Prompts", value: probe.promptCount.formatted())
                         LabeledContent("Resources", value: probe.resourceCount.formatted())
                         if let error = probe.error { Text(error).foregroundStyle(.secondary) }
-                        ForEach(probe.tools.prefix(100)) { tool in
+                        if probe.toolCount > probe.tools.count {
+                            Text("Showing the first \(probe.tools.count.formatted()). Hermes uses only the tools your MCP settings include.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(probe.tools) { tool in
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(tool.name)
                                 if !tool.summary.isEmpty { Text(tool.summary).font(.caption).foregroundStyle(.secondary) }
@@ -319,6 +335,12 @@ private struct MCPServerDetailView: View {
         }
         .navigationTitle(serverName)
         .navigationBarTitleDisplayMode(.inline)
+        // Back from signing in in the browser: check right away.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let server, let flow = model.oauthFlows[server.name],
+                  [.starting, .authorizationRequired].contains(flow.status) else { return }
+            Task { await model.pollOAuth(server) }
+        }
         .sheet(isPresented: $showsCredentialUpdate) {
             MCPServerCredentialEditorView(model: model, serverName: serverName)
         }

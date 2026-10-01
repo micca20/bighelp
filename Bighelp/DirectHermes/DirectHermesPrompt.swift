@@ -363,6 +363,12 @@ final class DirectHermesPromptStore {
         return values.sorted(by: Self.sortPrompts)
     }
 
+    /// Every question and approval waiting on this connection, across chats.
+    func waitingPrompts() -> [DirectHermesPrompt] {
+        _ = revision
+        return visiblePrompts()
+    }
+
     func dashboardApprovals() -> [DirectHermesDashboardApproval] {
         _ = revision
         return visiblePrompts().compactMap { prompt in

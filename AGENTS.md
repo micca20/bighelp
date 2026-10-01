@@ -24,7 +24,8 @@ change in both repos.
     value.
   - Everyday controls must never live only behind Nerd Mode.
 - **One place for each thing.**
-  - There's one ☰ menu (`BighelpMenu`) and one Settings.
+  - There's one ☰ menu (`BighelpMenu`) and one Settings. Settings is a short list of rows that each open one page;
+    Nerd Mode adds its Hermes section (System, Hermes tools) at the bottom.
   - Don't add a second menu, drawer or settings copy for a feature. Add a row where people already look.
   - Never show "bighelp account" or "Link" wording. That pairing system is retired.
 - **Real data only.**
@@ -59,9 +60,12 @@ change in both repos.
 | `Bighelp/Workspace/` | `WorkspaceOperation` (every host operation) and workspace stores |
 | `Bighelp/Settings/` | Settings screens and `SettingsStore` |
 | `Bighelp/Agents/`, `Board/`, `Companion/` | Agents, Feed/Ideas/Goals, the avatar kit renderer |
+| `Bighelp/Kanban/` | Kanban on Hermes' Kanban plugin: board model, lanes, cards, Vision Pro window and pinch-drag |
 | `Bighelp/Usage/` | Provider Usage overlay, store and settings |
 | `Bighelp/Voice/` | Turn-based and live voice |
 | `Bighelp/Spatial/` | Vision Pro: the agent in the room (`SpatialAvatarModel`, its volume and voice panel, its Settings section) |
+| `BighelpWatch/`, `BighelpWatchShared/`, `Bighelp/Watch/` | The Watch app, the Watch–iPhone wire (`WatchWire`), and the iPhone's `WatchRelay` that answers it |
+| `Bighelp/CarPlay/` | CarPlay's hands-free voice chat (`CarPlayVoiceSession`) and its scene |
 | `Bighelp/DesignSystem/` | `BighelpTheme`, `BighelpTokens`, glass surfaces, fonts, provider logos, `BighelpDeferredSection` |
 | `Bighelp/Hosts/`, `Bighelp/LiveActivity/`, `Bighelp/Notifications/`, `Bighelp/Shortcuts/` | Host setup, Live Activities, notifications, App Intents |
 | `BighelpTests/` (Swift Testing), `BighelpUITests/` (XCUITest) | Tests. The UI test base class `BighelpUITestCase` is in `ReferenceHubUITests.swift` |
@@ -117,6 +121,17 @@ change in both repos.
   handlers are registered and again after each reconnect. Without it, Hermes answers clarify, approval, secret and
   sudo requests itself, with blanks, and the prompts never show. `advertiseServerRequests()` in
   `DirectHermesNetworking.swift` does this.
+- **Session source:** every `session.create` and `session.resume` sends `source: "bighelp"`
+  (`DirectHermesReleaseContract.sessionSource`). Hermes words the agent's instructions by it: left out, the chat
+  counts as its terminal UI (no files, cards or reminders), and `"desktop"` promises Hermes Desktop's own tools.
+  The plugin (2.20.0+) adds bighelp's brief for this source. The request filter in `DirectHermesWorkspaceClient`
+  must list every field the app sends, or the app refuses the request itself.
+- **Who is sending:** before each new turn, `DirectHermesChatSpeakerNote` posts `people/speaking` (plugin
+  `native-people-v1`): the chat's stored session ID, a person ID from iCloud Keychain (`BighelpPersonID`, one per
+  Apple ID) and the name the person saved. The plugin puts the name in the chat brief and, once a chat has had two
+  people, a note on each message that only the model sees. The wait is capped (1.2 s), so a slow host sends the
+  message without a name. `UserIdentity.name` is empty until someone saves one; "You" is an on-screen placeholder
+  (`displayName`) and must never be sent. Names are at most 40 characters.
 - **A turn stays pending while it streams:** after `prompt.submit` returns `streaming`, the chat isn't "ready for a
   new turn" until the turn ends. A mid-turn Send must go through the steer/queue path (`sendMidSession`). Steer is
   the default.
@@ -127,11 +142,14 @@ change in both repos.
     should say "update the plugin", never show a raw error.
   - Requests send `If-Match` (the context ETag) and `X-Loopdy-Request-ID`, which must be a lowercase UUID.
   - On a `conflict` (context changed), reload the context and retry once.
-- **Plugin pin:**
-  - Info.plist `BighelpNotificationPluginVersion` and `BighelpNotificationPluginRevision`, and the plugin `ref` in
-    `.github/workflows/ios-ci.yml`, must all name the same merged plugin commit.
-  - Bump all three together whenever the app needs a newer plugin.
-  - The in-app plugin updater installs exactly that revision.
+- **Plugin releases (no pin):**
+  - The app installs and offers the plugin's latest GitHub Release (`Bighelp/Hosts/PluginLatestRelease.swift`).
+    Plugin releases are batched: the maintainer ships a release PR and starts the plugin's Release workflow.
+    A plugin update never needs an app build.
+  - It looks up the release's exact commit, installs it, reads it back, and never replaces a newer or equal
+    plugin. An install that may still be running on the host is finished with the commit it asked for.
+  - When the app needs a newer plugin feature, gate it on `/native/context` and say "update the plugin".
+  - CI tests against the plugin's `main`.
 - **Supported Hermes versions:** 0.21.2 to 0.21.5.
   - Hosts differ, so parse leniently: ignore unknown keys and treat most parts as optional.
   - A missing part should hide one row, not break a screen.
@@ -157,6 +175,18 @@ change in both repos.
   pieces out into functions or named `ViewModifier`s.
 - **Text styling:** styled text in the composer must pass attributes and theme colors. Plain `String` replacements
   lose them.
+- **Covers from list headers:** a `.fullScreenCover` hung on a button in a `Form` section header shows, but its text
+  editor never gets the keyboard. Keep the button in the header and present from the form's root
+  (`focusedTextEditor(isPresented:…)`).
+- **Stale incremental builds:** after changing what a `some View` property returns in one file, a Debug build can
+  crash in another file that uses it (`EXC_BAD_ACCESS` in `ViewBuilder.buildExpression`, two-frame stack). Touch
+  the files that use it and rebuild before chasing it.
+- **One long-press menu per List row:** a List row shows the first `.contextMenu` in it for every item, so a grid of
+  tiles in one row acted on the wrong item (holding a pinned chat offered another chat's Delete). Give each tile a
+  `Menu(primaryAction:)` or its own gesture (`AgentPinnedGrid`).
+- **Owners change on every reconnect:** `WorkspaceOwner` includes the connection generation, so returning to the app
+  makes a new one. Keep per-computer state (like "this host has Kanban") by `cacheScopeID`, and don't turn a failed
+  check during a reconnect into "unavailable" (`KanbanAvailability`).
 
 ### Crashes that only happen on a real iPhone
 
@@ -178,8 +208,9 @@ sections can crash only on devices ("Thread stack size exceeded").
 
 - The app target builds natively for visionOS (`supportedDestinations`), not as the iPad app in a window. Every
   change must build for both: `xcodebuild -destination 'generic/platform=visionOS Simulator'`.
-- visionOS lacks Live Activities, widgets, haptics, apps' camera access, keyboard-dismiss-on-scroll and iOS 26's
-  `glassEffect`. Use the shims in `BighelpPlatform.swift` and `#if os(visionOS)`. `if #available(iOS 26, *)` is
+- visionOS lacks Live Activities, Lock Screen widgets, haptics, apps' camera access, keyboard-dismiss-on-scroll and
+  iOS 26's `glassEffect`. Home Screen widgets do work there: the widget extension builds for both, with glass
+  texture and wall or table mounting (`bighelpWidgetPlacement()`); fence Lock Screen sizes and Live Activities to iOS. Use the shims in `BighelpPlatform.swift` and `#if os(visionOS)`. `if #available(iOS 26, *)` is
   true on visionOS, so it doesn't fence off iOS-only APIs.
 - visionOS has its own layered app icon, `AppIconVision.solidimagestack` (the iPhone icon's art split into a
   cream back layer and the orb). Update it when the app icon changes; uploads without it are rejected.
@@ -189,7 +220,50 @@ sections can crash only on devices ("Thread stack size exceeded").
   `project.yml`). Conditional settings need both `[sdk=xros*]` and `[sdk=xrsimulator*]`; the first doesn't match
   the simulator.
 - An app-wide `.tint` fills every toolbar button with that color on visionOS, so there's none there.
-  `theme.canvas` is a light tint so windows stay glass.
+  `theme.canvas` is a light tint so windows stay glass; Appearance › Transparency sets how light
+  (`BighelpVisionGlass`). A light window keeps at least a 45% tint: dark text on bare glass vanishes in a dim
+  room. Anything painted in `theme.canvas` is see-through there, so it can't hide content scrolling under it
+  (the chat masks its messages under the header instead).
+- visionOS draws titles, toolbar buttons and segmented pickers' labels white, unreadable in light mode. Titles
+  get the app's ink from `BighelpVisionChrome` (UIKit appearance); toolbar buttons and `.secondary` text from
+  `BighelpVisionInk`, one fixed color for the app's Light/Dark setting. Adaptive (trait-based) colors fail there:
+  text fields, sheet toolbars and pickers resolve them as dark in a light window. Set only the first level:
+  explicit secondary and tertiary levels turn field hints and form dividers white on white. Field hints ignore
+  it anyway: pass `prompt: Text("…").bighelpFieldHint(theme)`. Light-mode theme greys are darkened there too. Unselected segment labels ignore every color setting,
+  so use `bighelpSegmentedPicker()`, which keeps a dark track there. Don't use `toolbarColorScheme` there: it
+  overrides the appearance and turns titles white again.
+- Tabs sit in a leading ornament (`VisionTabOrnament`), not a bar along the bottom by the system's window
+  controls. A screen covered by a pushed one hides its ornaments, so the pushed home chat carries its own.
+  ☰ opens as a column beside the page (`VisionSideMenu`), not a sheet.
+- Eye targets: controls are 56pt or more (`BighelpTokens.hitTarget`), header buttons 52pt glass plus margin.
+- Forms on visionOS: section headers don't grow to fit (Agent Studio's hero lives in a row there), a row of
+  plain buttons can be laid out zero points tall (pin it with `.fixedSize(horizontal: false, vertical: true)`),
+  and a `PhotosPicker` with the default style becomes the whole row's button. A nested sheet that needs room
+  uses `.presentationSizing(.page)`; `.fitted` gave a zero-size sheet whose 3D content still floated in view.
+- The agent in the room is 3D (`SpatialAvatarRig`, `SpatialAvatarSculpt`), animated with the kit's own
+  keyframes. Importing RealityKit makes `Scene` ambiguous; write `SwiftUI.Scene`.
+  - Solids: each big shape is swept through shrinking slices (`traceTransforms`), so circles become balls.
+    A shape drawn over another sticks out of its front; one drawn behind peeks out of its back.
+  - Painted on: a shape at least 85% inside an earlier solid's outline is a shallow cap laid on its curved
+    surface and leaned to face the way it does. Painted shading and glare (black under 40%, white under 50%)
+    are skipped; real light does that. Outlines around solids are skipped too.
+  - The volume opens as a `.utilityPanel`, within reach. It resizes from the corners only because the content
+    gives a width, height and depth range with `.windowResizability(.contentSize)`; a fixed depth locks it. The
+    agent scales with it and the volume reopens at the last size (`SpatialAvatarVolumeSize`).
+  - Headwear (`SpatialAvatarHeadwear`) is built as real objects at the kit's head anchor; the creator's
+    pattern is painted into a texture laid flat over the body; the chosen moves play through `BuddyPose`.
+  - In windows (the avatar designer, Agent Studio) `SpatialAvatarPreview` shows the same character. A
+    RealityView's content origin is its view's center; `convert(_:from: .local, to: .scene)` gives window space,
+    so use it only to measure (1360 points a meter at the usual size). `GeometryReader3D` in a form reports a
+    half-meter depth; don't place by it. "See it in your room" sets `SpatialAvatarModel.previewAppearance`.
+  - Pinches land on a flat layer it stands in. visionOS only targets what's drawn: `Color.clear` with a
+    `contentShape` never gets a tap there, so the layer is `Color.white.opacity(0.001)`.
+  - Measure a volume with `GeometryReader`, not `GeometryReader3D`: the 3D one pushes flat views to the back,
+    where the room can hide them.
+  Kit renders for art approval: `VisionReadabilityUITests.testKitCharactersIn3D` (`BIGHELP_KIT_CHARACTERS`,
+  `BIGHELP_KIT_SPIN`).
+- Anything that must stay beside the agent (its voice panel, the typing box) is an `.ornament` on its volume. A
+  separate window placed `.trailing(volume)` landed low and tilted, almost edge-on, until the volume moved.
 - The agent in the room (`Bighelp/Spatial/`) talks through `BighelpShortcutService.connectedWorkspace()`, the same
   host path as Shortcuts. Apps can't move windows themselves: people move the volume with the system bar under it,
   and visionOS remembers the spot and snaps it to tables.
@@ -203,6 +277,34 @@ sections can crash only on devices ("Thread stack size exceeded").
   (see `SpatialAvatarUITests`). `app.swipeUp()` fails with several windows open; swipe the list instead. The speech
   permission can't be pre-granted, and an unanswered prompt comes back on every launch, so reset privacy and reboot
   the simulator before a run.
+- XCUITest can't touch a second window on Vision Pro. Tests of a window's content open it inside the main window
+  with a DEBUG launch argument (Kanban's `-test-kanban-main-window`).
+- `glassBackgroundEffect` inside a `.background { }` floats over the view's content and eats every pinch, even with
+  `.allowsHitTesting(false)`. Put the glass on the view itself (`view.glassBackgroundEffect(in:)`).
+
+### Apple Watch
+
+- The Watch never talks to the host. It asks the iPhone (`WatchRelay`), which answers through the Shortcuts host
+  path, so it works with bighelp closed. Keep credentials and host addresses off the wire; bound everything that
+  crosses (`WatchLimits`) and check it on arrival.
+- WatchConnectivity calls back on its own queue: build reply/error handlers in `nonisolated static` functions, or a
+  main-actor closure traps.
+- A binary property list stores repeated strings once, so size tests need unique text.
+- Demo: `-watch-demo` (Watch alone) and `WatchAppUITests` (`BighelpWatch` scheme). `testThroughThePairedIPhone`
+  runs the real path when the paired iPhone simulator runs bighelp with `-use-demo-fixtures` and
+  `BIGHELP_WATCH_LIVE_PHONE` is set.
+- Watch UI test traps: lists only build rows on screen, so scroll first; scroll with
+  `XCUIDevice.shared.rotateDigitalCrown`, since `swipeDown` can open a system screen and push the app away.
+
+### CarPlay
+
+- CarPlay voice apps need Apple's CarPlay Voice-Based Conversation entitlement (iOS 26.4+), requested at
+  developer.apple.com/contact/request/carplay. Until it's granted only simulator builds carry it
+  (`CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]` → `BighelpCarPlay.entitlements`). Once granted, move the key
+  into `Bighelp.entitlements` and drop the simulator override.
+- Voice buttons belong to each `CPVoiceControlState` (`actionButtons`); the template only has bar buttons.
+- Tests can't open the simulator's CarPlay window. `CarPlayVoiceUITests` drives the same session through the
+  DEBUG `-test-carplay-session` screen on the demo data.
 
 ### Connections, widgets and Shortcuts
 
@@ -210,6 +312,25 @@ sections can crash only on devices ("Thread stack size exceeded").
 - Shortcuts and widgets first check that the host answers, and reconnect once if it doesn't.
 - An incoming widget or link tap during startup is queued until the host runtime is ready.
 - Returning to a chat reloads it from the host. Treat the host's saved history as the truth after a turn ends.
+- Every reconnect is a new `WorkspaceOwner` (its `connectionGeneration` changes), and the owner is nil while
+  disconnected. To decide whether to close open sheets or screens, compare `owner.signIn`, never the whole
+  owner, or coming back after a minute away closes whatever was open (`WorkspacePresentationContinuity`).
+- The connection pill at the top (`ConnectionIsland`) has its own pass-through window so it shows over sheets. iOS
+  hides an app's own Live Activity while the app is open, so it can't be the real Dynamic Island.
+
+### Notifications and Live Activities
+
+Helpful, never a pile to clear (`BighelpNotificationGrouping`):
+- Alerts stack per agent, not per chat. The notification service extension sets the thread from the opened title (the agent's
+  name) and keeps the chat in `loopdy.sessionReference`, which the "chat on screen" check reads.
+- A newer reply for a chat removes that chat's earlier replies; questions and approvals stay until dealt with.
+- Helper (subagent) results arrive passive: Notification Center only, no banner or sound.
+- Opening a chat, or returning to the app on one, clears its delivered alerts (`BighelpVisibleChats`).
+- One Live Activity at a time: a new chat's card replaces the older one (`BighelpManagedNativeActivityRuntime`).
+  Finished cards leave the Lock Screen about 30 seconds after the end (the Link service sends a dismissal date),
+  and opening the app clears any still there.
+- The Live Activity uses the app's palette from the widget snapshot, like the Home widgets. Its four steps come from
+  the phase Hermes reports, never a guessed percentage.
 
 ### Names that must stay "loopdy"
 
@@ -285,6 +406,12 @@ New code uses Bighelp names. Don't "finish" the rename on this list.
   - The maintainer merges.
 - **Versions** live in `project.yml`: `MARKETING_VERSION`, and `CURRENT_PROJECT_VERSION` in every target. Regenerate
   after bumping.
+- **Releases are batched.** Merge pull requests whenever they're ready; releasing is a separate step the
+  maintainer starts:
+  - Internal TestFlight builds can go out whenever they're useful.
+  - Public TestFlight builds go out only when the maintainer says so. They cover everything since the last public
+    build, with one set of notes, because every build notifies every tester.
+  - When both repos change, release the plugin first, then the app build that needs it.
 - **TestFlight "What to Test" notes** are plain text. Some symbols (like ☰) are rejected. Write them for testers:
   - new features
   - bug fixes

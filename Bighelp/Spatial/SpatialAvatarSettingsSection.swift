@@ -34,7 +34,7 @@ struct SpatialAvatarSettingsSection: View {
                     Label(action.title, systemImage: action.systemImage).tag(action)
                 }
             }
-            .pickerStyle(.segmented)
+            .bighelpSegmentedPicker()
             .frame(minHeight: BighelpTokens.hitTarget)
             .accessibilityIdentifier("settings.spatial-avatar.pinch")
         } header: {

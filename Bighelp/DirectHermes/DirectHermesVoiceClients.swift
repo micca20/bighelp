@@ -120,8 +120,9 @@ final class DirectHermesVoiceSettingsClient: VoiceSettingsClient {
     func playSample(agentID: String) async throws {
         let profile = try Self.profile(agentID)
         sampleOutput?.stop()
-        let output = DirectHermesVoiceSpeechOutput(workspace: workspace, owner: owner,
-                                                   profileID: profile, currentOwner: currentOwner)
+        let output = DirectHermesVoiceSpeechOutput(workspace: workspace, owner: owner, profileID: profile,
+                                                   playback: AVAudioPlayerVoicePlayback(use: .playback),
+                                                   currentOwner: currentOwner)
         sampleOutput = output
         defer { if sampleOutput === output { sampleOutput = nil } }
         try await output.speak(Self.sampleText, rate: 1)
@@ -442,15 +443,23 @@ final class DirectHermesVoiceSessionClient: VoiceSessionClient {
     private let conversation: DirectHermesConversationClient
     private let output: any VoiceSpeechOutput
     private let speechRate: () -> Float
+    private let transcriber: (@MainActor (Data) async throws -> String)?
 
     init(
         conversation: DirectHermesConversationClient,
         output: any VoiceSpeechOutput,
-        speechRate: @escaping () -> Float
+        speechRate: @escaping () -> Float,
+        transcriber: (@MainActor (Data) async throws -> String)? = nil
     ) {
         self.conversation = conversation
         self.output = output
         self.speechRate = speechRate
+        self.transcriber = transcriber
+    }
+
+    func transcribe(_ audio: Data) async throws -> String {
+        guard let transcriber else { throw VoiceSessionError.unsupported }
+        return try await transcriber(audio)
     }
 
     func respond(

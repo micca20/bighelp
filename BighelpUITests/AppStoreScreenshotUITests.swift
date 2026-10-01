@@ -38,7 +38,9 @@ final class AppStoreScreenshotUITests: BighelpUITestCase {
         }
         openTab("tab.agents", app)
         if tap(app.buttons["agents.create"]) {
-            let template = app.buttons["agent.editor.starter.assistant"]
+            let templates = app.segmentedControls["agent.editor.start"].buttons["Templates"]
+            if templates.waitForExistence(timeout: 3) { templates.tap() }
+            let template = app.buttons["agent.editor.template.anchor"]
             if template.waitForExistence(timeout: 3), template.isHittable { template.tap(); sleep(1) }
             save("06-studio", app)
             if !tap(app.buttons["agent.editor.cancel"]) { tap(app.buttons["Cancel"].firstMatch) }

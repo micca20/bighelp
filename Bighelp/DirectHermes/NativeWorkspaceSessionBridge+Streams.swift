@@ -276,6 +276,7 @@ extension NativeWorkspaceSessionBridge {
                 promptStore: promptBinding.store, openRequestRecovery: promptBinding.recovery
             )
         }
+        adapter.speakerNote = speakerNote
         adapter.onSessionContextChange = { [weak self] snapshot in
             guard let self, !self.retired,
                   self.connections.owner == owner,

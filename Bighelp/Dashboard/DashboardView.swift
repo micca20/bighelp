@@ -1137,6 +1137,10 @@ struct DashboardClarificationAttentionCard: View {
                         questionView(question, questionIndex: questionIndex, canRespond: canRespond)
                     }
 
+                    if ClarificationAnswers.acceptsOwnWords(shapes) {
+                        ownWordsField(canRespond: canRespond)
+                    }
+
                     BighelpPillControl(
                         isEnabled: completedResponse() != nil && canRespond && !isResolving
                     ) {
@@ -1213,33 +1217,36 @@ struct DashboardClarificationAttentionCard: View {
                         )
                     )
                 }
-
-                if question.allowsCustomResponse {
-                    TextField(
-                        "Type another response",
-                        text: Binding(
-                            get: { draft.customResponse(questionIndex: questionIndex) },
-                            set: { value in
-                                draft.setCustomResponse(value, questionIndex: questionIndex)
-                                if !value.isEmpty {
-                                    draft.setSelectedIndices([], questionIndex: questionIndex)
-                                }
-                            }
-                        ),
-                        axis: .vertical
-                    )
-                    .lineLimit(1...4)
-                    .bighelpFont(.body)
-                    .disabled(!canRespond || isResolving)
-                    .submitLabel(.done)
-                    .onSubmit { submitCompletedResponse() }
-                    .accessibilityIdentifier(
-                        accessibilityIdentifiers.customResponse(questionIndex: questionIndex)
-                    )
-                    .bighelpSurface(.composer)
-                }
             }
         }
+    }
+
+    private var shapes: [ClarificationAnswers.Question] { request.questions.map(\.answerShape) }
+
+    /// One field for the whole card. On a single question it replaces the
+    /// picked choice; on several it answers each one without a choice.
+    private func ownWordsField(canRespond: Bool) -> some View {
+        TextField(
+            request.questions.count > 1 ? "Or answer in your own words" : "Type another response",
+            text: Binding(
+                get: { draft.customResponse },
+                set: { value in
+                    draft.customResponse = value
+                    if request.questions.count == 1, !value.isEmpty {
+                        draft.setSelectedIndices([], questionIndex: 0)
+                        draft.selectedChoices = []
+                    }
+                }
+            ),
+            axis: .vertical
+        )
+        .lineLimit(1...4)
+        .bighelpFont(.body)
+        .disabled(!canRespond || isResolving)
+        .submitLabel(.done)
+        .onSubmit { submitCompletedResponse() }
+        .accessibilityIdentifier(accessibilityIdentifiers.customResponse)
+        .bighelpSurface(.composer)
     }
 
     private func choose(
@@ -1255,7 +1262,7 @@ struct DashboardClarificationAttentionCard: View {
         } else {
             selected = [choiceIndex]
         }
-        draft.setCustomResponse("", questionIndex: questionIndex)
+        if request.questions.count == 1 { draft.customResponse = "" }
         draft.setSelectedIndices(selected, questionIndex: questionIndex)
         if questionIndex == 0 {
             draft.selectedChoices = Set(selected.compactMap { index in
@@ -1268,46 +1275,19 @@ struct DashboardClarificationAttentionCard: View {
     }
 
     private func completedResponse() -> DashboardClarificationResponse? {
-        var answers: [DashboardClarificationAnswer] = []
-        for (questionIndex, question) in request.questions.enumerated() {
-            let value: String
-            if let locked = question.lockedAnswer {
-                value = locked
-            } else {
-                let selected = draft.selectedIndices(questionIndex: questionIndex).sorted()
-                let custom = draft.customResponse(questionIndex: questionIndex)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !custom.isEmpty {
-                    value = custom
-                } else if question.isMultiSelect {
-                    let values = selected.compactMap { index in
-                        question.choices.indices.contains(index) ? question.choices[index] : nil
-                    }
-                    guard !values.isEmpty,
-                          let data = try? JSONEncoder().encode(values),
-                          let encoded = String(data: data, encoding: .utf8) else { return nil }
-                    value = encoded
-                } else {
-                    guard selected.count == 1,
-                          let index = selected.first,
-                          question.choices.indices.contains(index) else { return nil }
-                    value = question.choices[index]
-                }
-            }
-            answers.append(DashboardClarificationAnswer(questionID: question.id, value: value))
-        }
-        let response = DashboardClarificationResponse(answers: answers)
+        let selections = Dictionary(uniqueKeysWithValues: request.questions.indices.map {
+            ($0, draft.selectedIndices(questionIndex: $0))
+        })
+        guard let values = ClarificationAnswers.answers(for: shapes, selections: selections,
+                                                        ownWords: draft.customResponse) else { return nil }
+        let response = DashboardClarificationResponse(answers: zip(request.questions, values).map {
+            DashboardClarificationAnswer(questionID: $0.id, value: $1)
+        })
         return request.accepts(response) ? response : nil
     }
 
     private func requiresExplicitDone() -> Bool {
-        request.questions.count > 1
-            || request.questions.contains(where: \.isMultiSelect)
-            || request.questions.enumerated().contains { index, question in
-                return !draft.customResponse(questionIndex: index)
-                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || question.choices.isEmpty
-            }
+        ClarificationAnswers.needsDone(shapes, ownWords: draft.customResponse)
     }
 
     private func submitCompletedResponse() {
@@ -1372,10 +1352,6 @@ struct DashboardClarificationAccessibilityIdentifiers: Equatable, Sendable {
 
     func choice(questionIndex: Int, choiceIndex: Int) -> String {
         identifier("question.\(questionIndex).choice.\(choiceIndex)")
-    }
-
-    func customResponse(questionIndex: Int) -> String {
-        identifier("question.\(questionIndex).custom-response")
     }
 
     var sendSelected: String { identifier("send-selected") }

@@ -111,7 +111,7 @@ extension ProviderUsage {
 enum ProviderUsagePresentation {
     /// The provider the agent chats with first, then the plugin's order.
     static func visible(_ providers: [ProviderUsage], hidden: Set<String>) -> [ProviderUsage] {
-        let shown = providers.filter { !hidden.contains($0.id) }
+        let shown = providers.filter { !ProviderUsagePreferences.isHidden($0.id, in: hidden) }
         return shown.filter(\.activeInHermes) + shown.filter { !$0.activeInHermes }
     }
 

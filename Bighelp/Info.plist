@@ -87,6 +87,10 @@
             <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
             <key>private</key>
             <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>ts.net</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+            <key>beta.tailscale.net</key>
+            <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
             <key>localhost</key>
             <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
         </dict>
@@ -104,10 +108,6 @@
 
     <key>BighelpNativeBrowserAuthenticationEnabled</key>
     <true/>
-    <key>BighelpNotificationPluginVersion</key>
-    <string>2.19.0</string>
-    <key>BighelpNotificationPluginRevision</key>
-    <string>fb5b5ba41b1f997fd2058a5c6aa1a1ac4d30b099</string>
     <key>NSCameraUsageDescription</key>
     <string>bighelp uses the camera to scan short-lived pairing codes, power Reflective Vision, and capture photos or scan documents you intentionally attach to chats.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
@@ -124,6 +124,27 @@
 	<true/>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>bighelp transcribes your voice on device and sends only your words to your selected Hermes agent.</string>
+    <key>NSUserActivityTypes</key>
+    <array>
+        <string>app.loopdy.mobile.open</string>
+    </array>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneClassName</key>
+                    <string>CPTemplateApplicationScene</string>
+                    <key>UISceneConfigurationName</key>
+                    <string>CarPlay</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).BighelpCarPlaySceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
     <key>UIBackgroundModes</key>
     <array>
         <string>remote-notification</string>

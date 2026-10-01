@@ -12,6 +12,28 @@ enum DirectHermesSessionError: Error, Equatable, Sendable {
     case nativeRowDeletionOnly
 }
 
+extension DirectHermesSessionError: LocalizedError {
+    /// What people see when a chat can't be started or opened, instead of a bare "Try again".
+    var errorDescription: String? {
+        switch self {
+        case .creationUnconfirmed:
+            "This agent's last new chat didn't finish setting up on your computer. Try again in a moment."
+        case .creationInProgress:
+            "A new chat with this agent is already starting."
+        case .workspaceNotConfirmed:
+            "Your computer didn't start the chat in this agent's project folder. Check the project in Projects, then try again."
+        case .canonicalMissing:
+            "This agent's own chat couldn't be found on your computer."
+        case .creationPersistenceRequired, .sessionNotPersisted:
+            "bighelp couldn't keep track of the new chat. Try again."
+        case .invalidResponse, .historyChanged:
+            "Your computer answered in a way bighelp didn't expect. Try again."
+        case .nativeRowDeletionOnly:
+            "This chat can only be deleted here, not changed."
+        }
+    }
+}
+
 enum DirectHermesSessionDurability: String, Codable, Equatable, Sendable {
     case draft
     case persisted

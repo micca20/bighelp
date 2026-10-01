@@ -468,7 +468,7 @@ struct ProjectChangesView: View {
                         Text("Diff").tag(ProjectChangesDiffDisplayMode.diff)
                         Text("Preview").tag(ProjectChangesDiffDisplayMode.preview)
                     }
-                    .pickerStyle(.segmented)
+                    .bighelpSegmentedPicker()
                     .frame(width: 156)
                     .accessibilityLabel("Text file display")
                     .accessibilityHint("Switch between the raw diff and a complete file preview.")

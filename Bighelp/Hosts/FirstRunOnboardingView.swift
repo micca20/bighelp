@@ -241,7 +241,7 @@ struct FirstRunOnboardingView: View {
                                 .tag(appearance)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .bighelpSegmentedPicker()
                     .accessibilityIdentifier("settings.appearance")
                 }
                 .padding(BighelpTokens.space16)
@@ -253,31 +253,24 @@ struct FirstRunOnboardingView: View {
 
                 VStack(alignment: .leading, spacing: BighelpTokens.space12) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("Accent theme")
+                        Text("Bubble color")
                             .bighelpFont(.sectionTitle)
                             .foregroundStyle(theme.primaryText)
                         Spacer()
-                        Text("Saved immediately")
+                        Text("Change it anytime in Settings")
                             .bighelpFont(.metadata)
                             .foregroundStyle(theme.secondaryText)
                     }
-
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 245), spacing: BighelpTokens.space16)],
-                        spacing: BighelpTokens.space16
-                    ) {
-                        ForEach(themeDefinitions) { definition in
-                            FirstRunThemeCard(
-                                definition: definition,
-                                isSelected: settings.themeID == definition.id
-                            ) {
-                                settings.themeID = definition.id
-                            }
-                        }
-                    }
+                    AppearanceBubbleGrid(settings: settings)
+                }
+                .padding(BighelpTokens.space16)
+                .background(theme.surface, in: .rect(cornerRadius: BighelpTokens.radius20))
+                .overlay {
+                    RoundedRectangle(cornerRadius: BighelpTokens.radius20, style: .continuous)
+                        .stroke(theme.border, lineWidth: BighelpTokens.hairline)
                 }
                 .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("settings.themes")
+                .accessibilityIdentifier("settings.themes")
             }
             .padding(.horizontal, BighelpTokens.space24)
             .padding(.top, BighelpTokens.space24)
@@ -292,10 +285,6 @@ struct FirstRunOnboardingView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding.appearance")
-    }
-
-    private var themeDefinitions: [BighelpThemeDefinition] {
-        BighelpThemeRegistry.builtIns + settings.customThemes.map(\.definition)
     }
 
     private var stepTransition: AnyTransition {
@@ -432,64 +421,6 @@ private struct FirstRunCompanionConstellation: View {
     }
 
     @BighelpThemeReader private var theme
-}
-
-private struct FirstRunThemeCard: View {
-    let definition: BighelpThemeDefinition
-    let isSelected: Bool
-    let action: () -> Void
-
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: BighelpTokens.space12) {
-                FirstRunThemePreview(definition: definition)
-                HStack(alignment: .top, spacing: BighelpTokens.space12) {
-                    VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text(definition.name)
-                            .bighelpFont(.sectionTitle)
-                            .foregroundStyle(theme.primaryText)
-                        Text(definition.summary)
-                            .bighelpFont(.metadata)
-                            .foregroundStyle(theme.secondaryText)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: BighelpTokens.space8)
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(isSelected ? theme.action : theme.tertiaryText)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(BighelpTokens.space12)
-            .frame(maxWidth: .infinity, minHeight: 182, alignment: .topLeading)
-            .background(theme.surface, in: .rect(cornerRadius: BighelpTokens.radius20))
-            .overlay {
-                RoundedRectangle(cornerRadius: BighelpTokens.radius20, style: .continuous)
-                    .stroke(
-                        isSelected ? theme.action : theme.border,
-                        lineWidth: isSelected ? 2 : BighelpTokens.hairline
-                    )
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(definition.name) theme")
-        .accessibilityValue(isSelected ? "Selected" : definition.summary)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("settings.theme.\(definition.id.rawValue)")
-    }
-
-    @BighelpThemeReader private var theme
-}
-
-private struct FirstRunThemePreview: View {
-    let definition: BighelpThemeDefinition
-
-    var body: some View {
-        ThemePreview(definition: definition)
-            .accessibilityHidden(true)
-    }
 }
 
 private extension AppAppearance {

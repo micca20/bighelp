@@ -81,6 +81,7 @@ The XcodeGen manifest defines these application products:
 - **BighelpMac**: a native macOS application with a dedicated app entry point and
   adaptive desktop shell.
 - **BighelpWatch**: the watchOS companion application.
+- **CarPlay**: a voice scene inside the iOS app (`Bighelp/CarPlay/`), not a separate product.
 - **Notification service extension**: decrypts and validates alert content
   before it is displayed.
 - **Live Activity extension**: renders Lock Screen and Dynamic Island status.
@@ -106,20 +107,31 @@ and fail as unavailable on older systems.
 
 ### Paired Watch companion
 
-The Watch uses `WatchCompanionStore` and `BighelpWatchApprovalBridge` over the
-OS-managed WatchConnectivity channel. It does not independently enroll with
-bighelp Link or obtain the phone's credentials. The phone owns authentication,
-host selection, session hydration, voice submission and approval decisions.
-Versioned snapshots carry bounded presentation data and short-lived action
-offers. Correlated receipts distinguish pending, committed and unconfirmed
-outcomes; the Watch does not automatically retry consequential actions.
+The Watch is a remote for the phone. `WatchStore` (Watch) asks `WatchRelay`
+(iPhone) over WatchConnectivity using the bounded v3 wire in
+`BighelpWatchShared/WatchWire.swift`: home (needs, chats, agents), one chat,
+send, one agent's Feed/Ideas/Goals, approve, answer, and open on iPhone. The
+relay answers through `BighelpShortcutService.connectedWorkspace()`, the same
+live host path as Shortcuts, so WatchConnectivity can wake bighelp in the
+background and it still works. No credentials, host addresses or keys reach
+the Watch; watchOS can't open the WebSocket chat needs anyway.
 
-Watch dictation produces an editable draft, followed by an explicit Send.
-Reply playback uses watchOS speech synthesis after an explicit user action.
-Needs Attention and approvals are revalidated against the current phone/host
-state before submission. Connections shows phone reachability separately from
-verified Link readiness. Account and host changes invalidate the authority and
-old offers; an offline Watch cannot be remotely cleared until it reconnects.
+Sends carry an id so a repeat isn't sent twice, answer once the message is in
+the chat, and push `replyReady` when the turn ends; the Watch also polls a chat
+while it's on screen. Approvals and answers are checked against a fresh
+dashboard read before they're sent. Open on iPhone accepts only bighelp's own
+links: straight there when the app is active, otherwise a local notification
+that opens it; the Watch also offers the same link through Handoff.
+
+### CarPlay voice
+
+Opening bighelp in CarPlay starts a new chat with the default agent and runs
+`CarPlayVoiceSession` without a screen (the iPhone is usually locked, and the
+phone's voice screen only listens while it's active). It builds the same
+`VoicePresentation` the chat uses, keeps it listening between turns, and holds
+the host connection (`BighelpShortcutService.holdHostConnection()`) while the
+car is connected. The CarPlay scene is declared in the iOS Info.plist; visionOS
+generates its own scene manifest, which wins there.
 
 ## 3. Composition and state ownership
 
@@ -441,9 +453,9 @@ adding it to the canonical timeline.
 ### Local customization
 
 bighelp has no Marketplace, public catalog, publishing workflow, install gateway,
-or Marketplace service. Custom themes and card templates remain local features.
-Theme creation, editing, duplication, deletion, logos, and portable import/export
-do not upload or publish content.
+or Marketplace service. Card templates remain a local feature. Themes are gone:
+the look is one bubble color and a light and dark page, kept on the device, and
+old saved themes and their logo files are removed at launch.
 
 ### bighelp Cards
 

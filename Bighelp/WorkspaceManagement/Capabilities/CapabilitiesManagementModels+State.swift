@@ -163,6 +163,10 @@ final class SkillsHubManagementModel: CapabilityActionTrackingState {
         await perform { searchResult = try await client.search(query: query, source: source) }
     }
 
+    func clearSearch() {
+        searchResult = nil
+    }
+
     func inspect(_ item: SkillHubItem) async {
         await perform {
             async let previewValue = client.preview(identifier: item.id)

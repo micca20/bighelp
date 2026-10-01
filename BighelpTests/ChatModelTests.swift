@@ -466,11 +466,10 @@ struct ChatModelTests {
 
         #expect(SessionStatusRailPresentation.showsScrollIndicators == false)
         #expect(SessionStatusRailPresentation.items(
-            changes: .init(fileCount: 2, insertions: 62, deletions: 0),
             goal: goal,
             subagents: [subagent],
             tasks: tasks
-        ).map(\.kind) == [.changes, .goal, .subagents, .tasks])
+        ).map(\.kind) == [.goal, .subagents, .tasks])
     }
 
     @Test func sessionContextSnapshotDecodesThePluginEnvelope() throws {
@@ -1132,6 +1131,59 @@ struct ChatModelTests {
         #expect(controls.reasoningOptions.map(\.label) == ["Auto", "Off", "Low", "High"])
         #expect(controls.currentReasoningLabel == "Auto")
         #expect(controls.errorMessage == nil)
+    }
+
+    /// The chat's model and reasoning show in the context pop-up, Info and the
+    /// avatar's profile. Showing them reads the reasoning once, never mid-turn,
+    /// and never opens the (slow) model list.
+    @Test func modelSummaryReadsReasoningOnceAndNotDuringATurn() async throws {
+        let messaging = RuntimeControlMessagingFixture(
+            modelPicker: try decodeModelPicker(),
+            reasoningPicker: try decodeReasoningPicker(current: "high")
+        )
+        let controls = SessionRuntimeControlModel(
+            sessionID: "session_runtime_fixture_0001",
+            agentID: "juno",
+            messaging: messaging,
+            now: { 1_788_000_000 }
+        )
+        controls.reconcileSessionRuntime(SessionRuntimeSnapshot(
+            model: "Hermes-4-405B", provider: "nous", observedAt: Date()
+        ))
+        #expect(ChatModelSummaryPresentation(controls: controls).reasoning == "Reasoning: unknown")
+
+        controls.setTurnActive(true)
+        await controls.loadSummaryIfNeeded()
+        #expect(messaging.opened.isEmpty, "Nothing is read while the agent is replying")
+
+        controls.setTurnActive(false)
+        await controls.loadSummaryIfNeeded()
+        await controls.loadSummaryIfNeeded()
+        #expect(messaging.opened.map(\.kind) == [.reasoning])
+        let summary = ChatModelSummaryPresentation(controls: controls)
+        #expect(summary.modelName == ModelNameCatalogStore.shared.displayName(for: "Hermes-4-405B"))
+        #expect(summary.reasoning == "Reasoning: High")
+        #expect(summary.providerID == "nous")
+    }
+
+    /// A new chat already knows its agent's defaults, so nothing is read.
+    @Test func modelSummaryUsesAgentDefaultsForANewChat() async throws {
+        let messaging = RuntimeControlMessagingFixture(
+            modelPicker: try decodeModelPicker(),
+            reasoningPicker: try decodeReasoningPicker()
+        )
+        let controls = SessionRuntimeControlModel(
+            sessionID: "session_runtime_fixture_0001",
+            agentID: "juno",
+            messaging: messaging,
+            now: { 1_788_000_000 }
+        )
+        controls.seedAgentDefaults(AgentRuntimeSelection(providerID: "openai", modelID: "gpt-5.6-sol", reasoningEffort: ""))
+        await controls.loadSummaryIfNeeded()
+        #expect(messaging.opened.isEmpty)
+        let summary = ChatModelSummaryPresentation(controls: controls)
+        #expect(summary.reasoning == "Reasoning: Auto")
+        #expect(summary.providerID == "openai")
     }
 
     @Test func activeTurnLocksModelAndReasoningSelection() async throws {

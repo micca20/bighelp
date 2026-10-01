@@ -113,6 +113,96 @@ final class AgentsUITests: BighelpUITestCase {
         XCTAssertTrue(row.waitForNonExistence(timeout: 3))
     }
 
+    /// A new agent starts from scratch, one of the built-in personalities (the
+    /// typed name goes into it), or a template saved from an existing agent.
+    @MainActor
+    func testNewAgentStartsFromScratchATemplateOrASavedTemplate() {
+        for appearance in ["light", "dark"] {
+            let app = launch(appearance: appearance)
+            if appearance == "light" {
+                // Save an agent as a template first, so My templates has one.
+                app.buttons["agent.studio.more"].tap()
+                app.buttons["agent.studio.edit"].tap()
+                let saveTemplate = app.buttons["agent.editor.save-template"]
+                XCTAssertTrue(app.textFields["agent.editor.name"].waitForExistence(timeout: 5))
+                for _ in 0..<8 where !saveTemplate.isHittable { app.swipeUp() }
+                saveTemplate.tap()
+                let saved = app.alerts["Template saved"]
+                XCTAssertTrue(saved.waitForExistence(timeout: 3))
+                XCTAssertTrue(saved.staticTexts.element(boundBy: 1).label.contains("choose My templates"))
+                saved.buttons.firstMatch.tap()
+                app.buttons["agent.editor.cancel"].tap()
+                XCTAssertTrue(app.textFields["agent.editor.name"].waitForNonExistence(timeout: 3))
+            }
+
+            app.buttons["agents.create"].tap()
+            let name = app.textFields["agent.editor.name"]
+            XCTAssertTrue(name.waitForExistence(timeout: 5))
+            let start = app.segmentedControls["agent.editor.start"]
+            XCTAssertTrue(start.exists)
+            XCTAssertTrue(start.buttons["Scratch"].isSelected, "A new agent starts from scratch")
+            if appearance == "light" { evidence("scratch", app) }
+
+            start.buttons["Templates"].tap()
+            let anchor = app.buttons["agent.editor.template.anchor"]
+            XCTAssertTrue(anchor.waitForExistence(timeout: 3))
+            XCTAssertTrue(app.buttons["agent.editor.template.fable"].exists, "All fifteen are offered")
+            anchor.tap()
+            XCTAssertEqual(app.textFields["agent.editor.role"].value as? String, "Everyday generalist")
+            name.tap()
+            name.typeText("Kai")
+            let instructions = app.textViews["agent.editor.instructions"]
+            XCTAssertTrue((instructions.value as? String)?.contains("You are Kai, a practical, warm AI assistant") == true,
+                          "The name goes into the personality")
+            XCTAssertFalse((instructions.value as? String)?.contains("{{agent_name}}") == true)
+            evidence("templates-\(appearance)", app)
+            // Dragging down into the keyboard puts it away (its Done bar isn't reachable from UI tests).
+            app.swipeDown(velocity: .fast)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+            app.swipeUp()
+            app.swipeUp()
+            evidence("instructions-\(appearance)", app)
+            for _ in 0..<4 { app.swipeDown() }
+
+            if appearance == "light" {
+                start.buttons["My templates"].tap()
+                let savedCard = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'agent.editor.saved-template.'"))
+                    .firstMatch
+                XCTAssertTrue(savedCard.waitForExistence(timeout: 3))
+                savedCard.tap()
+                XCTAssertEqual(name.value as? String, "Kai", "A typed name is kept")
+                evidence("my-templates", app)
+                app.swipeUp()
+                app.swipeUp()
+                XCTAssertTrue(instructions.waitForExistence(timeout: 3))
+                XCTAssertFalse((instructions.value as? String)?.contains("a practical, warm AI assistant") == true,
+                               "The saved template's instructions replace the personality")
+                for _ in 0..<4 { app.swipeDown() }
+
+                start.buttons["Scratch"].tap()
+                XCTAssertEqual(app.textFields["agent.editor.role"].value as? String, "e.g. Travel planner",
+                               "Scratch clears what the template filled in")
+            }
+            app.buttons["agent.editor.cancel"].tap()
+            let discard = app.buttons["Discard changes"]
+            if discard.waitForExistence(timeout: 3) { discard.tap() }
+            XCTAssertTrue(name.waitForNonExistence(timeout: 3))
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    private func evidence(_ label: String, _ app: XCUIApplication) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = "agent-start-\(label)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard let folder = ProcessInfo.processInfo.environment["BIGHELP_UI_EVIDENCE"] else { return }
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try? shot.pngRepresentation.write(to: URL(fileURLWithPath: folder).appendingPathComponent("agent-start-\(label).png"))
+    }
+
     @MainActor
     func testEditorCancellationRequiresConfirmationOnlyForUnsavedChanges() {
         let app = launch()

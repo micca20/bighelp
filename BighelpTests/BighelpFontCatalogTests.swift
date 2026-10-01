@@ -56,9 +56,7 @@ struct BighelpFontCatalogTests {
         }
     }
 
-    @Test func nativeDefaultRetainsThemeOverridesAndDynamicType() {
-        #expect(BighelpTheme.nousLight.typeface == .monospaced)
-        #expect(BighelpTheme.superpilotLight.typography == .superpilot)
+    @Test func nativeDefaultFollowsDynamicType() {
         let normal = UITraitCollection(preferredContentSizeCategory: .large)
         let large = UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)
         #expect(BighelpTheme.light.uiFont(.body, compatibleWith: large).pointSize

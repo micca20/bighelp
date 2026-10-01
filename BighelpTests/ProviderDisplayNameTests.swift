@@ -18,7 +18,7 @@ final class ProviderDisplayNameTests: XCTestCase {
             currentProviderID: nil, currentModelID: nil, isLoading: false, isApplying: false,
             errorMessage: nil, onClearError: {}, onRetry: nil, onSelect: { _, _ in })
             .environment(\.bighelpUIV3Enabled, true)
-            .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light, themeID: .bighelp))
+            .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light))
             .environment(\.colorScheme, .light)
         let host = UIHostingController(rootView: content)
         host.safeAreaRegions = []

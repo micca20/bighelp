@@ -53,6 +53,7 @@ extension ChatDestinationView {
                     voicePresentation = featureStore.makeVoicePresentation(
                         for: model.conversationID,
                         mode: settings.voiceMode,
+                        transcription: settings.voiceTranscription,
                         conversationMode: settings.voiceConversationMode,
                         liveProvider: settings.liveVoiceProvider,
                         liveVoice: settings.liveVoice(for: settings.liveVoiceProvider)

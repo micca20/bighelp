@@ -7,25 +7,47 @@ protocol ProviderUsageClient: AnyObject {
 
 /// The bighelp plugin's `native-provider-usage-v1` route. The host does every
 /// provider call; the app only reads the result.
+///
+/// bighelp reconnects each time it comes back, and a chat covering the home
+/// screen keeps the home from handing over the new connection. So this asks
+/// for the current connection on every call, for the same computer and sign-in only.
 @MainActor
 final class DirectHermesProviderUsageClient: ProviderUsageClient {
-    private let workspace: any WorkspaceOperationPerforming
-    private let owner: WorkspaceOwner
+    private let signIn: WorkspaceSignIn
+    private let currentWorkspace: @MainActor () -> (any WorkspaceOperationPerforming)?
+    private let reconnectWait: Duration
+    private let reconnectAttempts: Int
 
-    init(workspace: any WorkspaceOperationPerforming, owner: WorkspaceOwner) {
-        self.workspace = workspace
-        self.owner = owner
+    init(signIn: WorkspaceSignIn,
+         currentWorkspace: @escaping @MainActor () -> (any WorkspaceOperationPerforming)?,
+         reconnectWait: Duration = .milliseconds(500), reconnectAttempts: Int = 20) {
+        self.signIn = signIn
+        self.currentWorkspace = currentWorkspace
+        self.reconnectWait = reconnectWait
+        self.reconnectAttempts = reconnectAttempts
     }
 
     func usage(agentID: String, refresh: Bool) async throws -> ProviderUsageReport {
-        guard workspace.owner == owner else { throw WorkspaceClientError.ownerChanged }
         let payload: [String: BighelpJSONValue] = ["agentId": .string(agentID), "refresh": .boolean(refresh)]
+        let (workspace, owner) = try await connection()
         do {
             return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
         } catch WorkspaceClientError.conflict {
             // The plugin's context changed (412): the next call loads it again. Once.
             return try ProviderUsageReport(json: try await workspace.perform(.usageList, payload: payload, owner: owner))
         }
+    }
+
+    /// Waits a few seconds for a connection that's on its way back.
+    private func connection() async throws -> (any WorkspaceOperationPerforming, WorkspaceOwner) {
+        for attempt in 0...reconnectAttempts {
+            if let workspace = currentWorkspace(), let owner = workspace.owner {
+                guard owner.signIn == signIn else { throw WorkspaceClientError.ownerChanged }
+                return (workspace, owner)
+            }
+            if attempt < reconnectAttempts { try await Task.sleep(for: reconnectWait) }
+        }
+        throw WorkspaceClientError.transportUnavailable
     }
 }
 
@@ -64,7 +86,7 @@ final class DemoProviderUsageClient: ProviderUsageClient {
                      message: "Your API key works. Google shows AI Studio usage only on its website.", via: ["hermes"],
                      manage: "https://aistudio.google.com/usage"),
             provider("deepseek", "DeepSeek", status: .signInNeeded,
-                     message: "DeepSeek didn't accept the saved key. Update it in Provider Accounts.", via: ["hermes"],
+                     message: "DeepSeek didn't accept the saved key. Update it in Provider Keys.", via: ["hermes"],
                      manage: "https://platform.deepseek.com/usage"),
         ])
     }
@@ -90,13 +112,18 @@ final class ProviderUsageStore {
     /// Which agent's view of Hermes to read (its provider comes first).
     private(set) var agentID = "default"
     @ObservationIgnored private var client: (any ProviderUsageClient)?
+    /// The computer and sign-in the client reads. A reconnect keeps it.
+    @ObservationIgnored private var scope: AnyHashable?
     @ObservationIgnored private var generation = 0
 
     /// Observed, so menus show or hide the entry points as hosts connect.
     private(set) var isAvailable = false
 
-    func configure(client: (any ProviderUsageClient)?) {
+    /// The same scope keeps the client and whatever is on screen.
+    func configure(client: (any ProviderUsageClient)?, scope: AnyHashable? = nil) {
+        if client != nil, scope != nil, scope == self.scope { return }
         self.client = client
+        self.scope = client == nil ? nil : scope
         isAvailable = client != nil
         generation += 1
         report = nil
@@ -146,12 +173,23 @@ final class ProviderUsageStore {
 }
 
 /// Which providers the overlay shows. Stores the hidden ones, so a provider
-/// set up later shows until it's turned off.
+/// set up later shows until it's turned off. Saved on this device; the key never
+/// changes, so choices survive app updates.
 enum ProviderUsagePreferences {
     static let hiddenKey = "bighelp.provider-usage.hidden"
 
+    /// A choice is saved per provider, not per report id. The host names one provider
+    /// differently depending on where it found the sign-in and which agent asks
+    /// (`codex` or `codex-hermes`, `openrouter` or `hermes-openrouter`), so an exact
+    /// id brought hidden providers back after a restart or an update.
+    static func key(for id: String) -> String { ProviderUsagePresentation.logoProviderID(id) }
+
+    static func isHidden(_ id: String, in hidden: Set<String>) -> Bool {
+        hidden.contains(key(for: id)) || hidden.contains(id)
+    }
+
     static func hidden(_ raw: String) -> Set<String> {
-        Set(raw.split(separator: "\n").map(String.init))
+        Set(raw.split(separator: "\n").map { key(for: String($0)) })
     }
 
     static func raw(_ hidden: Set<String>) -> String {

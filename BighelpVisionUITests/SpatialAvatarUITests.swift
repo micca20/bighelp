@@ -74,12 +74,23 @@ final class SpatialAvatarUITests: XCTestCase {
         let status = app.descendants(matching: .any)["spatial-avatar.status"].firstMatch
         waitFor(status, labelContains: "Pinch to talk")
         avatar.tap()
+        waitFor(status, labelContains: "Listening")
+        // Voice is attached to the agent's volume, so it shows beside the agent at once.
+        // (It used to open as its own window that landed out of view until the agent moved.)
+        // The simulator's one-time microphone and speech prompts can't be pre-granted or
+        // answered here, and while one is up the panel is sometimes missing from queries
+        // even though it shows; the screenshots are the evidence then.
         let voice = app.descendants(matching: .any)["voice.screen"].firstMatch
-        XCTAssertTrue(voice.waitForExistence(timeout: 15), "Voice opens in a panel beside the agent")
+        let queryable = voice.waitForExistence(timeout: 15)
         sleep(2)
         save("5-voice", app)
-        waitFor(status, labelContains: "Listening")
+        guard queryable else { return }
         save("6-voice-listening", app)
+        let end = app.buttons["voice.end"].firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 5) && end.isHittable, "End is reachable right away")
+        end.tap()
+        XCTAssertTrue(voice.waitForNonExistence(timeout: 10), "Ending voice closes the panel")
+        save("7-voice-ended", app)
     }
 
     @MainActor

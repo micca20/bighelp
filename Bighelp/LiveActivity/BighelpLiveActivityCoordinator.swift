@@ -792,6 +792,16 @@ final class BighelpActivityKitDriver: BighelpLiveActivityDriving {
         tokens[id]
     }
 
+    /// A card the host ended while bighelp was in the background can stay on the
+    /// Lock Screen for hours; its reply is already a notification. Opening the
+    /// app clears the finished ones.
+    static func dismissFinishedActivities() async {
+        for activity in Activity<LoopdySessionActivityAttributes>.activities
+        where activity.activityState == .ended || activity.content.state.phase.isTerminal {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+    }
+
     func dismiss(id: String, state: LoopdySessionActivityAttributes.ContentState) async {
         guard let activity = activity(id: id) else { return }
         await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)

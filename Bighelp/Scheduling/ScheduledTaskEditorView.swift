@@ -342,7 +342,7 @@ struct ScheduledTaskEditorView: View {
                     Text(option.segmentTitle).tag(option).accessibilityLabel(option.rawValue)
                 }
             }
-            .pickerStyle(.segmented)
+            .bighelpSegmentedPicker()
             .listRowInsets(EdgeInsets(
                 top: BighelpTokens.space12,
                 leading: BighelpTokens.space12,

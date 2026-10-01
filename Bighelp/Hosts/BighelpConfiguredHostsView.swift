@@ -12,8 +12,10 @@ struct BighelpConfiguredHostsSection: View {
                     Label {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(host.name)
-                            Text(host.id == registry.selectedHostID ? "Selected · native Hermes" : "Native Hermes")
-                                .bighelpFont(.metadata).foregroundStyle(.secondary)
+                            if host.id == registry.selectedHostID {
+                                Text(registry.selectedWorkspace?.isConnected == true ? "In use · connected" : "In use · not connected")
+                                    .bighelpFont(.metadata).foregroundStyle(.secondary)
+                            }
                             if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
                                 Text(attention)
                                     .bighelpFont(.metadata).foregroundStyle(.tint)

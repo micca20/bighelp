@@ -92,6 +92,21 @@ final class DirectHermesDraftStore {
         }.sorted { $0.id < $1.id }
     }
 
+    /// Deleting an agent deletes its chats; their drafts and unconfirmed sends
+    /// on this device go too, so they can't block a later agent with the same name.
+    func removeRecords(hostIdentity: String, profile: String) throws {
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        let files = try FileManager.default.contentsOfDirectory(at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])
+        for url in files {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true, url.pathExtension == "json",
+                  let record = try? JSONDecoder().decode(Record.self, from: Data(contentsOf: url)),
+                  let owner = record.owner, owner.hostIdentity == hostIdentity, owner.profile == profile else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     private func file(_ scope: String) -> URL {
         let digest = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
         return root.appending(path: digest + ".json")

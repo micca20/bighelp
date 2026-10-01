@@ -31,7 +31,6 @@ struct BighelpAppComposition {
     let optionalReferences: OptionalReferenceServices
     let featureStore: ShellFeatureStore
     let subagentStreamAcceptanceFixture: SubagentStreamAcceptanceFixtureController?
-    let watchApprovalBridge: BighelpWatchApprovalBridge?
     let newChatCoordinator: NewChatCoordinator
     let shortcutService: BighelpShortcutService
     let clearLocalCache: @MainActor () async -> Bool
@@ -59,21 +58,6 @@ struct BighelpAppComposition {
             appState.select(tab)
         }
         let settings = SettingsStore(defaults: defaults)
-        #if DEBUG
-        if usesFixtures, arguments.contains("-test-root-chrome-canvas") {
-            // Non-system colors make missing shared background ownership visible.
-            let chromeTheme = try! CustomTheme(
-                id: UUID(uuidString: "6F64BA03-2672-48A2-88B4-B78BC6323779")!,
-                name: "Chrome canvas fixture", font: .system, accentHex: "6688CC",
-                light: CustomThemePalette(backgroundHex: "E0E8F0", primaryTextHex: "111111",
-                                          secondaryTextHex: "333333", tertiaryTextHex: "555555"),
-                dark: CustomThemePalette(backgroundHex: "203040", primaryTextHex: "FFFFFF",
-                                         secondaryTextHex: "D0D8E0", tertiaryTextHex: "B8C4D0")
-            )
-            try! settings.saveCustomTheme(chromeTheme)
-            settings.themeID = chromeTheme.themeID
-        }
-        #endif
         let companion = CompanionStore(defaults: defaults)
         #if DEBUG
         if usesFixtures, let index = arguments.firstIndex(of: "-test-companion-adventure"),
@@ -470,9 +454,6 @@ struct BighelpAppComposition {
             dashboardWeatherLoader = homeWeatherFixture
         }
         #endif
-        let watchApprovalBridge: BighelpWatchApprovalBridge? = usesFixtures
-            ? nil
-            : BighelpWatchApprovalBridge(loader: unavailableCatalog, client: unavailableCatalog)
         let featureStore = ShellFeatureStore(
             timing: timing,
             catalog: sessionCatalog,
@@ -487,7 +468,7 @@ struct BighelpAppComposition {
             conversationClient: conversationClient,
             voiceClient: usesFixtures ? nil : { _, _ in unavailable },
             voiceInputLevelSource: usesFixtures
-                ? { SilentVoiceInputLevelSource() }
+                ? Self.demoVoiceInputLevelSource(arguments: arguments)
                 : { AVAudioEngineVoiceInputLevelSource() },
             sessionControlMessaging: usesFixtures
                 ? DemoSessionControlMessaging(reasoning: arguments.contains("-test-session-reasoning-high")
@@ -523,15 +504,6 @@ struct BighelpAppComposition {
             }
         }
         #endif
-        // Keep the paired Watch service alive with explicitly unavailable chat
-        // authority. The removed socket was always stopped, never a native path.
-        watchApprovalBridge?.configure(
-            featureStore: featureStore, sessionCatalog: sessionCatalog, agentDirectory: agentDirectory,
-            authority: { [weak linkAccount] in
-                WatchPhoneAuthority(scope: nil, link: linkAccount?.credentials == nil ? .signedOut : .unavailable)
-            },
-            reconnect: {}, voiceClient: nil
-        )
         if usesOverflowStatusRailFixture {
             featureStore.acceptExternal(
                 [
@@ -666,7 +638,6 @@ struct BighelpAppComposition {
         self.optionalReferences = optionalReferences
         self.featureStore = featureStore
         self.subagentStreamAcceptanceFixture = subagentStreamAcceptanceFixture
-        self.watchApprovalBridge = watchApprovalBridge
         let localCacheRefreshCoordinator = BighelpLocalCacheRefreshCoordinator(
             invalidateStaleWork: {},
             clearCurrentHostCache: {
@@ -703,14 +674,13 @@ struct BighelpAppComposition {
             await localCacheRefreshCoordinator.clearAndRefresh()
         }
         let clearAccountPresentation: @MainActor () -> Void = {
-            [weak watchApprovalBridge, weak featureStore,
+            [weak featureStore,
              weak cachedAgentRuntimeDefaults, weak botModeRooms, weak scheduledTasks,
              weak personalities, weak skillsAndTools, weak hermesWorkspaces,
              weak linkDevices, weak agentDirectory, weak userIdentity,
              weak sessionCatalog, weak appState, weak hostRepositoryScope,
              weak companion, weak optionalReferences] in
             optionalReferences?.invalidate()
-            watchApprovalBridge?.clear()
             featureStore?.resetForAccountBoundary()
             cachedAgentRuntimeDefaults?.resetForAccountBoundary()
             botModeRooms?.configureNativeClient(nil)
@@ -759,6 +729,16 @@ struct BighelpAppComposition {
             }
         )
         Task { await linkAccount.resumePendingAccountDeletion() }
+    }
+
+    /// Demo voice hears nothing, or (`-test-voice-partial`) a sentence in progress.
+    static func demoVoiceInputLevelSource(arguments: [String]) -> () -> any VoiceInputLevelSource {
+        #if DEBUG
+        if arguments.contains(ScriptedVoiceInputLevelSource.launchArgument) {
+            return { ScriptedVoiceInputLevelSource() }
+        }
+        #endif
+        return { SilentVoiceInputLevelSource() }
     }
 
     static func initialAgentProfiles(

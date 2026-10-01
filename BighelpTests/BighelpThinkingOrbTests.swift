@@ -83,8 +83,6 @@ struct BighelpThinkingOrbTests {
         #expect(BighelpTheme.light.actionThinkingOrbSurface == .dark)
         // Lavender dark-mode actions carry ink, so the orb renders for a light surface.
         #expect(BighelpTheme.dark.actionThinkingOrbSurface == .light)
-        #expect(BighelpTheme.nousDark.actionThinkingOrbSurface == .light)
-        #expect(BighelpTheme.superpilotDark.actionThinkingOrbSurface == .light)
     }
 
     @Test func pendingAgentIndicatorIsATypingBubble() {

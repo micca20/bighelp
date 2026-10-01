@@ -56,18 +56,18 @@ final class FirstRunOnboardingUITests: BighelpUITestCase {
         let dark = app.segmentedControls["settings.appearance"].buttons["Dark"]
         XCTAssertTrue(dark.waitForExistence(timeout: 5))
         dark.tap()
-        let themes = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "settings.theme."))
-        XCTAssertGreaterThan(themes.count, 1)
-        let choice = themes.element(boundBy: 1)
-        for _ in 0..<4 where !choice.isHittable { app.swipeUp() }
-        let identifier = choice.identifier
-        choice.tap()
-        XCTAssertEqual(choice.value as? String, "Selected")
-        capture("Chosen theme in dark appearance")
+        // The same bubble colors as Settings › Appearance.
+        let ocean = app.buttons["appearance.bubble.ocean"]
+        for _ in 0..<4 where !ocean.isHittable { app.swipeUp() }
+        ocean.tap()
+        XCTAssertTrue(ocean.isSelected)
+        capture("Chosen bubble color in dark appearance")
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["onboarding.appearance.continue"].waitForExistence(timeout: 15))
-        XCTAssertEqual(app.buttons[identifier].value as? String, "Selected")
+        let restored = app.buttons["appearance.bubble.ocean"]
+        for _ in 0..<4 where !restored.isHittable { app.swipeUp() }
+        XCTAssertTrue(restored.isSelected)
         XCTAssertTrue(app.segmentedControls["settings.appearance"].buttons["Dark"].isSelected)
     }
 

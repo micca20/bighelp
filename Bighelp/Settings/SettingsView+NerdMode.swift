@@ -27,12 +27,10 @@ extension SettingsView {
                 rowLabel("Personalities", detail: personalityDetail, symbol: "theatermasks.fill", tint: Color(hex: "B7356F"))
             }
             .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .accessibilityIdentifier("profile.personalities")
         } header: {
             Text("Assistants")
-        } footer: {
-            Text("Each agent can override its model from Agents › Edit.")
-                .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
     }
@@ -47,55 +45,32 @@ extension SettingsView {
             Toggle(isOn: $settings.nerdModeEnabled) {
                 HStack(spacing: BighelpTokens.space12) {
                     BighelpIconTile(systemName: "wrench.adjustable.fill", tint: .gray)
-                    settingLabel("Nerd Mode", detail: "Show advanced host and developer tools")
+                    settingLabel("Nerd Mode", detail: "Hermes tools and extra chat settings")
                 }
             }
             .accessibilityIdentifier("settings.nerd-mode")
-        } footer: {
-            Text(settings.nerdModeEnabled
-                 ? "Hermes Tools is in the ☰ menu, and advanced settings are below. Turn this off anytime to keep things simple."
-                 : "Files, gateways, plugins, logs and other host tools stay out of the way until you need them.")
-                .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
     }
 
-    @ViewBuilder
-    var nerdModeSections: some View {
-        chatDetailDefaults
-        Section("Advanced") {
-            NavigationLink {
-                BighelpDeferredSection {
-                    settingsPage(title: "Chats & Gestures") {
-                        workspace
-                        edgeGestures
-                    }
+    /// Nerd Mode: the host's own tools, with the ones people come for most
+    /// (updating Hermes, restarting its gateway) one tap away.
+    var hermesSection: some View {
+        Section {
+            if let onOpenWorkspaceDestination {
+                routeRow("System", detail: "Update Hermes, restart the gateway",
+                         symbol: "server.rack", tint: Color(hex: "5B6B7F"), identifier: "settings.hermes.system") {
+                    onOpenWorkspaceDestination(.system)
                 }
-            } label: {
-                rowLabel("Chats & gestures", detail: "Projects, scheduled runs and edge swipes",
-                         symbol: "hand.draw.fill", tint: Color(hex: "F28B32"), showsChevron: false)
             }
-            .accessibilityIdentifier("settings.advanced.workspace")
-            NavigationLink {
-                BighelpDeferredSection {
-                Form {
-                    advancedChat
-                    advancedAppearance
-                    localCache
+            if let onOpenRoute {
+                routeRow("Hermes tools", detail: "Files, skills, memory, logs and more",
+                         symbol: "square.grid.2x2.fill", identifier: "settings.hermes-tools") {
+                    onOpenRoute(.workspaceHub)
                 }
-                .modifier(ClearCacheConfirmation(
-                    isPresented: $isClearCacheConfirmationPresented,
-                    onConfirm: clearLocalCache
-                ))
-                .bighelpFormSurface()
-                .navigationTitle("Display & Data")
-                .navigationBarTitleDisplayMode(.inline)
-                }
-            } label: {
-                rowLabel("Display & data", detail: "Suggestions, inline cards, links and local cache",
-                         symbol: "slider.horizontal.3", tint: .gray, showsChevron: false)
             }
-            .accessibilityIdentifier("settings.advanced")
+        } header: {
+            Text("Hermes")
         }
         .listRowBackground(theme.surface)
     }
@@ -106,6 +81,7 @@ extension SettingsView {
             rowLabel(title, detail: detail, symbol: symbol, tint: tint)
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .accessibilityIdentifier(identifier)
     }
 

@@ -35,8 +35,10 @@ final class AgentActions {
     private(set) var deletingAgent: AgentProfile?
     var templateNotice: String?
     var actionError: String?
-    /// The connection the sheets belong to; they close when it changes.
+    /// The connection the actions run on.
     private(set) var activeOwner: WorkspaceOwner?
+    /// The computer and sign-in the sheets belong to; they close when it changes.
+    private var signIn: WorkspaceSignIn?
 
     func items(_ agent: AgentProfile, _ config: AgentActionsConfig) -> [AgentActionItem] {
         AgentActionsPresentation.items(
@@ -67,7 +69,7 @@ final class AgentActions {
         case .groups: break
         case .edit:
             editor = .editing(agent, store: config.store, processor: AvatarImageProcessor(),
-                              isCurrent: { [weak self] in self?.activeOwner == owner })
+                              isCurrent: { [weak self] in self?.activeOwner?.signIn == owner.signIn })
         case .duplicate:
             guard let cloneClient = config.cloneClient else { return }
             duplicateModel = AgentDuplicateModel(source: agent, owner: owner, client: cloneClient,
@@ -75,7 +77,7 @@ final class AgentActions {
         case .shortcuts: shortcutsAgent = agent
         case .saveTemplate:
             let template = AgentTemplateLibrary.shared.save(from: agent)
-            templateNotice = "“\(template.title)” is saved on this iPhone. To use it, tap + in Agents and pick it."
+            templateNotice = "“\(template.title)” is saved on this device. To use it, create an agent and choose My templates."
         case .delete: pendingDeletion = agent
         }
     }
@@ -100,13 +102,18 @@ final class AgentActions {
 
     func adopt(owner: WorkspaceOwner?) {
         guard owner != activeOwner else { return }
-        let previous = activeOwner
         activeOwner = owner
-        shortcutsAgent = nil
+        // A copy in progress can't carry over to another connection.
         duplicateModel?.cancel()
         duplicateModel = nil
+        // Disconnected, or back on the same computer and sign-in (bighelp
+        // reconnects after you've been away): open sheets and dialogs stay.
+        guard let owner, owner.signIn != signIn else { return }
+        let previousScope = signIn?.authority.cacheScopeID
+        signIn = owner.signIn
+        shortcutsAgent = nil
         pendingDeletion = nil
-        if previous?.cacheScopeID != owner?.cacheScopeID { editor = nil }
+        if previousScope != owner.cacheScopeID { editor = nil }
     }
 
     private func dispatch(_ action: AgentWorkspaceAction, _ config: AgentActionsConfig) {

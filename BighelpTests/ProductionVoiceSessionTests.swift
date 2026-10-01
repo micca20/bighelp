@@ -53,6 +53,14 @@ struct ProductionVoiceSessionTests {
         #expect(detector.receiveTranscript("Hold on please", isFinal: false))
     }
 
+    /// The louder reply leaking back into the microphone isn't you talking.
+    @Test func quietSpeakerLeakDoesNotOpenBargeIn() {
+        let detector = VoiceBargeInDetector()
+        detector.begin(spokenText: "Here is the answer I was giving you")
+        for _ in 0..<12 { detector.receiveLevel(0.16) }
+        #expect(!detector.receiveTranscript("wait a second", isFinal: true))
+    }
+
     @Test func agentSpeechEchoDoesNotTriggerBargeIn() {
         let detector = VoiceBargeInDetector()
         detector.begin(spokenText: "Here is the answer I was giving you")
@@ -82,7 +90,7 @@ struct ProductionVoiceSessionTests {
     @Test func recognizedSpeechFinishesAfterNaturalSilence() {
         var endOfSpeechCount = 0
         let detector = VoiceEndOfSpeechDetector(
-            silenceDuration: .seconds(1.5),
+            baseSilence: .seconds(1.5),
             onEndOfSpeech: { endOfSpeechCount += 1 }
         )
 
@@ -98,7 +106,7 @@ struct ProductionVoiceSessionTests {
     @Test func renewedSpeechActivityPreventsPrematureFinish() {
         var endOfSpeechCount = 0
         let detector = VoiceEndOfSpeechDetector(
-            silenceDuration: .seconds(1.5),
+            baseSilence: .seconds(1.5),
             onEndOfSpeech: { endOfSpeechCount += 1 }
         )
 
@@ -108,14 +116,15 @@ struct ProductionVoiceSessionTests {
         detector.receiveLevel(0.01, duration: .seconds(1))
         #expect(endOfSpeechCount == 0)
 
-        detector.receiveLevel(0.01, duration: .seconds(0.5))
+        // Talking longer earns a little more quiet before the turn ends.
+        detector.receiveLevel(0.01, duration: .seconds(0.6))
         #expect(endOfSpeechCount == 1)
     }
 
     @Test func stoppingRecognitionCancelsPendingEndOfSpeech() {
         var endOfSpeechCount = 0
         let detector = VoiceEndOfSpeechDetector(
-            silenceDuration: .seconds(1.5),
+            baseSilence: .seconds(1.5),
             onEndOfSpeech: { endOfSpeechCount += 1 }
         )
 
@@ -136,8 +145,8 @@ struct ProductionVoiceSessionTests {
             source.onLevel = { level, callbackGeneration in
                 continuation.resume(returning: (level, callbackGeneration))
             }
+            source.openForTesting(request: request)
             let callback = AVAudioEngineVoiceInputLevelSource.makeTapCallback(
-                recognitionRequest: request,
                 generation: generation,
                 source: source
             )
@@ -476,8 +485,8 @@ struct ProductionVoiceSessionTests {
         let session = VoiceAudioSessionFixture()
         let coordinator = VoiceAudioSessionCoordinator(session: session)
 
-        let microphone = try coordinator.acquire()
-        let playback = try coordinator.acquire()
+        let microphone = try coordinator.acquire(for: .conversation)
+        let playback = try coordinator.acquire(for: .conversation)
         #expect(session.activations == 1)
         #expect(session.isActive)
 
@@ -490,13 +499,44 @@ struct ProductionVoiceSessionTests {
         #expect(session.deactivations == 1)
     }
 
+    /// A voice sample in Settings has nothing listening, so it plays at media
+    /// volume. Voice chat used to play everything at earpiece-call volume.
+    @Test func aSampleWithNothingListeningPlaysAtMediaVolume() throws {
+        let session = VoiceAudioSessionFixture()
+        let coordinator = VoiceAudioSessionCoordinator(session: session)
+
+        let sample = try coordinator.acquire(for: .playback)
+        #expect(session.configurations == [.playback])
+        sample.release()
+
+        let microphone = try coordinator.acquire(for: .conversation)
+        #expect(session.configurations == [.playback, .conversation])
+        microphone.release()
+    }
+
+    @Test func theMicrophoneJoiningASampleSwitchesToTheChatSetup() throws {
+        let session = VoiceAudioSessionFixture()
+        let coordinator = VoiceAudioSessionCoordinator(session: session)
+
+        let sample = try coordinator.acquire(for: .playback)
+        let microphone = try coordinator.acquire(for: .conversation)
+        let reply = try coordinator.acquire(for: .conversation)
+        #expect(session.configurations == [.playback, .conversation])
+        #expect(session.activations == 1)
+
+        sample.release()
+        microphone.release()
+        reply.release()
+        #expect(session.isActive == false)
+    }
+
     @Test func failedActivationDoesNotStrandAClaim() {
         let session = VoiceAudioSessionFixture()
         session.activationError = VoiceSessionError.unsupported
         let coordinator = VoiceAudioSessionCoordinator(session: session)
 
         #expect(throws: (any Error).self) {
-            _ = try coordinator.acquire()
+            _ = try coordinator.acquire(for: .conversation)
         }
         #expect(coordinator.claimCount == 0)
         #expect(session.isActive == false)
@@ -506,11 +546,11 @@ struct ProductionVoiceSessionTests {
         let session = VoiceAudioSessionFixture()
         let coordinator = VoiceAudioSessionCoordinator(session: session)
 
-        let first = try coordinator.acquire()
+        let first = try coordinator.acquire(for: .conversation)
         first.release()
         #expect(session.isActive == false)
 
-        let second = try coordinator.acquire()
+        let second = try coordinator.acquire(for: .conversation)
         #expect(session.isActive)
 
         first.release()
@@ -539,7 +579,7 @@ struct ProductionVoiceSessionTests {
         let coordinator = VoiceAudioSessionCoordinator(session: session)
         let playback = AVAudioPlayerVoicePlayback(sessionCoordinator: coordinator)
 
-        let microphone = try coordinator.acquire()
+        let microphone = try coordinator.acquire(for: .conversation)
         let superseded = try AVAudioPlayer(data: Self.silentWAV())
 
         playback.audioPlayerDidFinishPlaying(superseded, successfully: true)
@@ -609,11 +649,13 @@ private final class VoiceAudioSessionFixture: VoiceAudioSessionControlling, @unc
         var activations = 0
         var deactivations = 0
         var activationError: (any Error)?
+        var configurations: [VoiceAudioUse] = []
     }
 
     var isActive: Bool { read(\.isActive) }
     var activations: Int { read(\.activations) }
     var deactivations: Int { read(\.deactivations) }
+    var configurations: [VoiceAudioUse] { read(\.configurations) }
 
     var activationError: (any Error)? {
         get { read(\.activationError) }
@@ -624,7 +666,11 @@ private final class VoiceAudioSessionFixture: VoiceAudioSessionControlling, @unc
         }
     }
 
-    func configurePlayAndRecord() throws {}
+    func configure(for use: VoiceAudioUse) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        state.configurations.append(use)
+    }
 
     func setActive(_ active: Bool) throws {
         lock.lock()

@@ -1,3 +1,5 @@
+// Live Activities are iPhone and iPad only; Vision Pro gets the Home widgets.
+#if os(iOS)
 import ActivityKit
 import SwiftUI
 import WidgetKit
@@ -5,13 +7,16 @@ import WidgetKit
 struct BighelpSessionLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LoopdySessionActivityAttributes.self) { context in
+            // The app's own page and bubble colors (Settings › Colors), like the Home widgets.
+            let snapshot = BighelpWidgetSnapshot.load()
             BighelpLiveActivityCard(
                 attributes: context.attributes,
                 state: context.state,
-                isStale: context.isStale
+                isStale: context.isStale,
+                snapshot: snapshot
             )
-            .activityBackgroundTint(Color(uiColor: .secondarySystemBackground))
-            .activitySystemActionForegroundColor(.primary)
+            .activityBackgroundTint(BighelpActivityColors.canvas(snapshot: snapshot))
+            .activitySystemActionForegroundColor(BighelpActivityColors.accent(snapshot: snapshot))
             .widgetURL(context.attributes.deepLink)
         } dynamicIsland: { context in
             let presentation = BighelpActivityPresentation(
@@ -49,14 +54,20 @@ struct BighelpSessionLiveActivity: Widget {
                         .accessibilityHidden(true)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let detail = presentation.detail {
-                        Text(detail)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .lineLimit(2)
-                            .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let detail = presentation.detail {
+                            Text(detail)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .accessibilityHidden(true)
+                        }
+                        if !context.isStale {
+                            BighelpActivitySteps(phase: context.state.phase, color: presentation.pose.tint,
+                                                 track: .white.opacity(0.18))
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } compactLeading: {
                 BighelpActivityAvatar(agentID: context.attributes.agentID,
@@ -74,7 +85,7 @@ struct BighelpSessionLiveActivity: Widget {
                     .overlay(alignment: .bottomTrailing) { islandBadge(presentation, size: 11) }
                     .accessibilityLabel(presentation.accessibilityLabel)
             }
-            .keylineTint(.secondary)
+            .keylineTint(Color(widgetHex: BighelpWidgetSnapshot.Palette.emberDark.accentHex))
             .widgetURL(context.attributes.deepLink)
         }
     }
@@ -90,3 +101,4 @@ struct BighelpSessionLiveActivity: Widget {
             .accessibilityHidden(true)
     }
 }
+#endif

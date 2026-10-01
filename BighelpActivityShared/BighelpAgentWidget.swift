@@ -1,5 +1,3 @@
-// Widgets live in the iPhone/iPad widget extension; Vision Pro has none.
-#if !os(visionOS)
 import SwiftUI
 import WidgetKit
 
@@ -16,8 +14,16 @@ struct BighelpAgentWidget: Widget {
         }
         .configurationDisplayName("Your Agent")
         .description("See what your agent is up to, its latest posts and goals, and start a chat.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge,
-                            .accessoryCircular, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies(Self.families)
+        .bighelpWidgetPlacement()
+    }
+
+    private static var families: [WidgetFamily] {
+        #if os(visionOS)
+        [.systemSmall, .systemMedium, .systemLarge]
+        #else
+        [.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryRectangular, .accessoryInline]
+        #endif
     }
 }
 
@@ -32,11 +38,13 @@ struct BighelpAgentWidgetView: View {
 
     var body: some View {
         switch family {
+        #if os(iOS)
         case .accessoryCircular: circular
         case .accessoryRectangular: rectangular
         case .accessoryInline: inline
         case .systemMedium: medium
         case .systemLarge: large
+        #endif
         default: small
         }
     }
@@ -154,6 +162,7 @@ struct BighelpAgentWidgetView: View {
         .widgetURL(BighelpWidgetSnapshot.agentURL())
     }
 
+    #if os(iOS)
     // MARK: Lock Screen
 
     private var circular: some View {
@@ -202,6 +211,7 @@ struct BighelpAgentWidgetView: View {
         Label("\(name): \(statusText)", systemImage: pose?.symbolName ?? "sparkles")
             .widgetURL(BighelpWidgetSnapshot.agentURL())
     }
+    #endif
 
     // MARK: Pieces
 
@@ -343,4 +353,3 @@ struct BighelpAgentWidgetView: View {
         }
     }
 }
-#endif

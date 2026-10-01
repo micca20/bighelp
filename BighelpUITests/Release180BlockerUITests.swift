@@ -14,7 +14,7 @@ final class Release180BlockerUITests: BighelpUITestCase {
         XCTAssertTrue(workspace.waitForExistence(timeout: 5))
         workspace.tap()
         dismissActionsAfterWorkspaceSelection(in: app)
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         changes.tap()
         let scratchpad = app.buttons["project-changes.scratchpad"]
@@ -36,7 +36,7 @@ final class Release180BlockerUITests: BighelpUITestCase {
         let existing = composer.value as? String ?? ""
         if !existing.isEmpty { composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count)) }
         composer.typeText("Existing destination draft")
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         changes.tap()
         let open = app.buttons["project-changes.scratchpad"]

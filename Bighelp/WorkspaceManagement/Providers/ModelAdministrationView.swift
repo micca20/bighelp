@@ -292,7 +292,7 @@ struct ModelAdministrationView: View {
             if let source = runtime.source { LabeledContent("Credential source", value: source) }
             if let message = runtime.errorMessage { Text(message).font(.footnote).foregroundStyle(.secondary) }
             if let onOpenProviderAccounts {
-                Button("Manage provider accounts", action: onOpenProviderAccounts)
+                Button("Open Provider Keys", action: onOpenProviderAccounts)
                     .frame(minHeight: BighelpTokens.hitTarget)
             }
         }

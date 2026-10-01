@@ -90,28 +90,26 @@ struct ReferenceNativeEditorAcceptanceTests {
         let source = view.text
         let undo = view.undoManager
         let bighelp = BighelpTheme.resolve(
-            themeID: .bighelp,
             appearance: .system,
             colorScheme: .light,
             contrast: .standard
         )
         #expect(view.font?.fontName == bighelp.uiFont(.body, compatibleWith: view.traitCollection).fontName)
 
-        fixture.themeID = .nous
+        fixture.bubbleColor = .ocean
         await mounted.settle()
-        let nous = BighelpTheme.resolve(
-            themeID: .nous,
-            appearance: .system,
+        let ocean = BighelpTheme.resolve(
+            appearance: BighelpAppearanceContext(appearance: .system, bubbleColor: .ocean),
             colorScheme: .light,
             contrast: .standard
         )
-        #expect(view.font?.fontName == nous.uiFont(.body, compatibleWith: view.traitCollection).fontName)
+        #expect(view.font?.fontName == ocean.uiFont(.body, compatibleWith: view.traitCollection).fontName)
         #expect(view === mounted.textView())
         #expect(view.selectedRange == selection)
         #expect(view.text == source)
         #expect(view.undoManager === undo)
 
-        fixture.themeID = .bighelp
+        fixture.bubbleColor = nil
         fixture.expanded = true
         await mounted.settle()
         #expect(view.font?.fontName == bighelp.uiFont(.body, compatibleWith: view.traitCollection).fontName)
@@ -684,7 +682,7 @@ struct ReferenceNativeEditorAcceptanceTests {
     var surfaceActive = true
     var renderRevision = 0
     var discoveryRevision = 0
-    var themeID: BighelpThemeID = .bighelp
+    var bubbleColor: BighelpBubbleColor?
     @ObservationIgnored var publications = 0
 
     init(resolveDelay: Duration = .zero, beforeResolveReturn: @escaping @MainActor () -> Void = {},
@@ -725,7 +723,7 @@ struct ReferenceNativeEditorAcceptanceTests {
             }
         }
         .padding()
-        .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light, themeID: fixture.themeID))
+        .environment(\.appAppearance, BighelpAppearanceContext(appearance: .light, bubbleColor: fixture.bubbleColor))
         .environment(\.colorScheme, .light)
         .modifier(ReferenceDiscoveryRefresh(hub: fixture.hub, revision: fixture.discoveryRevision))
         .onAppear { focused = fixture.focusRequested }

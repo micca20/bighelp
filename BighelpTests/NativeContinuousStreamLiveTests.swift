@@ -41,7 +41,7 @@ final class NativeContinuousStreamLiveTests: XCTestCase {
         let owner = try XCTUnwrap(connections.owner)
         print("NATIVE_STAGE constructing-runtime")
         let runtime = try NativeWorkspaceRuntime(connections: connections, authority: owner.authority,
-            settings: SettingsStore(defaults: preferences, customThemeLogoDirectory: directory.appending(path: "logos")),
+            settings: SettingsStore(defaults: preferences, legacyThemeLogoDirectory: directory.appending(path: "logos")),
             userIdentity: UserIdentityStore(defaults: preferences, avatarDirectory: directory.appending(path: "avatars")),
             directory: directory.appending(path: "runtime"))
         defer {

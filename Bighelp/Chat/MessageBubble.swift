@@ -62,6 +62,8 @@ final class ChatMessageContentCache {
         let document: MarkdownDocument
         let cardProjection: ChatCardMessageProjection
         let role: TimelineRole
+        /// The first web link, for the preview under the message.
+        private(set) lazy var linkPreviewURL: URL? = LinkPreviewCandidate.firstURL(in: document)
 
         init(_ source: String, role: TimelineRole) {
             references = ReferenceCodec.decode(source)
@@ -102,6 +104,7 @@ struct MessageBubble: View {
     @State private var isReactionPickerPresented = false
     @State private var contentCache = ChatMessageContentCache()
     @AppStorage(ChatLayoutPreferences.textSizeKey) private var chatTextSize: ChatTextSize = .standard
+    @AppStorage(LinkPreviewPreferences.enabledKey) private var showsLinkPreviews = true
 
     init(
         messageID: String = "",
@@ -131,6 +134,15 @@ struct MessageBubble: View {
 
     /// Written on the way to the answer: shown quieter, like thinking.
     private var isInterimReply: Bool { role == .assistant && metadata?.isInterimReply == true }
+
+    /// A finished message's first web link. A reply still being written waits,
+    /// so a half-typed link never loads.
+    private func linkPreviewURL(_ projection: ChatMessageContentCache.Projection) -> URL? {
+        guard showsLinkPreviews, !isInterimReply, !projection.cardProjection.hasRichContent,
+              delivery?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare("Streaming") != .orderedSame else { return nil }
+        return projection.linkPreviewURL
+    }
 
     var body: some View {
         let projection = contentCache.project(text, role: role)
@@ -218,6 +230,12 @@ struct MessageBubble: View {
                 )
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+            }
+            if let previewURL = linkPreviewURL(projection) {
+                LinkPreviewCard(url: previewURL)
+                    .frame(maxWidth: YouTubeVideo(url: previewURL) == nil
+                        ? BighelpV3MessagePresentation.linkPreviewMaximumWidth
+                        : BighelpV3MessagePresentation.videoPreviewMaximumWidth)
             }
             if !references.references.isEmpty {
                 ReferenceHistoryView(snapshots: references.references)
@@ -452,8 +470,10 @@ struct MessageBubble: View {
                     switch envelope {
                     case .legacy(let card):
                         GenerativeUICardView(card: card, messageID: messageID)
+                            .cardImageCopy(GenerativeUICardView(card: card, messageID: messageID))
                     case .card(let card):
                         BighelpCardView(card: card)
+                            .cardImageCopy(BighelpCardView(card: card))
                     }
                 case .table(let table):
                     ChatMarkdownTableView(table: table,

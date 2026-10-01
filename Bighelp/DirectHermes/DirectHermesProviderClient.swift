@@ -49,6 +49,8 @@ struct DirectHermesOAuthProvider: Identifiable, Equatable, Sendable {
     let documentationURL: URL?
     let canDisconnect: Bool
     let disconnectHint: String?
+    /// What to run on the host for sign-ins Hermes only does in a terminal.
+    var cliCommand: String? = nil
     let status: Status
 }
 
@@ -463,6 +465,8 @@ final class DirectHermesProviderClient {
                 documentationURL: try DirectHermesAdministrationCodec.optionalHTTPSURL(row["docs_url"]),
                 canDisconnect: try DirectHermesAdministrationCodec.bool(row["disconnectable"]),
                 disconnectHint: try DirectHermesAdministrationCodec.optionalString(row["disconnect_hint"], maximum: 2_000),
+                cliCommand: (try? DirectHermesAdministrationCodec.optionalString(row["cli_command"], maximum: 512))
+                    .flatMap(Self.terminalCommand),
                 status: .init(
                     isLoggedIn: try DirectHermesAdministrationCodec.bool(status["logged_in"]),
                     source: try DirectHermesAdministrationCodec.optionalString(status["source"], maximum: 256),
@@ -475,6 +479,14 @@ final class DirectHermesProviderClient {
                 )
             )
         }
+    }
+
+    /// A one-line command to show and copy: printable, no line breaks.
+    nonisolated static func terminalCommand(_ raw: String) -> String? {
+        let command = raw.trimmingCharacters(in: .whitespaces)
+        guard !command.isEmpty,
+              command.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7f }) else { return nil }
+        return command
     }
 
     func startOAuth(profileID: String, providerID: String) async throws -> DirectHermesOAuthSession {

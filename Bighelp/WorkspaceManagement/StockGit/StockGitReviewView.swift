@@ -100,7 +100,7 @@ struct StockGitReviewView: View {
                 )) {
                     ForEach(StockGitReviewScope.allCases) { scope in Text(scope.title).tag(scope) }
                 }
-                .pickerStyle(.segmented)
+                .bighelpSegmentedPicker()
 
                 if !store.selectedPaths.isEmpty {
                     HStack {

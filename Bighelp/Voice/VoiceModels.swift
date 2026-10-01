@@ -114,6 +114,9 @@ protocol VoiceSessionClient {
     ) async throws
     func stopSpeaking()
     func endSession(conversationID: String) async throws
+    /// A spoken turn's audio (16 kHz mono WAV) as text, from the host's
+    /// speech-to-text provider.
+    func transcribe(_ audio: Data) async throws -> String
 }
 
 @MainActor
@@ -145,4 +148,8 @@ extension VoiceSessionClient {
         }
     }
     func stopSpeaking() {}
+
+    func transcribe(_ audio: Data) async throws -> String {
+        throw VoiceSessionError.unsupported
+    }
 }

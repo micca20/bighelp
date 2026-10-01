@@ -256,67 +256,6 @@ final class BighelpLinkAccountStore {
         await establishAccount(registration: false)
     }
 
-    /// Authorizes a Watch-created device identity without copying this phone's
-    /// signing key. The returned account grant is encrypted to the Watch's
-    /// one-time agreement key and can only be opened by that Watch.
-    func authorizeWatchEnrollment(
-        _ request: WatchBighelpEnrollmentRequest,
-        baseURL: URL
-    ) async throws -> WatchBighelpEnrollmentGrant {
-        guard state != .working else { throw BighelpLinkAPIError.invalidConfiguration }
-        let generation = accountGeneration
-        let previousState = state
-        recoveryGeneration = UUID()
-        state = .working
-        defer {
-            if accountGeneration == generation, state == .working { state = previousState }
-        }
-        let options = try await api.passkeyOptions(registration: false)
-        try requireCurrentAccount(generation)
-        let authorization = try await passkeys.authorize(
-            registration: false,
-            options: options.options
-        )
-        try requireCurrentAccount(generation)
-        guard authorization.wrappingKey.count == 32 else {
-            throw BighelpLinkCryptoError.invalidKey
-        }
-        let session = try await api.verifyPasskey(
-            registration: false,
-            flowID: options.flowID,
-            response: authorization.response
-        )
-        try requireCurrentAccount(generation)
-        let accountKey = try BighelpLinkAccountKeyEnvelope.open(
-            await api.loadAccountKeyEnvelope(accessToken: session.accessToken),
-            wrappingKey: authorization.wrappingKey
-        )
-        try requireCurrentAccount(generation)
-        _ = try await api.registerExternalDevice(
-            accessToken: session.accessToken,
-            deviceID: request.deviceID,
-            publicKeySPKI: request.publicKeySPKI,
-            accountKey: accountKey,
-            name: request.deviceName,
-            kind: .computer
-        )
-        try requireCurrentAccount(generation)
-        let agreementKey = try BighelpLinkBase64URL.decode(request.agreementPublicKey)
-        let envelope = try BighelpLinkHostGrant.seal(
-            accountKey: accountKey,
-            flowID: request.requestID,
-            deviceID: request.deviceID,
-            hostAgreementPublicKey: agreementKey
-        )
-        return try WatchBighelpEnrollmentGrant(
-            requestID: request.requestID,
-            deviceID: request.deviceID,
-            baseURL: baseURL.absoluteString,
-            authorizationEpoch: session.authorizationEpoch,
-            grantEnvelope: envelope
-        )
-    }
-
     /// Clears the local identity synchronously. Only the captured old device is
     /// revoked asynchronously; that completion may never mutate a newer account.
     @discardableResult

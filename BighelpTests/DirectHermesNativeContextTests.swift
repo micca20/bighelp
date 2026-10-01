@@ -52,6 +52,29 @@ struct DirectHermesNativeContextTests {
         #expect(!DirectHermesNativePluginClient.supports(.projectsGitExecute))
     }
 
+    /// The host asks every provider before it answers (up to 20 seconds, after
+    /// finding them). Giving up at 20 seconds showed "couldn't be loaded".
+    @Test func usageWaitsLongerThanTheHostTakesToAskEveryProvider() async throws {
+        let owner = try owner()
+        let http = HTTP()
+        http.handler = { request, guardValue in
+            if let guardValue {
+                return try self.response(request, body: ["providers": .array([])],
+                                         headers: ["ETag": guardValue.etag, "X-Loopdy-Request-ID": guardValue.requestIDHeader])
+            }
+            return try self.response(request, body: self.context(features: [
+                "native-context-v1", "serving-profile-v1", "native-provider-usage-v1"
+            ]))
+        }
+        let client = DirectHermesNativePluginClient(http: http, owner: owner, currentOwner: { owner })
+        _ = try await client.perform(.usageList, payload: ["agentId": .string("default"), "refresh": .boolean(false)])
+        #expect(http.calls.count == 2)
+        #expect(http.calls[0].request.timeout == 20, "Everything else keeps the usual wait")
+        #expect(http.calls[1].request.path == "/api/plugins/loopdy/native/usage/list")
+        #expect(http.calls[1].request.timeout >= 45)
+        #expect(http.calls[1].request.timeout <= DirectHermesHTTP.longestRequestSeconds)
+    }
+
     @Test func verifiedContextBindsPrincipalAndDiscardsUnrecognizedFields() async throws {
         let owner = try owner()
         let http = HTTP()

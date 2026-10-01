@@ -295,9 +295,9 @@ private struct BoardIcon: View {
 private struct BoardStateBanner: View {
     let state: AgentBoardStore.LoadState
     let context: AgentBoardContext
-    @State private var copied = false
-
-    static let updateCommand = "hermes loopdy update --restart"
+    /// For the agent: plugins before 3.0.0 only know the command's old name.
+    static let updateInstruction = "run `hermes bighelp update --restart` (on plugins before 3.0.0 the command is "
+        + "`hermes loopdy update --restart`)"
 
     var body: some View {
         switch state {
@@ -324,28 +324,13 @@ private struct BoardStateBanner: View {
             Label("Your Hermes host is running an older bighelp plugin", systemImage: "puzzlepiece.extension")
                 .font(.headline)
                 .foregroundStyle(theme.primaryText)
-            Text("Run this where Hermes runs, or ask \(context.agentName) to do it. Already updated? "
-                 + "Restart every Hermes dashboard this phone connects to, so it loads the new copy.")
+            Text("Update it in Settings, under this computer's Plugin version, or ask \(context.agentName) to do it. "
+                 + "Already updated? Restart every Hermes dashboard this phone connects to, so it loads the new copy.")
                 .font(.subheadline)
                 .foregroundStyle(theme.secondaryText)
-            Text(Self.updateCommand)
-                .font(.callout.monospaced())
-                .foregroundStyle(theme.primaryText)
-                .textSelection(.enabled)
-                .padding(BighelpTokens.space12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.incomingMessageBackground))
             HStack(spacing: BighelpTokens.space12) {
                 Button {
-                    UIPasteboard.general.string = Self.updateCommand
-                    copied = true
-                } label: {
-                    Label(copied ? "Copied" : "Copy command", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .frame(minHeight: BighelpTokens.hitTarget)
-                }
-                .accessibilityIdentifier("board.plugin-required.copy")
-                Button {
-                    context.onAsk("Please update the bighelp plugin on this host: run `\(Self.updateCommand)`, "
+                    context.onAsk("Please update the bighelp plugin on this host: \(Self.updateInstruction), "
                         + "then restart every Hermes dashboard process (including launchd or systemd services) "
                         + "so they load it, and tell me when it's back.")
                 } label: {
@@ -441,6 +426,7 @@ private struct FeedPostView: View {
     let context: AgentBoardContext
     @State private var isShowingInfo = false
     @State private var asksWhy = false
+    @AppStorage(LinkPreviewPreferences.enabledKey) private var showsLinkPreviews = true
 
     var body: some View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {
@@ -473,7 +459,11 @@ private struct FeedPostView: View {
                     }
                     .scrollClipDisabled()
                 }
-                ForEach(item.links, id: \.url) { link in
+                if let previewed = previewedLink {
+                    LinkPreviewCard(url: previewed.url, fallbackTitle: previewed.title)
+                        .frame(maxWidth: 420, alignment: .leading)
+                }
+                ForEach(item.links.filter { $0.url != previewedLink?.url }, id: \.url) { link in
                     Link(destination: link.url) {
                         Label(link.title.isEmpty ? (link.url.host() ?? "Open link") : link.title, systemImage: "link")
                             .font(.subheadline.weight(.medium))
@@ -489,6 +479,13 @@ private struct FeedPostView: View {
         .modifier(LessLikeThis(isPresented: $asksWhy, item: item, context: context))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.feed.post.\(item.id)")
+    }
+
+    /// The post's first web link, else the first one in its text, as a preview card.
+    private var previewedLink: AgentBoardItem.Link? {
+        guard showsLinkPreviews else { return nil }
+        if let link = item.links.first(where: { LinkPreviewPolicy.loadableURL($0.url) != nil }) { return link }
+        return LinkPreviewCandidate.firstURL(inMarkdown: item.body).map { .init(url: $0, title: "") }
     }
 
     private var actions: some View {
@@ -923,7 +920,7 @@ struct AgentAppsView<Artifacts: View>: View {
             Picker("Show", selection: $segment) {
                 ForEach(Segment.allCases) { Text($0.rawValue).tag($0) }
             }
-            .pickerStyle(.segmented)
+            .bighelpSegmentedPicker()
             .padding(.horizontal, BighelpTokens.space20)
             .accessibilityIdentifier("board.apps.segment")
             switch segment {

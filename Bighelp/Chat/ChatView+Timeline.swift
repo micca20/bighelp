@@ -231,11 +231,13 @@ extension ChatView {
             from: ChatInterimReplies.marking(
                 ChatCardTranscriptProjection.removingSupersededLiveCards(from: model.transcriptEntries),
                 isSending: model.isSending,
-                isBotMode: model.isBotMode
+                isBotMode: model.isBotMode,
+                activityEvents: model.activityLedger.allEvents
             ),
             isSending: model.isSending,
             enabled: foldCompletedTurns,
-            activityEvents: model.activityLedger.allEvents
+            activityEvents: model.activityLedger.allEvents,
+            interimReplies: .following(model.activityVisibility)
         )
     }
     @ViewBuilder

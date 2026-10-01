@@ -151,28 +151,25 @@ final class ChatSixFixesUITests: BighelpUITestCase {
     @MainActor
     func testStatusRailIsOneCompactRowClearOfContextRing() throws {
         let app = launch()
-        let changes = app.buttons["chat.session-status.changes"]
         let context = app.buttons["chat.session-context"]
-        XCTAssertTrue(changes.waitForExistence(timeout: 5))
-        XCTAssertTrue(context.waitForExistence(timeout: 3))
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
         let rail = app.descendants(matching: .any)["chat.session-status-rail"].firstMatch
         XCTAssertTrue(rail.frame.contains(context.frame))
-        XCTAssertLessThanOrEqual(changes.frame.height, 44.5)
-        XCTAssertGreaterThanOrEqual(changes.frame.height, 44)
-        XCTAssertLessThanOrEqual(changes.frame.maxY,
+        XCTAssertLessThanOrEqual(context.frame.height, 44.5)
+        XCTAssertLessThanOrEqual(rail.frame.maxY,
                                  app.descendants(matching: .any)["chat.composer-shell"].firstMatch.frame.minY)
-        XCTAssertGreaterThanOrEqual(changes.frame.minX, app.frame.minX)
+        XCTAssertGreaterThanOrEqual(rail.frame.minX, app.frame.minX)
         evidence("compact-rail")
     }
 
     @MainActor
-    func testPhoneShowsAllFourActivitiesWithoutHorizontalHunting() throws {
+    func testPhoneShowsAllThreeActivitiesWithoutHorizontalHunting() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("Compact phone layout") }
         let app = launch(["-use-overflow-status-rail-fixture", "-test-v3-session-status"])
         let ring = app.buttons["chat.session-context"]
         XCTAssertTrue(chatNewChatButton(in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(ring.exists)
-        let buttons = ["changes", "goal", "subagents", "tasks"].map {
+        let buttons = ["goal", "subagents", "tasks"].map {
             app.buttons["chat.session-status.\($0)"]
         }
         for button in buttons {
@@ -203,13 +200,13 @@ final class ChatSixFixesUITests: BighelpUITestCase {
         let ring = app.buttons["chat.session-context"]
         XCTAssertTrue(chatNewChatButton(in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(ring.exists)
-        let buttons = ["changes", "goal", "subagents", "tasks"].map {
+        let buttons = ["goal", "subagents", "tasks"].map {
             app.buttons["chat.session-status.\($0)"]
         }
         let composer = app.descendants(matching: .any)["chat.composer-shell"].firstMatch
         let rail = app.descendants(matching: .any)["chat.session-status-rail"].firstMatch
         XCTAssertTrue(rail.frame.insetBy(dx: -1, dy: -1).contains(ring.frame))
-        for (button, title) in zip(buttons, ["Changes", "Goal", "Agents", "Tasks"]) {
+        for (button, title) in zip(buttons, ["Goal", "Agents", "Tasks"]) {
             XCTAssertTrue(button.isHittable)
             XCTAssertGreaterThanOrEqual(button.frame.minX, app.frame.minX + 12)
             XCTAssertTrue(rail.frame.insetBy(dx: -1, dy: -1).contains(button.frame),
@@ -235,14 +232,14 @@ final class ChatSixFixesUITests: BighelpUITestCase {
         }
         XCTAssertLessThan(buttons[0].frame.midY, buttons[2].frame.midY)
         evidence("phone-accessibility-activities")
-        buttons[3].tap()
+        buttons[2].tap()
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 3))
     }
 
     @MainActor
-    func testCompactChangesRetainsDiffCountsAndOpensProjectDetails() throws {
+    func testFileChangesMenuItemShowsDiffCountsAndOpensProjectDetails() throws {
         let app = launch(["-use-overflow-status-rail-fixture", "-test-v3-session-status"])
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         XCTAssertTrue(changes.label.contains("1 file"))
         XCTAssertTrue(changes.label.contains("12 additions"))
@@ -257,8 +254,7 @@ final class ChatSixFixesUITests: BighelpUITestCase {
         let app = launch(["-use-overflow-status-rail-fixture", "-test-v3-session-status"])
         let rail = app.descendants(matching: .any)["chat.session-status-rail"].firstMatch
         XCTAssertTrue(rail.waitForExistence(timeout: 5))
-        let changes = app.buttons["chat.session-status.changes"]
-        XCTAssertTrue(changes.exists)
+        XCTAssertFalse(app.buttons["chat.session-status.changes"].exists, "File changes live in the ⋯ menu")
         let ring = app.buttons["chat.session-context"]
         XCTAssertTrue(ring.exists)
         XCTAssertTrue(rail.frame.contains(ring.frame))

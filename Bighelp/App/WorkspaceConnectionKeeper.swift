@@ -28,6 +28,8 @@ enum WorkspaceReconnectPolicy {
 @Observable
 final class WorkspaceConnectionKeeper {
     private(set) var state: WorkspaceConnectionState = .connected
+    /// False while the phone has no network at all ("No internet", not "Disconnected").
+    private(set) var hasNetwork = true
 
     @ObservationIgnored private var storeProvider: () -> DirectHermesWorkspaceStore? = { nil }
     @ObservationIgnored private var isActive = true
@@ -71,6 +73,7 @@ final class WorkspaceConnectionKeeper {
     private func pathChanged(satisfied: Bool) {
         let recovered = satisfied && !isPathSatisfied
         isPathSatisfied = satisfied
+        if hasNetwork != satisfied { hasNetwork = satisfied }
         if recovered { attempt = 0; loop?.cancel(); loop = nil }
         evaluate(tryNow: recovered)
     }

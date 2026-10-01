@@ -124,6 +124,70 @@ struct ChatCompletedTurnTests {
         #expect(expanded == entries.map(\.id))
     }
 
+    /// With tool calls hidden, the agent's notes are the visible thought
+    /// process, so a finished turn folds them; the answer stays out.
+    @Test func hiddenToolCallsFoldTheNotesIntoTheFinishedTurn() {
+        let entries: [ChatTranscriptEntry] = [
+            .message(message("user", time: 100, human: true, order: 1)),
+            .message(message("note-1", time: 101, order: 2).markedInterim()),
+            .message(message("note-2", time: 102, order: 4).markedInterim()),
+            .message(message("answer", time: 110, duration: 9_000, order: 6)),
+        ]
+        let rows = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true,
+                                                    interimReplies: .fold)
+        #expect(rows.map(\.id) == ["message:user", "completed-turn:message:note-1", "message:answer"])
+        guard case .completed(let turn) = rows[1] else { Issue.record("Missing fold"); return }
+        #expect(turn.label == "Worked for 9s")
+        #expect(turn.expandedEntries.map(\.id) == ["message:note-1", "message:note-2"])
+        // Tool calls shown: the notes stay in the chat, as before.
+        let shown = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true)
+        #expect(shown.map(\.id) == ["message:user", "message:note-1", "message:note-2", "message:answer"])
+        // Never while the turn is still running.
+        let live = ChatCompletedTurnProjection.rows(from: entries, isSending: true, enabled: true,
+                                                    interimReplies: .fold)
+        #expect(live.map(\.id) == ["message:user", "message:note-1", "message:note-2", "message:answer"])
+    }
+
+    /// Claude's notes between steps are its reasoning: they follow Show
+    /// reasoning, not Show tool calls. Both on put them in the fold with the
+    /// work (they sat outside it); reasoning off hides them (a fold of notes
+    /// still showed with everything hidden, and hiding reasoning did nothing).
+    @Test func notesFollowShowReasoning() {
+        let withWork: [ChatTranscriptEntry] = [
+            .message(message("user", time: 100, human: true, order: 1)),
+            .message(message("note-1", time: 101, order: 2).markedInterim()),
+            activity("work-1", time: 102),
+            .message(message("note-2", time: 103, order: 4).markedInterim()),
+            activity("work-2", time: 104),
+            .message(message("answer", time: 110, duration: 9_000, order: 6)),
+        ]
+        let bothOn = ChatCompletedTurnProjection.rows(
+            from: withWork, isSending: false, enabled: true,
+            interimReplies: .following(.init(showReasoning: true, showToolCalls: true)))
+        #expect(bothOn.map(\.id) == ["message:user", "completed-turn:message:note-1", "message:answer"])
+        guard case .completed(let turn) = bothOn[1] else { Issue.record("Missing fold"); return }
+        #expect(turn.entries.map(\.id) == withWork[1...4].map(\.id), "Notes and work together, in order")
+
+        let reasoningOff = ChatCompletedTurnProjection.rows(
+            from: withWork, isSending: false, enabled: true,
+            interimReplies: .following(.init(showReasoning: false, showToolCalls: true)))
+        #expect(reasoningOff.map(\.id) == ["message:user", "completed-turn:activity:work-1", "message:answer"])
+        guard case .completed(let tools) = reasoningOff[1] else { Issue.record("Missing fold"); return }
+        #expect(tools.entries.allSatisfy { if case .activity = $0 { true } else { false } }, "Only the tool calls")
+
+        // Tool calls hidden too: the transcript has no work, and nothing is left to fold.
+        let notesOnly = withWork.filter { if case .activity = $0 { false } else { true } }
+        let bothOff = ChatCompletedTurnProjection.rows(
+            from: notesOnly, isSending: false, enabled: true,
+            interimReplies: .following(.init(showReasoning: false, showToolCalls: false)))
+        #expect(bothOff.map(\.id) == ["message:user", "message:answer"])
+
+        // A running turn keeps its notes where they are.
+        let live = ChatCompletedTurnProjection.rows(from: notesOnly, isSending: true, enabled: true,
+                                                    interimReplies: .hidden)
+        #expect(live.map(\.id) == notesOnly.map(\.id))
+    }
+
     @Test func persistedDurationWinsOverArrivalTimesAndSurvivesCodable() throws {
         let final = message("final", time: 90_000, duration: 20_125)
         let restored = try JSONDecoder().decode(TimelineItem.self, from: JSONEncoder().encode(final))
@@ -244,7 +308,7 @@ struct ChatCompletedTurnTests {
             return
         }
         #expect(fold.label == "Worked for 8s")
-        guard case .activity(let merged)? = fold.mergedActivity else {
+        guard fold.expandedEntries.count == 1, case .activity(let merged)? = fold.expandedEntries.first else {
             Issue.record("Expected merged activity")
             return
         }

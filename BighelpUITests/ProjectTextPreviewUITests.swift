@@ -18,7 +18,7 @@ final class ProjectTextPreviewUITests: BighelpUITestCase {
         XCTAssertTrue(home.waitForExistence(timeout: 5))
         home.tap()
         dismissActionsAfterWorkspaceSelection(in: app)
-        let changes = app.buttons["chat.session-status.changes"]
+        let changes = chatMenuItem("chat.file-changes", in: app)
         XCTAssertTrue(changes.waitForExistence(timeout: 5))
         changes.tap()
         let panel = app.otherElements["project-changes.panel"]

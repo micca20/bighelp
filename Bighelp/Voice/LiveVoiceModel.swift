@@ -549,6 +549,8 @@ final class LiveVoiceModel {
         switch reason {
         case "authentication_failed", "ambiguous_auth":
             "Codex sign-in on your computer didn't work. Run `hermes auth add openai-codex` there, then try again."
+        case "credentials_unavailable":
+            "bighelp couldn't read this agent's Codex sign-in on your computer. Update the bighelp plugin and restart Hermes, then try again."
         case "access_denied":
             "Your Codex account can't start live voice right now."
         case "rate_limited":

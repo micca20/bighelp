@@ -2,8 +2,8 @@ import Observation
 import SwiftUI
 
 /// Keeps a host's bighelp plugin current: compares the installed and running
-/// versions with the one this app build installs, updates it, restarts Hermes
-/// so the new code loads, and checks that the new version is actually running.
+/// versions with the newest release on GitHub, updates it, restarts Hermes so
+/// the new code loads, and checks that the new version is actually running.
 @MainActor
 @Observable
 final class HostPluginUpdateModel {
@@ -12,8 +12,9 @@ final class HostPluginUpdateModel {
     }
 
     let hostID: UUID
-    /// The version at the revision this app build installs.
-    let latestVersion: String?
+    /// The newest release, once GitHub has answered.
+    private(set) var release: PluginRelease?
+    var latestVersion: String? { release?.version }
     private(set) var state: State = .idle
     private(set) var installedVersion: String?
     private(set) var runningVersion: String?
@@ -24,14 +25,12 @@ final class HostPluginUpdateModel {
     private(set) var canRestartHost = false
     @ObservationIgnored private var runtimeID: String?
     @ObservationIgnored private weak var registry: BighelpHostRegistry?
-    @ObservationIgnored private let pin: HostPluginPin?
+    @ObservationIgnored private let releases: any PluginReleaseResolving
 
-    init(registry: BighelpHostRegistry?, hostID: UUID,
-         pin: HostPluginPin? = .bundled, latestVersion: String? = HostPluginPin.bundledVersion) {
+    init(registry: BighelpHostRegistry?, hostID: UUID, releases: (any PluginReleaseResolving)? = nil) {
         self.registry = registry
         self.hostID = hostID
-        self.pin = pin
-        self.latestVersion = latestVersion
+        self.releases = releases ?? GitHubPluginReleaseSource.shared
     }
 
     /// One model per host, so Settings, the host list and the host page agree.
@@ -63,7 +62,7 @@ final class HostPluginUpdateModel {
     var needsRestartOnComputer: Bool { state == .restartNeeded && !canRestartHost }
     var isWorking: Bool { [.checking, .updating, .restarting].contains(state) }
 
-    /// What the versions mean, given the installed files, the running code and this app's version.
+    /// What the versions mean, given the installed files, the running code and the newest release.
     static func state(installed: String?, running: String?, latest: String?) -> State {
         func isCurrent(_ version: String?) -> Bool {
             guard let version, let latest else { return true }
@@ -75,22 +74,33 @@ final class HostPluginUpdateModel {
         return .upToDate
     }
 
+    /// Asks GitHub for the newest release again.
     func check() async {
         guard !isWorking else { return }
         state = .checking
         message = nil
-        await refresh()
+        await ownCheck(askGitHub: true)
     }
 
     /// Checks once per app session unless asked again.
     func checkIfNeeded() async {
-        guard state == .idle || state == .failed else { return }
-        await check()
+        guard state == .idle || state == .failed, !isWorking else { return }
+        state = .checking
+        message = nil
+        await ownCheck(askGitHub: false)
     }
 
-    /// Installs the bundled revision. Returns true when the new files are in place.
+    /// Screens start checks from `.task`, which SwiftUI cancels when the connection
+    /// flips right after connecting. That cancelled the host requests mid-check and
+    /// left "couldn't read this computer's plugins", so the check runs on its own.
+    private func ownCheck(askGitHub: Bool) async {
+        await Task { await refresh(askGitHub: askGitHub) }.value
+    }
+
+    /// Installs the newest release. Returns true when the new files are in place.
     func update() async -> Bool {
-        guard state == .updateAvailable, let pin, let registry, let connection = currentConnection() else { return false }
+        guard state == .updateAvailable, let pin = release?.pin, let registry,
+              let connection = currentConnection() else { return false }
         guard let lock = registry.beginPluginManagement(hostID: hostID) else {
             message = "Another plugin change is running on this host. Try again in a moment."
             return false
@@ -191,7 +201,7 @@ final class HostPluginUpdateModel {
         return Connection(workspace: workspace, direct: direct, owner: owner, plugin: plugin)
     }
 
-    private func refresh() async {
+    private func refresh(askGitHub: Bool = false) async {
         // After a restart on the computer the old connection is gone; try once more.
         if currentConnection() == nil, let registry, let host = registry.hosts.first(where: { $0.id == hostID }) {
             let workspace = registry.workspace(for: host)
@@ -219,7 +229,18 @@ final class HostPluginUpdateModel {
             message = "The bighelp plugin isn't installed on this computer."
             return
         }
+        var releaseError: (any Error)?
+        do {
+            release = try await releases.latest(refresh: askGitHub)
+        } catch {
+            releaseError = error
+        }
         state = Self.state(installed: installed.version, running: runningVersion, latest: latestVersion)
+        if state == .upToDate, let releaseError {
+            // Without the newest release there's no telling whether an update exists.
+            fail((releaseError as? LocalizedError)?.errorDescription ?? PluginReleaseError.unreachable.errorDescription ?? "")
+            return
+        }
         switch state {
         case .updateAvailable:
             message = "Version \(latestVersion ?? "") is available."
@@ -258,9 +279,8 @@ final class HostPluginUpdateModel {
     }
 
     static func restartOnComputerMessage(installed: String?, running: String?) -> String {
-        "Version \(installed ?? "the update") is installed, but the Hermes service bighelp connects to is still running "
-            + "\(running ?? "an older version"), which can't restart itself. Restart Hermes on your computer once "
-            + "(quit and reopen it, or restart its service), then tap Check again. Future updates restart from here."
+        "Version \(installed ?? "the update") is installed, but Hermes still runs \(running ?? "an older version"). "
+            + "Restart Hermes on your computer once, then tap Check for Updates. Later updates restart from here."
     }
 
     private func fail(_ text: String) {
@@ -269,30 +289,46 @@ final class HostPluginUpdateModel {
     }
 }
 
-/// A computer's bighelp plugin version, with Update and Restart when it's
-/// behind this app.
+/// A computer's bighelp plugin: its version, and Update or Restart as the one
+/// obvious button when it's behind.
 struct HostPluginUpdateSection: View {
     let model: HostPluginUpdateModel
     @State private var confirmsRestart = false
 
     var body: some View {
         Section {
-            LabeledContent("Installed", value: model.installedVersion ?? "—")
+            LabeledContent("Version", value: model.installedVersion ?? "—")
                 .accessibilityIdentifier("settings.plugin.installed")
             if let running = model.runningVersion, running != model.installedVersion {
                 LabeledContent("Running", value: running)
                     .accessibilityIdentifier("settings.plugin.running")
             }
-            LabeledContent("Latest", value: model.latestVersion ?? "—")
-                .accessibilityIdentifier("settings.plugin.latest")
-            if let message = model.message ?? (model.state == .checking ? "Checking the plugin…" : nil) {
+            switch model.state {
+            case .updateAvailable:
+                BighelpActionRow(title: "Update Plugin", detail: "Version \(model.latestVersion ?? "") is ready",
+                                 systemImage: "arrow.down.circle.fill") {
+                    Task { if await model.update() { confirmsRestart = true } }
+                }
+                .accessibilityLabel("Update plugin to \(model.latestVersion ?? "the latest version")")
+                .accessibilityIdentifier("settings.plugin.update")
+            case .restartNeeded where model.canRestartHost:
+                BighelpActionRow(title: "Restart Hermes", detail: "Finishes the plugin update",
+                                 systemImage: "arrow.clockwise") { confirmsRestart = true }
+                    .accessibilityIdentifier("settings.plugin.restart")
+            case .upToDate where model.message == nil:
+                Label("Up to date", systemImage: "checkmark.circle.fill")
+                    .accessibilityIdentifier("settings.plugin.up-to-date")
+            default:
+                EmptyView()
+            }
+            if let message = statusMessage {
                 Label {
                     Text(message)
                 } icon: {
                     if model.isWorking {
                         ProgressView().controlSize(.small)
                     } else {
-                        Image(systemName: model.state == .upToDate ? "checkmark.circle" : "puzzlepiece.extension")
+                        Image(systemName: statusSymbol)
                     }
                 }
                 .font(.footnote)
@@ -300,25 +336,23 @@ struct HostPluginUpdateSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("settings.plugin.status")
             }
-            switch model.state {
-            case .checking, .updating, .restarting:
-                EmptyView()
-            case .updateAvailable:
-                Button("Update to \(model.latestVersion ?? "latest")") {
-                    Task { if await model.update() { confirmsRestart = true } }
+            if model.state == .updateAvailable, let release = model.release, !release.whatsNew.isEmpty {
+                DisclosureGroup("What's new in \(release.version)") {
+                    Text(release.whatsNew)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
-                .accessibilityIdentifier("settings.plugin.update")
-            case .restartNeeded where model.canRestartHost:
-                Button("Restart Hermes") { confirmsRestart = true }
-                    .accessibilityIdentifier("settings.plugin.restart")
-            case .restartNeeded, .idle, .notInstalled, .upToDate, .failed:
-                Button("Check again") { Task { await model.check() } }
+                .accessibilityIdentifier("settings.plugin.whats-new")
+            }
+            if [.idle, .notInstalled, .upToDate, .failed].contains(model.state)
+                || (model.state == .restartNeeded && !model.canRestartHost) {
+                Button("Check for Updates", systemImage: "arrow.triangle.2.circlepath") { Task { await model.check() } }
                     .accessibilityIdentifier("settings.plugin.check")
             }
         } header: {
-            Text("Plugin version")
-        } footer: {
-            Text("Updates install the plugin version this app was tested with.")
+            Text("bighelp plugin")
         }
         .alert(model.canRestartHost ? "Restart Hermes to finish updating?" : "Restart the messaging gateway?",
                isPresented: $confirmsRestart) {
@@ -327,8 +361,26 @@ struct HostPluginUpdateSection: View {
             Button("Later", role: .cancel) {}
         } message: {
             Text(model.canRestartHost
-                 ? "This restarts the messaging gateway and the Hermes service bighelp connects to, so the new plugin loads. Replies in progress on this computer will stop."
-                 : "This loads the new plugin in the messaging gateway. The Hermes service bighelp connects to runs an older plugin that can't restart itself, so restart Hermes on your computer once afterwards.")
+                 ? "Hermes restarts so the new plugin loads. Replies in progress on your computer stop."
+                 : "The messaging gateway loads the new plugin. Then restart Hermes on your computer once.")
+        }
+    }
+
+    private var statusSymbol: String {
+        switch model.state {
+        case .failed: "exclamationmark.triangle"
+        case .upToDate: "checkmark.circle.fill"
+        default: "info.circle"
+        }
+    }
+
+    /// Only what needs saying: progress, a problem, a step on the computer, or
+    /// that an update finished. "Version 3.2 is available" is already the button.
+    private var statusMessage: String? {
+        switch model.state {
+        case .checking: "Checking the plugin…"
+        case .updateAvailable: nil
+        default: model.message
         }
     }
 }
@@ -362,7 +414,7 @@ enum HostPluginUpdateFixture {
     @MainActor
     private static func model(_ state: HostPluginUpdateModel.State, installed: String, running: String,
                               message: String, canRestartHost: Bool = false) -> HostPluginUpdateModel {
-        let model = HostPluginUpdateModel(registry: nil, hostID: UUID(), pin: nil, latestVersion: "2.17.0")
+        let model = HostPluginUpdateModel(registry: nil, hostID: UUID())
         model.freeze(state, installed: installed, running: running, message: message, canRestartHost: canRestartHost)
         return model
     }
@@ -370,6 +422,8 @@ enum HostPluginUpdateFixture {
 
 extension HostPluginUpdateModel {
     fileprivate func freeze(_ state: State, installed: String, running: String, message: String, canRestartHost: Bool) {
+        release = try? PluginRelease(version: "2.17.0", pin: HostPluginPin(revision: String(repeating: "a", count: 40)),
+                                     notes: "## 2.17.0: in-app restart\n\n- The app can restart Hermes after an update.")
         self.state = state
         self.canRestartHost = canRestartHost
         installedVersion = installed

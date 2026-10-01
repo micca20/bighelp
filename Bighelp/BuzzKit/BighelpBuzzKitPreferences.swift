@@ -48,8 +48,12 @@ struct BighelpBuzzKitPreferencesClient: Sendable {
 
     @discardableResult
     func set(_ topic: BighelpBuzzKitTopic, enabled: Bool) async throws -> [BighelpBuzzKitPreference] {
-        try await BuzzKit.preferences.set(topic.rawValue, channel: .push, enabled: enabled)
+        let preferences = try await BuzzKit.preferences.set(topic.rawValue, channel: .push, enabled: enabled)
             .compactMap(Self.project)
+        if topic == .questionsAndApprovals {
+            await MainActor.run { BighelpPromptAlerts.shared.questionsAndApprovalsChanged(enabled: enabled) }
+        }
+        return preferences
     }
 
     private static let legacyMigrations: [(topic: BighelpBuzzKitTopic, legacySlugs: Set<String>)] = [

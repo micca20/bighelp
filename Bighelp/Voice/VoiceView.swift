@@ -108,6 +108,7 @@ struct VoiceView: View {
                         orb(size: stageAvatarSize)
                         caption
                         VoiceWaveformBars(level: waveformLevel, color: agentPersona.color)
+                        sendNowControl
                         endFailure
                         permissionRecovery
                         Spacer(minLength: BighelpTokens.space16)
@@ -153,8 +154,32 @@ struct VoiceView: View {
             .accessibilityIdentifier("voice.caption")
     }
 
+    /// Hands-free voice waits for a real pause before sending; Send doesn't wait.
+    @ViewBuilder
+    private var sendNowControl: some View {
+        if model.canSendNow {
+            Button {
+                model.sendNow()
+            } label: {
+                Label("Send now", systemImage: "arrow.up.circle.fill")
+                    .bighelpFont(.label, weight: .semibold)
+                    .padding(.horizontal, BighelpTokens.space16)
+                    .frame(minHeight: BighelpTokens.hitTarget)
+                    .background(Capsule().fill(theme.raisedSurface))
+                    .overlay(Capsule().strokeBorder(theme.border, lineWidth: BighelpTokens.hairline))
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.primaryText)
+            .accessibilityHint("Sends what you've said so far without waiting for a pause.")
+            .accessibilityIdentifier("voice.send-now")
+            .transition(.opacity)
+        }
+    }
+
     private var captionText: String {
         if let draft = model.liveAgentTranscript, !draft.isEmpty { return draft }
+        if model.isTranscribing { return model.partialUserTranscript.map { $0 + " …" } ?? "Transcribing…" }
         if let partial = model.partialUserTranscript, !partial.isEmpty { return partial }
         if let last = displayedTranscriptRows.last { return last.text }
         return "Start speaking when you’re ready"
@@ -320,8 +345,9 @@ struct VoiceView: View {
 
     private var voiceInputIsAuthorized: Bool {
         guard let permissionCenter else { return true }
+        // Hermes transcribes the recording itself; on-device captions are optional then.
         return permissionCenter.status(for: .microphone).authorization == .authorized
-            && permissionCenter.status(for: .speech).authorization == .authorized
+            && (model.transcription == .hermes || permissionCenter.status(for: .speech).authorization == .authorized)
     }
 
     private func authorizeVoiceInput() async {
@@ -333,7 +359,7 @@ struct VoiceView: View {
             model.stopMonitoring()
             return
         }
-        guard await permissionCenter.authorizeContextualAccess(.speech) else {
+        guard await permissionCenter.authorizeContextualAccess(.speech) || model.transcription == .hermes else {
             model.stopMonitoring()
             return
         }

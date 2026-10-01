@@ -137,6 +137,11 @@ struct ChatView: View {
     let onVoiceTap: () -> Void
     let onApprovalTap: (ApprovalRequest) -> Void
     let onPeopleTap: () -> Void
+    /// This chat's files, look and (Nerd Mode) Hermes session tools, from the ⋯ menu.
+    /// Nil leaves the item out.
+    let onChatFilesTap: (() -> Void)?
+    let onChatAppearanceTap: (() -> Void)?
+    let onSessionToolsTap: (() -> Void)?
     let onWorkspaceTap: () -> Void
     let showsWorkspaceButton: Bool
     let onNewChatTap: () -> Void
@@ -196,6 +201,9 @@ struct ChatView: View {
         onVoiceTap: @escaping () -> Void = {},
         onApprovalTap: @escaping (ApprovalRequest) -> Void = { _ in },
         onPeopleTap: @escaping () -> Void = {},
+        onChatFilesTap: (() -> Void)? = nil,
+        onChatAppearanceTap: (() -> Void)? = nil,
+        onSessionToolsTap: (() -> Void)? = nil,
         onWorkspaceTap: @escaping () -> Void = {},
         showsWorkspaceButton: Bool = true,
         onNewChatTap: @escaping () -> Void = {},
@@ -237,6 +245,9 @@ struct ChatView: View {
         self.onVoiceTap = onVoiceTap
         self.onApprovalTap = onApprovalTap
         self.onPeopleTap = onPeopleTap
+        self.onChatFilesTap = onChatFilesTap
+        self.onChatAppearanceTap = onChatAppearanceTap
+        self.onSessionToolsTap = onSessionToolsTap
         self.onWorkspaceTap = onWorkspaceTap
         self.showsWorkspaceButton = showsWorkspaceButton
         self.onNewChatTap = onNewChatTap
@@ -324,6 +335,15 @@ struct ChatView: View {
             isSessionControlsPresented = false
             isAllModelsPresented = true
             Task { @MainActor in await controls.loadPickersIfNeeded() }
+        }
+        .onChange(of: model.sessionControlsRequest) { _, _ in
+            guard let controls = model.runtimeControls,
+                  !ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive) else { return }
+            // The sheet or pop-up that asked is still closing; present after it's gone.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(450))
+                openSessionControls(controls)
+            }
         }
         .onChange(of: composerFocusRequest) { _, request in
             scheduleComposerFocusIfRequested(request)
@@ -506,6 +526,23 @@ struct ChatView: View {
     // insets; overlay heights do not reserve a second SwiftUI scroll region.
     private var chatCanvas: some View {
         timeline
+            #if os(visionOS)
+            // The window is see-through, so a canvas-colored band can't hide
+            // messages under the header; they fade out before reaching it instead.
+            .mask {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: max(headerHeight - 24, 0))
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 32)
+                    Color.black
+                    // Same at the bottom, so nothing peeks around the message box.
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 28)
+                    Color.clear.frame(height: max(composerHeight - 20, 0))
+                }
+                .ignoresSafeArea()
+            }
+            #endif
             .overlay(alignment: .top) {
                 floatingHeader
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
@@ -518,7 +555,7 @@ struct ChatView: View {
                             .fixedSize(horizontal: false, vertical: !(referenceHub ?? fallbackReferenceHub).isPresented)
                         // The Chat tab keeps its bottom bar under the composer.
                         if homeChrome.isEnabled, homeChrome.isHome, let selection = homeChrome.tabSelection,
-                           !isDraftFocused {
+                           !isDraftFocused, !BighelpPlatform.usesTabOrnament {
                             FloatingTabBar(selection: selection,
                                            homeIndicatorSink: FloatingTabBar.homeIndicatorSink(forBottomInset: bottomSafeArea),
                                            unread: homeChrome.unreadTabs)
@@ -529,6 +566,16 @@ struct ChatView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            #if os(visionOS)
+            // The agent's own chat keeps Vision Pro's tab strip beside the window.
+            .ornament(visibility: homeChrome.isEnabled && homeChrome.isHome && homeChrome.tabSelection != nil
+                          ? .visible : .hidden,
+                      attachmentAnchor: .scene(.leading), contentAlignment: .trailing) {
+                if let selection = homeChrome.tabSelection {
+                    VisionTabOrnament(selection: selection, unread: homeChrome.unreadTabs)
+                }
+            }
+            #endif
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
             } action: { screenHeight = $0 }
@@ -547,9 +594,13 @@ struct ChatView: View {
         }
         .background(alignment: .bottom) { sessionControlsAnchor }
         .foregroundStyle(theme.primaryText)
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
+        // The home header's buttons carry their own touch margin.
+        .padding(.horizontal, (BighelpPlatform.usesTabOrnament ? 22 : 12)
+                 - (homeChrome.isEnabled ? HeaderButtonMetrics.slop : 0))
+        // Vision Pro's rounded window corner clipped ☰; keep it clear.
+        .padding(.top, BighelpPlatform.usesTabOrnament ? 12 : max(0, 4 - (homeChrome.isEnabled ? HeaderButtonMetrics.slop : 0)))
         .padding(.bottom, 8)
+        #if !os(visionOS)
         .background(alignment: .top) {
             // Messages scroll beneath the header. A short fade in the canvas
             // color keeps the name chip readable without an opaque bar.
@@ -565,6 +616,7 @@ struct ChatView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
+        #endif
     }
 
     /// Chat tab: the agent's live avatar leads, like a home screen.
@@ -628,9 +680,7 @@ struct ChatView: View {
             model: model,
             agentName: agentName,
             sessionCatalog: sessionCatalog,
-            projectChangesSummary: projectChangesSummary,
             onAttachmentTap: attachmentAction,
-            onProjectChangesTap: onProjectChangesTap,
             onVoiceTap: dismissKeyboardAndOpenVoice,
             onFittingRailVerticalDrag: requestFittingRailScroll,
             draftFocus: $isDraftFocused,
@@ -815,50 +865,71 @@ struct ChatView: View {
         }
     }
 
+    /// Grouped by how often each is needed: where to go, this chat's project
+    /// changes, the model (shown, so a glance says which one), this chat, its
+    /// agent, then technical tools under Advanced. Dividers (not Sections) group
+    /// items so each keeps its accessibility identifier.
     private var chatOptionsMenu: some View {
         Menu {
-            // Everyday actions first; display and recovery controls live under Advanced.
-            // Dividers (not Sections) group items so each keeps its accessibility identifier.
             if showsWorkspaceButton {
                 Button("Go to…", systemImage: "square.grid.2x2", action: dismissKeyboardAndOpenWorkspace)
                     .accessibilityLabel(workspaceButtonLabel)
                     .accessibilityIdentifier("chat.workspace-menu")
-                Divider()
             }
-            if let accessory = sessionControlAccessory {
-                Button("Model & reasoning", systemImage: "slider.horizontal.3", action: accessory.action)
-                    .disabled(!accessory.isEnabled || model.isAwaitingAuthoritativeSessionAllocation)
-                    .accessibilityIdentifier(accessory.accessibilityIdentifier)
-            } else if let controls = model.runtimeControls {
-                Button("Model & reasoning", systemImage: "slider.horizontal.3") { openSessionControls(controls) }
-                    .disabled(ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive)
-                        || model.isAwaitingAuthoritativeSessionAllocation)
-                    .accessibilityIdentifier("chat.session-controls")
+            if let changes = projectChangesSummary {
+                if showsWorkspaceButton { Divider() }
+                Button {
+                    dismissKeyboard()
+                    onProjectChangesTap()
+                } label: {
+                    Text("File changes")
+                    Text(ProjectChangesRailPresentation.visibleLabels(for: changes).joined(separator: " "))
+                    Image(systemName: "plusminus")
+                }
+                .accessibilityLabel(ProjectChangesRailPresentation.accessibilityLabel(for: changes))
+                .accessibilityIdentifier("chat.file-changes")
             }
-            Button("People & Chat", systemImage: "person.2", action: onPeopleTap)
-                .accessibilityIdentifier("chat.open-people")
+            if showsWorkspaceButton || projectChangesSummary != nil { Divider() }
+            modelMenuItems
+            Divider()
             if sessionCatalog != nil {
                 Button("Rename chat", systemImage: "pencil", action: presentSessionTitleRename)
                     .disabled(isRenamingSessionTitle)
                     .accessibilityIdentifier("chat.rename")
             }
+            if let onChatFilesTap {
+                Button("Chat files", systemImage: "folder") {
+                    dismissKeyboard()
+                    onChatFilesTap()
+                }
+                .accessibilityIdentifier("chat.files")
+            }
+            if let onChatAppearanceTap {
+                Button("Chat appearance", systemImage: "photo.on.rectangle.angled") {
+                    dismissKeyboard()
+                    onChatAppearanceTap()
+                }
+                .accessibilityIdentifier("chat.appearance")
+            }
             if !model.isBotMode {
-                Button("Edit this Agent", systemImage: "person.crop.circle") {
+                Divider()
+                Button("Edit this agent", systemImage: "person.crop.circle") {
                     presentCurrentAgentEditor()
                 }
                 .disabled(!canEditCurrentAgent)
                 .accessibilityIdentifier("chat.edit-current-agent")
             }
-            if let providerUsage, providerUsage.isAvailable {
-                Button("See provider usage", systemImage: "gauge.with.dots.needle.50percent") {
-                    providerUsage.show(agentID: model.memberIDs.first ?? "default")
-                }
-                .accessibilityIdentifier("chat.provider-usage")
-            }
-            // Display and recovery knobs are technical: Nerd Mode only.
+            // Display, recovery and session tools are technical: Nerd Mode only.
             if nerdModeEnabled {
             Divider()
             Menu {
+                if let onSessionToolsTap {
+                    Button("Session tools", systemImage: "wrench.and.screwdriver") {
+                        dismissKeyboard()
+                        onSessionToolsTap()
+                    }
+                    .accessibilityIdentifier("chat.session-tools")
+                }
                 Toggle(isOn: reasoningVisibilityBinding) {
                     Label("Show reasoning", systemImage: "sparkles")
                 }
@@ -885,9 +956,46 @@ struct ChatView: View {
         }
         .accessibilityLabel("Conversation options")
         .accessibilityHint(nerdModeEnabled
-            ? "Navigation, model, people, rename and advanced options"
-            : "Model, people and rename options")
+            ? "Go to, file changes, model, usage, this chat, the agent and advanced options"
+            : "Model, usage, this chat and the agent")
         .accessibilityIdentifier("chat.options")
+    }
+
+    /// The model shows under its item, so switching starts from knowing which is on.
+    @ViewBuilder
+    private var modelMenuItems: some View {
+        if let accessory = sessionControlAccessory {
+            Button(action: accessory.action) {
+                Text("Model & reasoning")
+                if let summary = modelSummary { Text(summary) }
+                Image(systemName: "slider.horizontal.3")
+            }
+            .disabled(!accessory.isEnabled || model.isAwaitingAuthoritativeSessionAllocation)
+            .accessibilityIdentifier(accessory.accessibilityIdentifier)
+        } else if let controls = model.runtimeControls {
+            Button {
+                openSessionControls(controls)
+            } label: {
+                Text("Model & reasoning")
+                if let summary = modelSummary { Text(summary) }
+                Image(systemName: "slider.horizontal.3")
+            }
+            .disabled(ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive)
+                || model.isAwaitingAuthoritativeSessionAllocation)
+            .accessibilityIdentifier("chat.session-controls")
+        }
+        if let providerUsage, providerUsage.isAvailable {
+            Button("See provider usage", systemImage: "gauge.with.dots.needle.50percent") {
+                providerUsage.show(agentID: model.memberIDs.first ?? "default")
+            }
+            .accessibilityIdentifier("chat.provider-usage")
+        }
+    }
+
+    /// "GPT-5.5 · High", or just the model while reasoning is unknown.
+    private var modelSummary: String? {
+        guard let controls = model.runtimeControls else { return nil }
+        return [controls.modelDisplayName, controls.currentReasoningLabel].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var reasoningVisibilityBinding: Binding<Bool> {

@@ -5,17 +5,17 @@ import Testing
 
 @MainActor
 struct ReasoningPaletteTests {
-    @Test func renderedReasoningTrackUsesEachSelectedThemeAccent() async throws {
+    @Test func renderedReasoningTrackUsesEachSelectedBubbleColor() async throws {
         let choices = AgentReasoningOption.all.map {
             BighelpReasoningChoice(value: $0.value, label: $0.title, detail: $0.detail)
         }
-        for definition in BighelpThemeRegistry.builtIns {
+        for bubbleColor in [nil, BighelpBubbleColor.ocean, .rose] {
             for appearance in [AppAppearance.light, .dark] {
                 let size = CGSize(width: 380, height: 320)
                 let root = BighelpReasoningLevelControl(choices: choices, selectedValue: choices.last?.value,
                     isEnabled: true, accessibilityIdentifier: "palette", onSelect: { _ in })
                     .environment(\.bighelpUIV2Enabled, true)
-                    .environment(\.appAppearance, BighelpAppearanceContext(appearance: appearance, themeID: definition.id))
+                    .environment(\.appAppearance, BighelpAppearanceContext(appearance: appearance, bubbleColor: bubbleColor))
                     .environment(\.colorScheme, appearance == .dark ? .dark : .light)
                 let controller = UIHostingController(rootView: root)
                 let window = UIWindow(frame: CGRect(origin: .zero, size: size))
@@ -36,7 +36,7 @@ struct ReasoningPaletteTests {
                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
                 context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
                 let theme = BighelpTheme.resolve(
-                    appearance: BighelpAppearanceContext(appearance: appearance, themeID: definition.id),
+                    appearance: BighelpAppearanceContext(appearance: appearance, bubbleColor: bubbleColor),
                     colorScheme: appearance == .dark ? .dark : .light, contrast: .standard)
                 var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
                 let tint = UIColor(theme.action).resolvedColor(with: UITraitCollection(
@@ -51,10 +51,10 @@ struct ReasoningPaletteTests {
                 }
                 // A full track contributes thousands of pixels. Matching only
                 // the small label or thumb must not hide a forced spectrum.
-                #expect(matches > 1000, "\(definition.name) \(appearance.rawValue) must paint the full track with its own accent")
+                #expect(matches > 1000, "\(bubbleColor?.name ?? "Lavender") \(appearance.rawValue) must paint the full track with its own accent")
                 let directory = URL(fileURLWithPath: "/private/tmp/loopdy-chat-six/evidence/palette")
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                try image.pngData()?.write(to: directory.appendingPathComponent("\(definition.id.rawValue)-\(appearance.rawValue).png"))
+                try image.pngData()?.write(to: directory.appendingPathComponent("\(bubbleColor?.rawValue ?? "lavender")-\(appearance.rawValue).png"))
                 window.isHidden = true
             }
         }

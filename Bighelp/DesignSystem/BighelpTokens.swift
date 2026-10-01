@@ -60,8 +60,15 @@ enum BighelpTokens {
     static let menuRowCornerRadius = radius12
     static let generatedContentInsetCornerRadius = radius12
 
+    #if os(visionOS)
+    /// Eyes need bigger targets than fingers: visionOS asks for 60pt around
+    /// each control. 56 keeps rows compact while staying easy to look at.
+    static let hitTarget: CGFloat = 56
+    static let controlHeight: CGFloat = 56
+    #else
     static let hitTarget: CGFloat = 44
     static let controlHeight: CGFloat = 48
+    #endif
     static let composerHeight: CGFloat = 52
     static let primaryActionSize: CGFloat = 56
 

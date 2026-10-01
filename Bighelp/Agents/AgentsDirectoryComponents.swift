@@ -19,42 +19,60 @@ struct AgentsSectionCaption: View {
 }
 
 /// A grid tile for a pinned or featured agent: large live avatar, name, and
-/// the live-state line underneath.
+/// underneath what it's doing, or its role when it's idle. `AgentPinnedGrid`
+/// handles taps, lifting and moving.
 struct AgentFeaturedTile: View {
     let agent: AgentProfile
     let imageURL: URL?
     let liveState: AgentLiveState
     let isPrimary: Bool
-    let onTap: () -> Void
+    var isLifted = false
 
     @ScaledMetric(relativeTo: .footnote) private var nameSize: CGFloat = 13
     @ScaledMetric(relativeTo: .caption2) private var stateSize: CGFloat = 11
 
     static let avatarSize: CGFloat = 64
 
+    /// The role on one short line; the tile trails off if it's still too wide.
+    static func roleLine(_ role: String, limit: Int = 28) -> String? {
+        let line = role.split(whereSeparator: \.isNewline).first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        guard !line.isEmpty else { return nil }
+        guard line.count > limit else { return line }
+        return String(line.prefix(limit - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
     var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 5) {
-                AvatarView(
-                    stableID: agent.id, displayName: agent.name,
-                    imageURL: imageURL, size: Self.avatarSize, state: liveState
-                )
-                .accessibilityHidden(true)
-                Text(agent.name)
-                    .font(.system(size: nameSize, weight: .semibold))
-                    .foregroundStyle(theme.primaryText)
-                    .lineLimit(1)
+        VStack(spacing: 5) {
+            AvatarView(
+                stableID: agent.id, displayName: agent.name,
+                imageURL: imageURL, size: Self.avatarSize, state: liveState
+            )
+            .accessibilityHidden(true)
+            Text(agent.name)
+                .font(.system(size: nameSize, weight: .semibold))
+                .foregroundStyle(theme.primaryText)
+                .lineLimit(1)
+            if liveState != .idle {
                 AgentLiveStateLabel(state: liveState, font: .system(size: stateSize))
                     .lineLimit(1)
+            } else if let role = Self.roleLine(agent.role) {
+                Text(role)
+                    .font(.system(size: stateSize))
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
-            .padding(.vertical, BighelpTokens.space4)
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
+        .padding(.vertical, BighelpTokens.space4)
+        .contentShape(.rect)
+        .scaleEffect(isLifted ? 1.12 : 1)
+        .shadow(color: .black.opacity(isLifted ? 0.18 : 0), radius: 12, y: 6)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(agent.name)
-        .accessibilityValue([liveState.label, isPrimary ? "Primary agent" : nil].compactMap { $0 }.joined(separator: ", "))
-        .accessibilityHint("Opens this agent's chat. Long press for more actions.")
+        .accessibilityValue([liveState == .idle ? Self.roleLine(agent.role) : liveState.label,
+                             isPrimary ? "Primary agent" : nil].compactMap { $0 }.joined(separator: ", "))
     }
 
     @BighelpThemeReader private var theme

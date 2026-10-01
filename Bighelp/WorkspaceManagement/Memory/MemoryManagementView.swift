@@ -23,7 +23,7 @@ struct MemoryManagementView: View {
                     Picker("Memory section", selection: $section) {
                         ForEach(Tab.allCases) { item in Text(item.rawValue).tag(item) }
                     }
-                    .pickerStyle(.segmented)
+                    .bighelpSegmentedPicker()
                     .padding(.horizontal)
                     .padding(.vertical, 12)
 

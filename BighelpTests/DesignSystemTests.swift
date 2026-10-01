@@ -317,38 +317,6 @@ struct DesignSystemTests {
         #expect(!presentation.usesAccentTint)
     }
 
-    @Test func partnerThemesUseStrictMonochromeLogosWhileBighelpKeepsItsBrandMark() {
-        for themeID in [BighelpThemeID.nous, .superpilot] {
-            #expect(
-                BighelpLogoPresentation.resolve(themeID: themeID, colorScheme: .light)
-                    == .init(
-                        mark: .fixedHex("000000"),
-                        wordmark: .fixedHex("000000"),
-                        usesReflectiveMaterial: false
-                    )
-            )
-            #expect(
-                BighelpLogoPresentation.resolve(themeID: themeID, colorScheme: .dark)
-                    == .init(
-                        mark: .fixedHex("FFFFFF"),
-                        wordmark: .fixedHex("FFFFFF"),
-                        usesReflectiveMaterial: false
-                    )
-            )
-        }
-
-        for colorScheme in [ColorScheme.light, .dark] {
-            #expect(
-                BighelpLogoPresentation.resolve(themeID: .bighelp, colorScheme: colorScheme)
-                    == .init(
-                        mark: .assetOriginal,
-                        wordmark: .themePrimaryText,
-                        usesReflectiveMaterial: true
-                    )
-            )
-        }
-    }
-
     @Test func messageBubblesKeepTheirSurfaceOnPhoneAndIPad() throws {
         let theme = BighelpTheme.resolve(appearance: .light, colorScheme: .light, contrast: .standard)
         for (role, sizeClass, paintsSurface) in [
@@ -405,57 +373,13 @@ struct DesignSystemTests {
         ))
     }
 
-    @Test func customThemeNormalizesValidatedFieldsIntoEverySemanticThemeRole() throws {
-        let id = try #require(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
-        let originalBuiltIns = BighelpThemeRegistry.builtIns
-
-        let custom = try CustomTheme(
-            id: id,
-            name: "  Studio Blue  ",
-            font: .serif,
-            accentHex: "#3366cc",
-            light: CustomThemePalette(
-                backgroundHex: "#ffffff",
-                primaryTextHex: "111111",
-                secondaryTextHex: "333333",
-                tertiaryTextHex: "555555"
-            ),
-            dark: CustomThemePalette(
-                backgroundHex: "101010",
-                primaryTextHex: "ffffff",
-                secondaryTextHex: "e0e0e0",
-                tertiaryTextHex: "b0b0b0"
-            )
-        )
-
-        #expect(custom.name == "Studio Blue")
-        #expect(custom.accentHex == "3366CC")
-        #expect(custom.light.backgroundHex == "FFFFFF")
-        #expect(custom.dark.primaryTextHex == "FFFFFF")
-        #expect(custom.themeID.rawValue == "custom.11111111-2222-3333-4444-555555555555")
-
-        let definition = custom.definition
-        #expect(definition.id == custom.themeID)
-        #expect(definition.name == "Studio Blue")
-        #expect(definition.light.typeface == .serif)
-        #expect(definition.dark.typeface == .serif)
-        #expect(definition.light.canvasHex == "FFFFFF")
-        #expect(definition.dark.canvasHex == "101010")
-        #expect(definition.light.primaryTextHex == "111111")
-        #expect(definition.light.secondaryTextHex == "333333")
-        #expect(definition.light.tertiaryTextHex == "555555")
-        #expect(definition.dark.primaryTextHex == "FFFFFF")
-        #expect(definition.dark.secondaryTextHex == "E0E0E0")
-        #expect(definition.dark.tertiaryTextHex == "B0B0B0")
-        #expect(definition.light.actionHex == "3366CC")
-        #expect(definition.dark.actionHex == "3366CC")
-        #expect(BighelpThemeRegistry.builtIns == originalBuiltIns)
-    }
-
-    @Test func conversationBubblesRetainPartnerAndCustomPalettes() throws {
-        let custom = try validCustomTheme()
-        let themes = [BighelpTheme.nousLight, .nousDark, .superpilotLight,
-                      .superpilotDark, custom.definition.light, custom.definition.dark]
+    @Test func conversationBubblesFollowEveryBubbleColor() throws {
+        let themes = [nil, BighelpBubbleColor.ocean, .sunflower, .graphite].flatMap { color in
+            [ColorScheme.light, .dark].map { scheme in
+                BighelpTheme.resolve(appearance: BighelpAppearanceContext(appearance: .system, bubbleColor: color),
+                                     colorScheme: scheme, contrast: .standard)
+            }
+        }
         for theme in themes {
             let outgoing = BighelpV3MessageSurface(
                 role: .human,
@@ -468,87 +392,8 @@ struct DesignSystemTests {
                 let shippingColor = UIColor(theme.outgoingMessageBackground).resolvedColor(with: traits)
                 #expect(previewColor.isEqual(shippingColor))
             }
-            // Saved palettes remain portable, but incoming chrome is the warm Ember neutral in every theme.
+            // Incoming chrome is the warm Ember neutral whatever the bubble color.
             #expect(BighelpV3MessageSurface(role: .assistant, theme: theme, increasedContrast: true).fillColor == theme.incomingMessageBackground)
-        }
-    }
-
-    @Test func customThemeDefinitionFlowsThroughAppearanceContext() throws {
-        let custom = try validCustomTheme()
-        let context = BighelpAppearanceContext(
-            appearance: .dark,
-            themeID: custom.themeID,
-            customTheme: custom
-        )
-        let resolved = BighelpTheme.resolve(
-            appearance: context,
-            colorScheme: .light,
-            contrast: .standard
-        )
-        #expect(resolved.themeID == custom.themeID)
-        // The default dark page (Graphite), not the custom theme's document colors.
-        #expect(resolved.canvasHex == BighelpTheme.graphiteDark.canvasHex)
-        #expect(resolved.typeface == .system)
-        #expect(custom.definition.dark.canvasHex == custom.dark.backgroundHex)
-        #expect(custom.accentHex == "3366CC")
-        #expect(resolved.action != BighelpTheme.resolve(themeID: .bighelp, appearance: .dark,
-                                                      colorScheme: .dark, contrast: .standard).action)
-    }
-
-    @Test func customThemesOfferExactlyFiveCuratedDynamicTypeFontChoices() throws {
-        #expect(CustomThemeFontChoice.allCases == [
-            .system,
-            .rounded,
-            .serif,
-            .monospaced,
-            .notoSans,
-        ])
-        #expect(CustomThemeFontChoice.allCases.map(\.title) == [
-            "System",
-            "Rounded",
-            "Serif",
-            "Monospaced",
-            "Noto Sans",
-        ])
-
-        let regularTraits = UITraitCollection(preferredContentSizeCategory: .large)
-        let accessibilityTraits = UITraitCollection(
-            preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge
-        )
-        let themes = try CustomThemeFontChoice.allCases.map { choice in
-            try validCustomTheme(font: choice).definition.light
-        }
-
-        #expect(themes.map(\.typeface) == [
-            .system,
-            .rounded,
-            .serif,
-            .monospaced,
-            .system,
-        ])
-        #expect(themes.last?.typography.bodyFontNames.first == "Noto Sans")
-        for theme in themes {
-            #expect(
-                theme.uiFont(.body, compatibleWith: accessibilityTraits).pointSize
-                    > theme.uiFont(.body, compatibleWith: regularTraits).pointSize
-            )
-        }
-    }
-
-    @Test func customThemeRejectsInvalidNamesColorsAndUnreadableSemanticText() throws {
-        #expect(throws: CustomThemeValidationError.invalidName) {
-            try validCustomTheme(name: " \n ")
-        }
-        #expect(throws: CustomThemeValidationError.invalidColor(.accent)) {
-            try validCustomTheme(accentHex: "not-a-color")
-        }
-        #expect(throws: CustomThemeValidationError.insufficientContrast(.lightSecondaryText)) {
-            try validCustomTheme(light: CustomThemePalette(
-                backgroundHex: "FFFFFF",
-                primaryTextHex: "111111",
-                secondaryTextHex: "F0F0F0",
-                tertiaryTextHex: "555555"
-            ))
         }
     }
 
@@ -604,15 +449,13 @@ struct DesignSystemTests {
     }
 
     @Test func primaryNavigationActionUsesNeutralGlassAndThemeAccentWithoutAnOutline() {
-        for definition in BighelpThemeRegistry.builtIns {
-            let presentation = FloatingTabBar.newChatPresentation(for: definition.id)
+        let presentation = FloatingTabBar.newChatPresentation(for: .bighelp)
 
-            #expect(presentation.surface == .neutralGlass)
-            #expect(presentation.foreground == .themeAccent)
-            #expect(!presentation.usesGradient)
-            #expect(!presentation.showsBorder)
-            #expect(!presentation.usesGlow)
-        }
+        #expect(presentation.surface == .neutralGlass)
+        #expect(presentation.foreground == .themeAccent)
+        #expect(!presentation.usesGradient)
+        #expect(!presentation.showsBorder)
+        #expect(!presentation.usesGlow)
     }
 
     private func dashboardDate(hour: Int, minute: Int, calendar: Calendar) -> Date {
@@ -624,32 +467,6 @@ struct DesignSystemTests {
             hour: hour,
             minute: minute
         ))!
-    }
-
-    private func validCustomTheme(
-        name: String = "Studio",
-        font: CustomThemeFontChoice = .system,
-        accentHex: String = "3366CC",
-        light: CustomThemePalette = CustomThemePalette(
-            backgroundHex: "FFFFFF",
-            primaryTextHex: "111111",
-            secondaryTextHex: "333333",
-            tertiaryTextHex: "555555"
-        )
-    ) throws -> CustomTheme {
-        try CustomTheme(
-            id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
-            name: name,
-            font: font,
-            accentHex: accentHex,
-            light: light,
-            dark: CustomThemePalette(
-                backgroundHex: "101010",
-                primaryTextHex: "FFFFFF",
-                secondaryTextHex: "E0E0E0",
-                tertiaryTextHex: "B0B0B0"
-            )
-        )
     }
 
     @Test func primitiveSpectrumAndStatusColorsMatchTheApprovedPalette() {
@@ -821,12 +638,8 @@ struct DesignSystemTests {
         #expect(technical != crisp)
 
         #expect(BighelpTheme.light.iconStyle == .crisp)
-        #expect(BighelpTheme.nousLight.iconStyle == .technical)
-        #expect(BighelpTheme.superpilotLight.iconStyle == .crisp)
         #expect(BighelpTheme.light.typeface == .system)
         #expect(BighelpTheme.light.typography.bodyFontNames.isEmpty)
-        #expect(BighelpTheme.nousLight.typography.displayFontNames.first == "Sigurd Variable")
-        #expect(BighelpTheme.superpilotLight.typography.displayFontNames.first == "Segoe UI Semibold")
     }
 
     @Test func allSemanticThemeVariantsExposeExactRoles() {
@@ -870,9 +683,8 @@ struct DesignSystemTests {
     }
 
     @Test func sendButtonColorsMeetNonTextControlContrastAcrossEveryThemeVariant() {
-        let variants = BighelpThemeRegistry.builtIns.flatMap {
-            [$0.light, $0.lightHighContrast, $0.dark, $0.darkHighContrast]
-        }
+        let ember = BighelpThemeRegistry.ember
+        let variants = [ember.light, ember.lightHighContrast, ember.dark, ember.darkHighContrast]
 
         for theme in variants {
             #expect(

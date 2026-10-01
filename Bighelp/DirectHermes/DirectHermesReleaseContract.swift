@@ -55,11 +55,17 @@ enum DirectHermesReleaseContract {
         readOperations.union(profileOperations).union(nonSubmissionSessionOperations)
     }
 
+    /// Where Hermes records a chat as coming from. Hermes words the agent's
+    /// instructions by it: left out, a chat counts as its terminal UI (no files,
+    /// cards or reminders), and "desktop" promises Hermes Desktop's own tools.
+    /// The plugin gives the agent bighelp's instructions for this label.
+    static let sessionSource = "bighelp"
+
     static func resumeParameters(profile: String, storedID: String) -> [String: BighelpJSONValue] {
         [
             "session_id": .string(storedID),
             "profile": .string(profile),
-            "source": .string("desktop"),
+            "source": .string(sessionSource),
             "close_on_disconnect": .boolean(false),
             "defer_history": .boolean(true),
             "omit_messages": .boolean(true),

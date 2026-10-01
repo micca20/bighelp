@@ -29,4 +29,6 @@ enum AppRoute: Hashable {
     /// Projects, like Claude's: related chats and folders together.
     case projects
     case project(id: String)
+    /// Kanban: the host's boards, worked by its agents.
+    case kanban
 }

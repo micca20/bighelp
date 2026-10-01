@@ -149,4 +149,10 @@ enum WorkspaceOperation: String, CaseIterable, Sendable {
     case boardRead = "board.read"
     case boardPromote = "board.promote"
     case usageList = "usage.list"
+    case peopleSpeaking = "people.speaking"
+    case providerSignInList = "provider-sign-in.list"
+    case providerSignInStart = "provider-sign-in.start"
+    case providerSignInStatus = "provider-sign-in.status"
+    case providerSignInSubmit = "provider-sign-in.submit"
+    case providerSignInCancel = "provider-sign-in.cancel"
 }

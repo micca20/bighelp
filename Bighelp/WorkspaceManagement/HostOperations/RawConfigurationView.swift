@@ -4,15 +4,21 @@ import SwiftUI
 struct RawConfigurationView: View {
     @Bindable var store: RawConfigurationStore
 
+    @Environment(\.dismiss) private var dismiss
+    @State private var isExpanded = false
+    @State private var saveAfterExpandedEditor = false
+    @State private var confirmsLeaving = false
+    @State private var confirmsReload = false
+
     var body: some View {
         List {
             scopeSection
             messageSections
-            warningSection
 
             if let snapshot = store.snapshot {
                 editorSection(snapshot)
                 actionSection
+                warningSection
             } else if store.isLoading {
                 Section { ProgressView("Loading private configuration…") }
             } else {
@@ -24,15 +30,57 @@ struct RawConfigurationView: View {
                     Button("Load Private Configuration") { Task { await store.load() } }
                         .disabled(!store.ownsScope)
                 }
+                warningSection
             }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Raw Configuration")
         .navigationBarTitleDisplayMode(.inline)
+        // Unsaved edits: Back asks first, and swiping back is off until they're saved or discarded.
+        .navigationBarBackButtonHidden(store.hasChanges)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Reload", systemImage: "arrow.clockwise") { Task { await store.load() } }
-                    .disabled(!store.ownsScope || store.isLoading || store.isSaving)
+            if store.hasChanges {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back", systemImage: "chevron.backward") { confirmsLeaving = true }
+                        .accessibilityIdentifier("host.raw-config.back")
+                }
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Reload", systemImage: "arrow.clockwise") {
+                    if store.hasChanges { confirmsReload = true } else { Task { await store.load() } }
+                }
+                .disabled(!store.ownsScope || store.isLoading || store.isSaving)
+                Button("Save") { store.prepareReview() }
+                    .fontWeight(.semibold)
+                    .disabled(!store.canSave)
+                    .accessibilityIdentifier("host.raw-config.save")
+            }
+        }
+        .alert("Discard your changes?", isPresented: $confirmsLeaving) {
+            Button("Discard Changes", role: .destructive) {
+                store.discardDraft()
+                dismiss()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("You haven't saved your changes to config.yaml. If you leave now, they'll be lost.")
+        }
+        .alert("Reload and lose your changes?", isPresented: $confirmsReload) {
+            Button("Reload", role: .destructive) { Task { await store.load() } }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Reloading replaces your unsaved changes with the file on the host.")
+        }
+        .sheet(isPresented: $isExpanded, onDismiss: {
+            // Save from the big editor opens the review once the editor is gone.
+            if saveAfterExpandedEditor {
+                saveAfterExpandedEditor = false
+                store.prepareReview()
+            }
+        }) {
+            RawConfigurationExpandedEditor(store: store) {
+                saveAfterExpandedEditor = true
+                isExpanded = false
             }
         }
         .task { if store.snapshot == nil { await store.load() } }
@@ -59,7 +107,7 @@ struct RawConfigurationView: View {
                 }
             }
         } header: { Text("Workspace") } footer: {
-            Text("This private editor holds the document only while this screen is open. It does not save drafts, include content in errors, run commands, or expose an arbitrary host request console.")
+            Text("Changes stay a draft until you tap Save, and the draft is gone when you leave this screen. The editor never includes content in errors, runs commands, or exposes an arbitrary host request console.")
         }
     }
 
@@ -94,7 +142,7 @@ struct RawConfigurationView: View {
             Text("Hermes parses the proposal as a YAML mapping, then atomically rewrites config.yaml. The stock raw endpoint does not run the broader configuration-structure validator and does not create a backup.")
             Text("Saving can change live approval-mode indicators. Other settings may apply only to a new session or gateway lifecycle. bighelp does not restart anything after this save.")
         } header: {
-            Text("Before you edit")
+            Text("About saving")
         } footer: {
             Text("Create and download a host backup separately before replacing configuration when you need a recovery point.")
         }
@@ -102,15 +150,12 @@ struct RawConfigurationView: View {
 
     private func editorSection(_ snapshot: HermesRawConfigurationSnapshot) -> some View {
         Section {
-            TextEditor(text: $store.draft)
-                .font(.body.monospaced())
+            YAMLTextView(text: $store.draft, isEditable: store.canEdit)
                 .frame(minHeight: 360)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
                 .privacySensitive()
-                .disabled(!store.canEdit)
                 .accessibilityLabel("Private raw Hermes configuration")
                 .accessibilityIdentifier("host.raw-config.editor")
+
 
             LabeledContent("Loaded", value: snapshot.loadedAt.formatted(date: .abbreviated, time: .shortened))
             LabeledContent("Original bytes", value: snapshot.yaml.utf8.count.formatted())
@@ -122,22 +167,36 @@ struct RawConfigurationView: View {
                 LabeledContent("Remaining limit", value: store.remainingBytes.formatted())
             }
         } header: {
-            Text("YAML document")
+            HStack {
+                Text("YAML document")
+                Spacer()
+                Button("Expand", systemImage: "arrow.up.left.and.arrow.down.right") { isExpanded = true }
+                    .font(.subheadline)
+                    .textCase(nil)
+                    .disabled(!store.canEdit)
+                    .accessibilityHint("Full screen, with Find and Find and Replace")
+                    .accessibilityIdentifier("host.raw-config.expand")
+            }
         } footer: {
             Text("Limit: \(DirectHermesHostOperationsClient.maximumRawConfigurationBytes.formatted()) UTF-8 bytes. Review shows exact original/proposed snapshots and every changed line before PUT /api/config/raw is available.")
         }
     }
 
     private var actionSection: some View {
-        Section("Review") {
-            Button("Review Exact Changes", systemImage: "doc.text.magnifyingglass") {
+        Section {
+            Button("Review and Save", systemImage: "doc.text.magnifyingglass") {
                 store.prepareReview()
             }
-            .disabled(!store.canEdit || !store.hasChanges || store.remainingBytes < 0)
+            .disabled(!store.canSave)
             .frame(minHeight: BighelpTokens.hitTarget)
 
-            Button("Discard Draft", role: .destructive) { store.discardDraft() }
+            Button("Discard Changes", role: .destructive) { store.discardDraft() }
                 .disabled(!store.canEdit || !store.hasChanges)
+                .accessibilityIdentifier("host.raw-config.discard")
+        } header: {
+            Text("Save")
+        } footer: {
+            Text("Save shows every changed line before anything is written to the host.")
         }
     }
 }
@@ -195,7 +254,7 @@ private struct RawConfigurationReviewView: View {
                     .disabled(store.isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(store.isSaving ? "Saving…" : "Save Reviewed File") {
+                    Button(store.isSaving ? "Saving…" : "Save") {
                         Task {
                             await store.saveReviewed(review)
                             if store.review == nil { dismiss() }

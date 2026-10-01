@@ -16,6 +16,11 @@ final class ProviderAccountsStore {
     private(set) var errorMessage: String?
     private(set) var successMessage: String?
     private(set) var isRetired = false
+    /// Accounts only a terminal on the host signs in to, run by the plugin with the provider's own tool.
+    let hostSignIn: ProviderHostSignInStore?
+    /// Why the sign-in sheet's sign-in couldn't start.
+    private(set) var signInFailure: String?
+    private(set) var isStartingSignIn = false
 
     @ObservationIgnored private let client: DirectHermesProviderClient
     @ObservationIgnored private var generation = UUID()
@@ -28,12 +33,22 @@ final class ProviderAccountsStore {
         hostName: String,
         profileID: String,
         servingProfileID: String? = nil,
-        client: DirectHermesProviderClient
+        client: DirectHermesProviderClient,
+        hostSignIn: ProviderHostSignInStore? = nil
     ) {
         self.hostName = hostName
         self.profileID = profileID
         self.servingProfileID = servingProfileID
         self.client = client
+        self.hostSignIn = hostSignIn
+        hostSignIn?.onSignedIn = { [weak self] in
+            guard let self, self.ownsScope else { return }
+            try? await self.reloadAfterMutation(message: "Hermes confirmed the provider sign-in.")
+        }
+    }
+
+    var overview: ProviderKeysOverview? {
+        snapshot.map { ProviderKeysOverview(snapshot: $0, hostSignIns: hostSignIn?.providers ?? []) }
     }
 
     var ownsScope: Bool { !isRetired && client.ownsScope }
@@ -64,12 +79,15 @@ final class ProviderAccountsStore {
             if generation == request { isLoading = false }
             scheduleSetupRefreshIfNeeded()
         }
+        let hostSignIns = Task { [hostSignIn] in await hostSignIn?.load() }
+        defer { hostSignIns.cancel() }
         do {
             let value = try await client.loadSnapshot(
                 profileID: profileID,
                 servingProfileID: servingProfileID,
                 includeServingCredentialPools: canManageServingState
             )
+            await hostSignIns.value
             guard canPublish(request) else { return }
             snapshot = value
         } catch is CancellationError {
@@ -97,6 +115,8 @@ final class ProviderAccountsStore {
         oauthPollTask?.cancel()
         oauthPollTask = nil
         oauthSession = nil
+        hostSignIn?.retire()
+        signInFailure = nil
         credentialValidation = nil
         endpointValidation = nil
         snapshot = nil
@@ -292,6 +312,17 @@ final class ProviderAccountsStore {
         }
     }
 
+    /// The sign-in sheet closed: a sign-in still waiting is cancelled on Hermes,
+    /// a finished one is cleared.
+    func closeOAuthSession() async {
+        guard let session = oauthSession else { return }
+        if session.status == .pending {
+            await cancelOAuth()
+        } else {
+            oauthSession = nil
+        }
+    }
+
     func disconnectOAuth(providerID: String) async {
         guard begin("Disconnecting account") else { return }
         defer { finish() }
@@ -341,6 +372,80 @@ final class ProviderAccountsStore {
         } catch {
             guard ownsScope else { return }
             errorMessage = Self.message(error)
+        }
+    }
+
+    // MARK: Signing in from the phone
+
+    var isSigningIn: Bool {
+        isStartingSignIn || hasActiveOAuthSession || hostSignIn?.session?.isRunning == true
+    }
+
+    /// Starts a sign-in the way this account signs in: Hermes' own, or the host's tool.
+    func startSignIn(_ target: ProviderSignInTarget) async {
+        guard !isStartingSignIn else { return }
+        isStartingSignIn = true
+        signInFailure = nil
+        defer { isStartingSignIn = false }
+        if target.client != nil, let hostSignIn {
+            if !(await hostSignIn.start(providerID: target.id)) {
+                signInFailure = hostSignIn.errorMessage ?? "\(hostName) couldn't start the sign-in. Try again."
+            }
+        } else if await startOAuth(providerID: target.id) == nil {
+            signInFailure = errorMessage ?? "Hermes couldn't start the sign-in. Try again."
+            errorMessage = nil
+        }
+    }
+
+    func submitSignInCode(_ code: String, for target: ProviderSignInTarget) async {
+        if target.client != nil {
+            await hostSignIn?.submit(code: code)
+        } else {
+            _ = await submitOAuthCode(code)
+        }
+    }
+
+    /// The sign-in sheet closed: anything still running stops.
+    func closeSignIn(_ target: ProviderSignInTarget) async {
+        signInFailure = nil
+        if target.client != nil {
+            await hostSignIn?.close()
+        } else {
+            await closeOAuthSession()
+        }
+    }
+
+    /// What the sign-in sheet shows for this account right now.
+    func signInProgress(for target: ProviderSignInTarget) -> ProviderSignInProgress {
+        if let signInFailure { return .init(step: .failed(signInFailure)) }
+        if isStartingSignIn { return .init(step: .starting) }
+        if target.client != nil {
+            guard let session = hostSignIn?.session, session.providerID == target.id else {
+                return .init(step: .starting)
+            }
+            let pastes = session.flow == .paste
+            switch session.status {
+            case .starting: return .init(step: .starting)
+            case .waiting, .needsCode:
+                return .init(step: .waiting, link: session.link, code: pastes ? nil : session.code, pastes: pastes,
+                             problem: hostSignIn?.errorMessage)
+            case .finishing: return .init(step: .finishing, pastes: pastes)
+            case .signedIn: return .init(step: .connected(email: nil))
+            case .failed, .expired, .cancelled:
+                return .init(step: .failed(session.message ?? "The sign-in didn't finish. Try again."))
+            }
+        }
+        guard let session = oauthSession, session.providerID == target.id else { return .init(step: .starting) }
+        switch session.status {
+        case .pending:
+            if isBusy, operationTitle == "Completing sign-in" { return .init(step: .finishing, pastes: true) }
+            return .init(step: .waiting, link: session.verificationURL,
+                         code: session.flow == .deviceCode && !session.userCode.isEmpty ? session.userCode : nil,
+                         pastes: session.flow == .pkce, problem: errorMessage)
+        case .approved: return .init(step: .connected(email: session.accountEmail))
+        default:
+            return .init(step: .failed(session.errorMessage ?? (session.status == .expired
+                ? "The sign-in code expired." : "The sign-in didn't finish.")))
         }
     }
 
@@ -464,49 +569,65 @@ struct ProviderAccountsView: View {
     @State private var addingPoolCredential = false
     @State private var disconnectOAuthID: String?
     @State private var poolRemoval: PoolRemoval?
-    @State private var oauthCode = ""
+    @State private var signingIn: ProviderSignInTarget?
+    /// The sheet's account, kept past dismissal so closing can stop its sign-in.
+    @State private var lastSignIn: ProviderSignInTarget?
+    @State private var search = ""
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         Group {
             if store.ownsScope {
                 Form {
-                    scopeSection
                     statusSections
-                    if let snapshot = store.snapshot {
-                        if snapshot.setup != nil || snapshot.runtime != nil { runtimeSection(snapshot) }
-                        if let portal = snapshot.portal { portalSection(portal) }
-                        oauthSection(snapshot.oauthProviders)
-                        credentialSection(snapshot.credentials)
-                        supportedProvidersSection(snapshot.providers)
-                        endpointsSection(snapshot.customEndpoints)
-                        poolsSection(snapshot.credentialPools)
-                        SkippedPartsNote(parts: snapshot.skippedParts)
+                    if let snapshot = store.snapshot, let overview = store.overview {
+                        if !search.trimmingCharacters(in: .whitespaces).isEmpty {
+                            searchResults(overview.matching(search), portal: snapshot.portal)
+                        } else {
+                            yourProvidersSection(overview.connected, portal: snapshot.portal)
+                            signInSection(overview.signIns)
+                            Section {
+                                NavigationLink {
+                                    ProviderKeyPickerView(store: store, choices: overview.keyChoices)
+                                } label: {
+                                    Label("Add an API key", systemImage: "key")
+                                }
+                                .accessibilityIdentifier("providers.add-key")
+                            } footer: {
+                                Text("For providers that use a key instead of an account. Keys are saved on \(store.hostName) and never shown again.")
+                            }
+                            Section {
+                                NavigationLink {
+                                    advancedForm
+                                } label: {
+                                    Label("Advanced", systemImage: "gearshape.2")
+                                }
+                                .accessibilityIdentifier("providers.advanced")
+                            } footer: {
+                                Text("Custom endpoints, extra accounts, every key setting, and which provider new chats use.")
+                            }
+                        }
                     }
                 }
+                .searchable(text: $search, prompt: "Search providers")
                 .refreshable { await store.refresh() }
             } else {
                 ContentUnavailableView(
-                    "Provider accounts unavailable", systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: Text("The selected host changed. Reopen Provider Accounts from the current workspace.")
+                    "Provider keys unavailable", systemImage: "person.crop.circle.badge.exclamationmark",
+                    description: Text("The selected host changed. Reopen Provider Keys from the current workspace.")
                 )
             }
         }
-        .navigationTitle("Provider Accounts")
+        .navigationTitle("Provider Keys")
         .navigationBarTitleDisplayMode(.inline)
         .task { if store.snapshot == nil { await store.load() } }
-        .sheet(isPresented: $addingEndpoint) {
-            NavigationStack {
-                ProviderEndpointEditorView(store: store, endpoint: nil) { addingEndpoint = false }
-            }
-        }
-        .sheet(isPresented: $addingPoolCredential) {
-            NavigationStack {
-                ProviderPoolCredentialEditorView(store: store) { addingPoolCredential = false }
-            }
+        .sheet(item: $signingIn, onDismiss: {
+            if let target = lastSignIn { Task { await store.closeSignIn(target) } }
+        }) { provider in
+            ProviderSignInSheet(store: store, provider: provider)
         }
         .confirmationDialog(
-            "Disconnect provider account?", isPresented: Binding(
+            "Disconnect this account?", isPresented: Binding(
                 get: { disconnectOAuthID != nil },
                 set: { if !$0 { disconnectOAuthID = nil } }
             ), titleVisibility: .visible
@@ -519,7 +640,184 @@ struct ProviderAccountsView: View {
             }
             Button("Cancel", role: .cancel) { disconnectOAuthID = nil }
         } message: {
-            Text("Hermes will remove its saved OAuth account for this profile. Existing sessions are not changed.")
+            Text("Hermes removes its saved sign-in for this profile. Chats already running keep going.")
+        }
+        .accessibilityIdentifier("providers.accounts")
+    }
+
+    // MARK: Overview
+
+    @ViewBuilder
+    private func searchResults(_ overview: ProviderKeysOverview, portal: DirectHermesPortalStatus?) -> some View {
+        if overview.isEmpty {
+            ContentUnavailableView.search(text: search)
+        } else {
+            if !overview.connected.isEmpty { yourProvidersSection(overview.connected, portal: portal) }
+            signInSection(overview.signIns)
+            if !overview.keyChoices.isEmpty {
+                Section("Add an API key") {
+                    ForEach(overview.keyChoices) { choice in
+                        NavigationLink {
+                            ProviderCredentialEditorView(store: store, credentialID: choice.id)
+                        } label: {
+                            ProviderRowLabel(logoID: choice.logoID, name: choice.providerName, detail: choice.title)
+                        }
+                        .accessibilityIdentifier("providers.key-choice.\(choice.id)")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func yourProvidersSection(_ rows: [ProviderKeysOverview.Connected],
+                                      portal: DirectHermesPortalStatus?) -> some View {
+        Section {
+            if rows.isEmpty {
+                Text("None yet. Sign in to an account or add an API key below.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(rows) { row in
+                switch row.kind {
+                case .key(let credentialID):
+                    NavigationLink {
+                        ProviderCredentialEditorView(store: store, credentialID: credentialID)
+                    } label: {
+                        ProviderRowLabel(logoID: row.logoID, name: row.name, detail: row.detail)
+                    }
+                    .accessibilityIdentifier("providers.connected.\(row.id)")
+                case .account(let providerID, let canDisconnect, let hint):
+                    HStack {
+                        ProviderRowLabel(logoID: row.logoID, name: row.name, detail: row.detail)
+                        Spacer(minLength: 0)
+                        Menu {
+                            if providerID == portal?.providerID, let url = portal?.subscriptionURL {
+                                Button("Manage subscription", systemImage: "arrow.up.right.square") { openURL(url) }
+                            }
+                            if canDisconnect {
+                                Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                                    disconnectOAuthID = providerID
+                                }
+                            } else if let hint {
+                                Text(hint)
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.title3)
+                                .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
+                                .contentShape(.rect)
+                        }
+                        .disabled(store.isBusy)
+                        .accessibilityLabel("\(row.name) options")
+                        .accessibilityIdentifier("providers.account-menu.\(providerID)")
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("providers.connected.\(row.id)")
+                }
+            }
+        } header: {
+            Text("Your providers")
+        }
+    }
+
+    @ViewBuilder
+    private func signInSection(_ rows: [ProviderKeysOverview.SignIn]) -> some View {
+        if !rows.isEmpty {
+            Section {
+                ForEach(rows) { row in
+                    switch row.method {
+                    case .onPhone:
+                        signInRow(row, detail: row.problem ?? "Sign in here", client: nil)
+                    case .withHostTool(let client, _):
+                        signInRow(row, detail: row.problem
+                                      ?? (client == "Hermes" ? "Sign in here" : "Uses \(client) on \(store.hostName)"),
+                                  client: client)
+                    case .needsTool(let client, let install, let command):
+                        NavigationLink {
+                            ProviderComputerSignInView(hostName: store.hostName, name: row.name, logoID: row.logoID,
+                                                       command: command, documentationURL: row.documentationURL,
+                                                       reason: .needsTool(client: client, install: install))
+                        } label: {
+                            ProviderRowLabel(logoID: row.logoID, name: row.name,
+                                             detail: "Needs \(client) on \(store.hostName)")
+                        }
+                        .accessibilityIdentifier("providers.signin-row.\(row.id)")
+                    case .onComputer(let command):
+                        NavigationLink {
+                            ProviderComputerSignInView(hostName: store.hostName, name: row.name, logoID: row.logoID,
+                                                       command: command, documentationURL: row.documentationURL,
+                                                       reason: store.hostSignIn?.isSupported == true
+                                                           ? .terminalOnly : .pluginUpdate)
+                        } label: {
+                            ProviderRowLabel(logoID: row.logoID, name: row.name,
+                                             detail: row.problem ?? "Sign in on \(store.hostName)")
+                        }
+                        .accessibilityIdentifier("providers.signin-row.\(row.id)")
+                    case .retired(let message, let replacementKey):
+                        NavigationLink {
+                            ProviderRetiredSignInView(store: store, name: row.name, logoID: row.logoID, message: message,
+                                                      replacementKey: replacementKey)
+                        } label: {
+                            ProviderRowLabel(logoID: row.logoID, name: row.name, detail: "No longer offered")
+                        }
+                        .accessibilityIdentifier("providers.signin-row.\(row.id)")
+                    }
+                }
+            } header: {
+                Text("Sign in with your account")
+            } footer: {
+                Text("Subscriptions and accounts like Nous Portal, ChatGPT, GitHub Copilot or Claude. You approve on the provider's own page; bighelp never sees your password.")
+            }
+        }
+    }
+
+    private func signInRow(_ row: ProviderKeysOverview.SignIn, detail: String, client: String?) -> some View {
+        HStack {
+            ProviderRowLabel(logoID: row.logoID, name: row.name, detail: detail)
+            Spacer(minLength: 0)
+            Button("Sign in") {
+                let target = ProviderSignInTarget(id: row.id, name: row.name, logoID: row.logoID, client: client)
+                lastSignIn = target
+                signingIn = target
+            }
+            .bighelpProminentButtonStyle()
+            .controlSize(.small)
+            .disabled(store.isBusy || store.isSigningIn)
+            .accessibilityIdentifier("providers.sign-in.\(row.id)")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("providers.signin-row.\(row.id)")
+    }
+
+    // MARK: Advanced
+
+    private var advancedForm: some View {
+        Form {
+            statusSections
+            scopeSection
+            if let snapshot = store.snapshot {
+                if snapshot.setup != nil || snapshot.runtime != nil { runtimeSection(snapshot) }
+                if let portal = snapshot.portal { portalSection(portal) }
+                accountSourcesSection(snapshot.oauthProviders)
+                credentialSection(snapshot.credentials)
+                supportedProvidersSection(snapshot.providers)
+                endpointsSection(snapshot.customEndpoints)
+                poolsSection(snapshot.credentialPools)
+                SkippedPartsNote(parts: snapshot.skippedParts)
+            }
+        }
+        .navigationTitle("Advanced")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await store.refresh() }
+        .sheet(isPresented: $addingEndpoint) {
+            NavigationStack {
+                ProviderEndpointEditorView(store: store, endpoint: nil) { addingEndpoint = false }
+            }
+        }
+        .sheet(isPresented: $addingPoolCredential) {
+            NavigationStack {
+                ProviderPoolCredentialEditorView(store: store) { addingPoolCredential = false }
+            }
         }
         .confirmationDialog(
             "Remove this account credential?", isPresented: Binding(
@@ -541,9 +839,21 @@ struct ProviderAccountsView: View {
         } message: {
             Text("Hermes will remove the selected credential-pool entry and suppress its backing source when required so it does not return on refresh.")
         }
-        .onChange(of: store.oauthSession?.id) { _, _ in oauthCode = "" }
-        .onDisappear { oauthCode = "" }
-        .accessibilityIdentifier("providers.accounts")
+        .accessibilityIdentifier("providers.advanced.screen")
+    }
+
+    /// Where each signed-in account's credentials come from, for troubleshooting.
+    @ViewBuilder
+    private func accountSourcesSection(_ providers: [DirectHermesOAuthProvider]) -> some View {
+        let signedIn = providers.filter(\.status.isLoggedIn)
+        if !signedIn.isEmpty {
+            Section("Account sources") {
+                ForEach(signedIn) { provider in
+                    LabeledContent(provider.name,
+                                   value: provider.status.sourceLabel ?? provider.status.source ?? "Hermes")
+                }
+            }
+        }
     }
 
     private var scopeSection: some View {
@@ -560,7 +870,7 @@ struct ProviderAccountsView: View {
     @ViewBuilder
     private var statusSections: some View {
         if store.isLoading || store.operationTitle != nil {
-            Section { ProgressView(store.operationTitle ?? "Loading provider accounts") }
+            Section { ProgressView(store.operationTitle ?? "Loading providers") }
         }
         if let message = store.errorMessage {
             Section {
@@ -624,7 +934,7 @@ struct ProviderAccountsView: View {
     }
 
     private func credentialSection(_ credentials: [DirectHermesProviderCredential]) -> some View {
-        Section("API keys") {
+        Section("Every key setting") {
             let rows = ProviderCredentialPresentation.sorted(
                 credentials.filter { !$0.isChannelManaged && ($0.category == "provider" || $0.providerID != nil || $0.isCustom) }
             )
@@ -643,81 +953,6 @@ struct ProviderAccountsView: View {
             }
             if rows.isEmpty { Text("No provider key fields were reported.").foregroundStyle(.secondary) }
         }
-    }
-
-    @ViewBuilder
-    private func oauthSection(_ providers: [DirectHermesOAuthProvider]) -> some View {
-        Section("Connected accounts") {
-            ForEach(providers) { provider in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(provider.name)
-                        Spacer()
-                        Text(provider.status.isLoggedIn ? "Connected" : "Not connected")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if let label = provider.status.sourceLabel, provider.status.isLoggedIn {
-                        Text(label).font(.caption).foregroundStyle(.secondary)
-                    }
-                    if provider.status.isLoggedIn, provider.canDisconnect {
-                        Button("Disconnect") { disconnectOAuthID = provider.id }
-                            .disabled(store.isBusy)
-                    } else if provider.flow == .deviceCode || provider.flow == .pkce {
-                        Button("Sign in") {
-                            Task {
-                                if let session = await store.startOAuth(providerID: provider.id) {
-                                    openURL(session.verificationURL)
-                                }
-                            }
-                        }
-                        .disabled(store.isBusy || store.hasActiveOAuthSession)
-                    } else if let docs = provider.documentationURL {
-                        Button("Open provider instructions", systemImage: "arrow.up.right.square") { openURL(docs) }
-                    }
-                    if let hint = provider.disconnectHint { Text(hint).font(.footnote).foregroundStyle(.secondary) }
-                }
-                .accessibilityIdentifier("providers.oauth.\(provider.id)")
-            }
-            if let session = store.oauthSession { oauthSessionView(session) }
-        }
-    }
-
-    private func oauthSessionView(_ session: DirectHermesOAuthSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(session.status == .pending ? "Waiting for authorization" : "Sign-in: \(session.status.rawValue)")
-                .font(.headline)
-            if session.flow == .deviceCode, !session.userCode.isEmpty {
-                Text(session.userCode).font(.title3.monospaced()).textSelection(.enabled).privacySensitive()
-                    .accessibilityLabel("Provider verification code")
-            }
-            Button("Open sign-in page", systemImage: "arrow.up.right.square") { openURL(session.verificationURL) }
-            if session.status == .pending {
-                if session.flow == .deviceCode {
-                    ProgressView()
-                } else if session.flow == .pkce {
-                    SecureField("Authorization code", text: $oauthCode)
-                        .textContentType(.oneTimeCode)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .privacySensitive()
-                        .accessibilityIdentifier("providers.oauth.completion-code")
-                    Button("Complete sign-in") {
-                        let submitted = oauthCode
-                        oauthCode = ""
-                        Task { _ = await store.submitOAuthCode(submitted) }
-                    }
-                    .disabled(
-                        oauthCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || oauthCode.utf8.count > 16_384 || store.isBusy
-                    )
-                    Text("The code goes directly to Hermes and is cleared immediately.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Button("Cancel sign-in", role: .cancel) { Task { await store.cancelOAuth() } }
-                    .disabled(store.isBusy)
-            }
-        }
-        .accessibilityIdentifier("providers.oauth.session")
     }
 
     private func endpointsSection(_ endpoints: [DirectHermesCustomEndpoint]) -> some View {
@@ -772,7 +1007,6 @@ struct ProviderAccountsView: View {
     }
 }
 
-@MainActor
 /// Names a key row by provider and the setting it holds ("OpenRouter API key",
 /// "DeepSeek base URL"). Hermes leaves some provider labels blank, so the name
 /// falls back to the provider ID, then to the variable name itself.
@@ -832,7 +1066,7 @@ enum ProviderCredentialPresentation {
     ]
 }
 
-private struct ProviderCredentialEditorView: View {
+struct ProviderCredentialEditorView: View {
     let store: ProviderAccountsStore
     let credentialID: String
     @State private var value = ""

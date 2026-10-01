@@ -12,30 +12,40 @@ final class NotificationService: BuzzKitNotificationService, @unchecked Sendable
 
     override func didReceive(_ request: UNNotificationRequest,
                              withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
-        // Anything that isn't a sealed alert, or can't be opened, shows as sent.
+        // Anything that isn't a sealed alert, or can't be opened, shows as sent,
+        // in its agent's stack (unsealed alerts are titled with the agent's name).
         guard let sealed = BighelpSealedNotification(userInfo: request.content.userInfo),
               let opened = try? sealed.open(),
               let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
-            super.didReceive(request, withContentHandler: contentHandler)
+            super.didReceive(Self.grouped(request), withContentHandler: contentHandler)
             return
         }
         content.title = opened.title
         content.body = opened.body
         // The app keeps alerts for the chat on screen quiet by reading the chat from
-        // the push data; a sealed alert carries it only as the thread.
-        if !request.content.threadIdentifier.isEmpty, var loopdy = content.userInfo["loopdy"] as? [String: Any] {
+        // the push data. Older services send it only as the thread.
+        if !request.content.threadIdentifier.isEmpty, var loopdy = content.userInfo["loopdy"] as? [String: Any],
+           (loopdy["sessionReference"] as? String)?.isEmpty ?? true {
             loopdy["sessionReference"] = request.content.threadIdentifier
             var userInfo = content.userInfo
             userInfo["loopdy"] = loopdy
             content.userInfo = userInfo
         }
+        BighelpNotificationGrouping.apply(to: content, eventType: sealed.eventType, agentName: opened.title)
+        let chat = BighelpNotificationGrouping.chat(of: content.userInfo)
         setPending((contentHandler, content.copy() as? UNNotificationContent ?? content))
         let box = UncheckedBox((request: request, content: content))
         // The picture comes from the phone's cache after the first alert. A first
         // download still running after a moment finishes in the background for
         // next time; the alert doesn't wait for it.
         let avatar = Task { await sealed.avatarFile(for: opened) }
+        let eventType = sealed.eventType
+        let identifier = request.identifier
         Task {
+            // This chat's earlier replies are old news now.
+            if let chat {
+                await BighelpNotificationGrouping.removeSuperseded(by: eventType, chat: chat, keeping: identifier)
+            }
             if let file = await Self.value(of: avatar, within: .milliseconds(1500)),
                let attachment = try? UNNotificationAttachment(identifier: "bk.image", url: file) {
                 box.value.content.attachments = [attachment]
@@ -44,6 +54,22 @@ final class NotificationService: BuzzKitNotificationService, @unchecked Sendable
             self.forward(UNNotificationRequest(identifier: box.value.request.identifier,
                                                content: box.value.content, trigger: nil), handler)
         }
+    }
+
+    /// An alert that isn't sealed, placed in its agent's stack.
+    private static func grouped(_ request: UNNotificationRequest) -> UNNotificationRequest {
+        guard let eventType = BighelpNotificationGrouping.eventType(of: request.content.userInfo),
+              let content = request.content.mutableCopy() as? UNMutableNotificationContent else { return request }
+        // The thread is about to name the agent; keep the chat where the app reads it.
+        if !request.content.threadIdentifier.isEmpty, var loopdy = content.userInfo["loopdy"] as? [String: Any],
+           loopdy["sessionReference"] == nil {
+            loopdy["sessionReference"] = request.content.threadIdentifier
+            var userInfo = content.userInfo
+            userInfo["loopdy"] = loopdy
+            content.userInfo = userInfo
+        }
+        BighelpNotificationGrouping.apply(to: content, eventType: eventType, agentName: content.title)
+        return UNNotificationRequest(identifier: request.identifier, content: content, trigger: nil)
     }
 
     override func serviceExtensionTimeWillExpire() {

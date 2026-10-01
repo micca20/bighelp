@@ -303,16 +303,35 @@ extension NativeWorkspaceSessionBridge {
         return result.sorted { $0.sessionID < $1.sessionID }
     }
 
-    /// Retires transport/prompt/model bindings without deleting any journal.
-    /// The caller must resolve every blocker before a rename or delete can
-    /// proceed; this method repeats the guard immediately before retirement.
-    func retireProfileSessions(profileID: String) throws -> [String] {
+    /// Deleting an agent stops its replies first; its chats go with it.
+    /// Interrupts are requests: callers read `profileSessionOwnership` again.
+    func stopProfileWork(profileID: String) async {
+        let working = streams.values.filter { stream in
+            DirectHermesSessionValidation.same(stream.client.profile, profileID)
+                && (stream.client.projection.running || stream.boundModel?.isSending == true
+                    || !stream.client.prompts.isEmpty)
+        }
+        for stream in working {
+            try? await stream.client.stop(conversationID: stream.client.conversationID)
+        }
+    }
+
+    /// Retires transport/prompt/model bindings. A rename keeps every journal and
+    /// the caller must resolve every blocker first; this method repeats the guard
+    /// immediately before retirement. A delete (`discardingLocalWork`) removes the
+    /// agent's chats, so their unsent drafts and unconfirmed sends are removed too;
+    /// only a reply still running blocks it.
+    func retireProfileSessions(profileID: String, discardingLocalWork: Bool = false) throws -> [String] {
         let ownership = try profileSessionOwnership(profileID: profileID)
-        guard !ownership.contains(where: \.blocksDestructiveRetirement) else {
-            throw NativeWorkspaceLifecycleError.protectedProfileState(
-                profileID: profileID,
-                sessionIDs: ownership.filter(\.blocksDestructiveRetirement).map(\.sessionID)
-            )
+        let blocking = ownership.filter {
+            discardingLocalWork ? $0.hasActiveOperation : $0.blocksDestructiveRetirement
+        }
+        guard blocking.isEmpty else {
+            throw discardingLocalWork
+                ? NativeWorkspaceLifecycleError.profileBusy(profileID: profileID)
+                : NativeWorkspaceLifecycleError.protectedProfileState(
+                    profileID: profileID, sessionIDs: blocking.map(\.sessionID)
+                )
         }
         let ids = streams.compactMap { id, stream in
             DirectHermesSessionValidation.same(stream.client.profile, profileID) ? id : nil
@@ -328,6 +347,13 @@ extension NativeWorkspaceSessionBridge {
         }
         activeMappings = activeMappings.filter { _, mapping in
             !DirectHermesSessionValidation.same(mapping.profileID, profileID)
+        }
+        if discardingLocalWork {
+            do {
+                try drafts.removeRecords(hostIdentity: authority.cacheScopeID, profile: profileID)
+            } catch {
+                throw NativeWorkspaceLifecycleError.profileStateCouldNotBeVerified(profileID: profileID)
+            }
         }
         return ids
     }

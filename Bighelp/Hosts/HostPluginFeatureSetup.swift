@@ -156,9 +156,12 @@ struct HostPluginFeatureSection: View {
                 status = "The bighelp plugin is not installed on this host."
                 action = "Install bighelp Plugin"
             } else if matches.count == 1, let installed = matches.first {
-                if let pin = setup?.pin, installed.pinnedSHA != pin.revision {
-                    status = "A different bighelp plugin revision is installed. Review the exact pinned update before replacing it."
-                    action = "Install Reviewed Update"
+                let latest = try? await GitHubPluginReleaseSource.shared.latest(refresh: false)
+                guard owns() else { return }
+                if let latest, let current = installed.version,
+                   HostPluginPin.compare(current, latest.version) == .orderedAscending {
+                    status = "This host has bighelp plugin \(current). Version \(latest.version) is available."
+                    action = "Update bighelp Plugin"
                 } else if installed.configuredEnabled {
                     status = nativeResponded
                         ? "The plugin is installed and its native API answered, but it did not advertise this feature. Check the hermes serve log on the host for why the native middleware was skipped, restart the hermes serve process on the host itself, then check again."
@@ -267,17 +270,20 @@ struct HostPluginInstallationSection: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("hosts.plugin-install.complete")
             } else if showsReview {
-                Text("This action checks the selected host's current plugin scope. It installs the reviewed bighelp plugin when missing, enables the same installed revision when disabled, or replaces a different revision with the exact reviewed pin. A replacement can overwrite local plugin modifications.")
+                Text("This installs the newest bighelp plugin release from GitHub, or turns on the one that's already there. An older plugin is replaced, which overwrites any local changes to it; a newer one is kept.")
                     .fixedSize(horizontal: false, vertical: true)
-                if let pin = model.pin {
-                    LabeledContent("Plugin", value: pin.identifier)
+                if let release = model.release {
+                    LabeledContent("Version", value: release.version)
+                        .accessibilityIdentifier("hosts.plugin-install.version")
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Reviewed revision").bighelpFont(.metadata).foregroundStyle(.secondary)
-                        Text(pin.revision).bighelpFont(.code).textSelection(.enabled)
+                        Text("Commit").bighelpFont(.metadata).foregroundStyle(.secondary)
+                        Text(release.pin.revision).bighelpFont(.code).textSelection(.enabled)
                     }
-                    Text("The host's normal kill list and security scanner stay enabled. First install uses force false. An explicitly reviewed pinned replacement uses the stock manager's force replacement because custom-ref plugins have no update verb. Every result is read back before activation is offered.")
-                    Text("Installation does not enroll notifications or prove activation. bighelp can explicitly restart only the messaging gateway; the hermes serve process must be restarted on the host itself by the host operator when native plugin APIs do not activate.")
                 }
+                Text("Hermes' own security scanner checks the plugin before it's installed, and bighelp confirms the exact version landed.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Installing doesn't turn on notifications. If the plugin's features don't appear afterwards, restart Hermes on this computer.")
+                    .fixedSize(horizontal: false, vertical: true)
                 if let actionTitle = model.actionTitle {
                     Button(actionTitle) {
                         Task {
@@ -293,7 +299,10 @@ struct HostPluginInstallationSection: View {
                 Button("Not Now", role: .cancel) { showsReview = false }
                     .accessibilityIdentifier("hosts.install-loopdy-plugin.not-now")
             } else {
-                Button(pluginReviewTitle) { showsReview = true }
+                Button(pluginReviewTitle) {
+                    showsReview = true
+                    Task { await model.loadRelease() }
+                }
                     .accessibilityIdentifier("hosts.install-loopdy-plugin")
             }
             if restartOffered {

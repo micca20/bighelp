@@ -630,16 +630,20 @@ private extension BighelpBuzzKitTopic {
 struct BighelpPluginCapabilitiesSection: View {
     let connections: WorkspaceConnectionStore?
     let permissionCenter: PermissionCenter
+    /// Off when the plugin's version section is already on the page.
+    var showsPluginSummary = true
 
     var body: some View {
         Section {
-            capabilityRow(
-                title: "bighelp plugin",
-                systemImage: "puzzlepiece.extension",
-                status: pluginStatus,
-                detail: pluginDetail
-            )
-            DisclosureGroup("Feature Details") {
+            if showsPluginSummary {
+                capabilityRow(
+                    title: "bighelp plugin",
+                    systemImage: "puzzlepiece.extension",
+                    status: pluginStatus,
+                    detail: pluginDetail
+                )
+            }
+            DisclosureGroup("Plugin features") {
                 capabilityRow(
                     title: "Rich cards",
                     systemImage: "rectangle.stack",

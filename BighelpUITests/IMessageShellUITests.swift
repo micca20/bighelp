@@ -50,28 +50,17 @@ final class IMessageShellUITests: BighelpUITestCase {
     @MainActor
     func testWorkspaceHubIsDistinctFromFolderPicker() {
         let app = launch()
-        XCTAssertTrue(app.buttons["home.drawer.open"].waitForExistence(timeout: 10))
-        app.buttons["home.drawer.open"].tap()
-        let menu = app.descendants(matching: .any)["navigation.menu"].firstMatch
-        let workspace = app.buttons["menu.hermes-tools"]
-        let exists = workspace.waitForExistence(timeout: 3)
-        XCTAssertTrue(exists, "Workspace features must be reachable independently of the folder picker.")
-        guard exists else { return }
-        for _ in 0..<4 where !workspace.isHittable { menu.swipeUp() }
-        XCTAssertTrue(workspace.isHittable)
-        workspace.tap()
+        openRootDestination("workspace", sidebarIdentifier: "menu.hermes-tools", in: app)
         let hub = app.descendants(matching: .any)["workspace.hub"].firstMatch
         XCTAssertTrue(hub.waitForExistence(timeout: 5))
         attach("workspace-hub-root", app)
         let search = app.searchFields["Find a tool"]
         XCTAssertTrue(search.exists)
         search.tap()
-        search.typeText("Appearance")
-        let appearance = app.buttons["workspace.open.appearance"]
-        XCTAssertTrue(appearance.waitForExistence(timeout: 3))
-        appearance.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["settings.detail.appearance"].firstMatch.waitForExistence(timeout: 5))
-        attach("workspace-hub-appearance", app)
+        search.typeText("Memory")
+        XCTAssertTrue(app.buttons["workspace.open.memory"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["workspace.open.files"].exists)
+        attach("workspace-hub-search", app)
     }
 
     @MainActor
@@ -160,16 +149,15 @@ final class IMessageShellUITests: BighelpUITestCase {
         input.typeText("Keep this unsent draft")
         XCTAssertTrue(app.buttons["chat.send"].waitForExistence(timeout: 3))
         assertSoftwareKeyboardClears(input, in: app)
-        XCTAssertTrue(openChatInfo(in: app))
-        let details = app.otherElements["chat.people-and-chat"]
-        XCTAssertTrue(details.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.navigationBars["Info"].exists)
-        attach("direct-chat-details", app)
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 3))
-        app.buttons["chat.options"].tap()
-        XCTAssertTrue(app.buttons["chat.open-people"].waitForExistence(timeout: 3))
-        app.tap()
+        // A one-agent chat's files open from the ⋯ menu and close back to the draft.
+        chatMenuItem("chat.files", in: app).tap()
+        XCTAssertTrue(app.navigationBars["Files"].waitForExistence(timeout: 5))
+        attach("direct-chat-files", app)
+        app.navigationBars["Files"].buttons["Done"].tap()
+        XCTAssertTrue(chatMenuItem("chat.rename", in: app).exists)
+        XCTAssertFalse(app.buttons["chat.open-people"].exists, "People & Chat left the ⋯ menu")
+        // Close the menu outside it; its items fill the middle of the screen.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.6)).tap()
         XCTAssertEqual(input.value as? String, "Keep this unsent draft")
         attach("chat-draft-native-navigation", app)
         app.buttons["chat.back"].tap()
@@ -466,67 +454,6 @@ final class IMessageShellUITests: BighelpUITestCase {
         XCTAssertTrue(chatIdentity(in: app).waitForExistence(timeout: 5))
         try audit()
         attach("native-chat-accessibility-semantics", app)
-    }
-
-    @MainActor
-    func testAccentPickerAndCustomEditorKeepNativeNavigation() {
-        let app = launch(appearance: "dark")
-        openRootTab("tab.profile", in: app, timeout: 10)
-        let themes = app.buttons["settings.themes"]
-        XCTAssertTrue(themes.waitForExistence(timeout: 5))
-        XCTAssertTrue(themes.isHittable)
-        openThemeList(in: app)
-        XCTAssertTrue(app.navigationBars["Accent Themes"].waitForExistence(timeout: 5))
-        func accentRow(_ identifier: String) -> XCUIElement {
-            let row = app.buttons[identifier].firstMatch
-            // This is the theme picker's own list, not the Settings root.
-            let list = app.descendants(matching: .any)["settings.theme-picker"].firstMatch
-            XCTAssertTrue(list.waitForExistence(timeout: 3), "The accent list must own scrolling")
-            func isFullyVisible() -> Bool {
-                let frame = row.frame
-                return row.isHittable
-                    && frame.minY >= app.navigationBars["Accent Themes"].frame.maxY
-                    && frame.maxY <= list.frame.maxY - 8
-            }
-            for _ in 0..<18 {
-                guard app.navigationBars["Accent Themes"].exists else { break }
-                if row.exists, isFullyVisible() { return row }
-                let top = max(list.frame.minY, app.navigationBars["Accent Themes"].frame.maxY) + 12
-                let bottom = list.frame.maxY - 12
-                let midpoint = (top + bottom) / 2
-                let distance = min(110, (bottom - top) / 4)
-                let needsDown = row.exists && row.frame.minY < top
-                let origin = app.coordinate(withNormalizedOffset: .zero)
-                let start = origin.withOffset(CGVector(dx: list.frame.midX, dy: midpoint))
-                let end = origin.withOffset(CGVector(dx: list.frame.midX,
-                                                     dy: midpoint + (needsDown ? distance : -distance)))
-                start.press(forDuration: 0.1, thenDragTo: end)
-            }
-            XCTAssertTrue(row.exists && isFullyVisible(), "Full theme row must be visible: \(identifier)")
-            return row
-        }
-        for theme in ["loopdy", "nous", "superpilot"] {
-            let choice = accentRow("settings.theme.\(theme)")
-            choice.tap()
-            XCTAssertEqual(choice.value as? String, "Selected", "First center tap must select \(theme)")
-            XCTAssertTrue(app.navigationBars["Accent Themes"].exists)
-            _ = accentRow("settings.theme.\(theme)")
-            attach("native-accent-\(theme)-light-dark-preview", app)
-        }
-        accentRow("settings.custom-theme.new").tap()
-        XCTAssertTrue(app.navigationBars["New Theme"].waitForExistence(timeout: 5))
-        let name = app.textFields["settings.custom-theme.name"]
-        XCTAssertTrue(name.isHittable)
-        name.tap()
-        let initialName = name.value as? String ?? ""
-        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: initialName.count))
-        name.typeText("Accent review")
-        XCTAssertEqual(name.value as? String, "Accent review")
-        XCTAssertTrue(app.buttons["settings.custom-theme.save"].isHittable)
-        attach("native-custom-theme-editor", app)
-        app.navigationBars["New Theme"].buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["Accent Themes"].waitForExistence(timeout: 3))
-        accentRow("settings.theme.loopdy").tap()
     }
 
     @MainActor

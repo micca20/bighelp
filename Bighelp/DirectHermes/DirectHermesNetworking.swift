@@ -166,6 +166,30 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
         }
     }
 
+    /// Voice turns transcribed by the profile's speech-to-text provider on the
+    /// host (stock `/api/audio/transcribe`), over this connection only.
+    func makeVoiceTranscriber(
+        profileID: String,
+        owner: WorkspaceOwner,
+        currentOwner: @escaping @MainActor () -> WorkspaceOwner?
+    ) -> @MainActor (Data) async throws -> String {
+        let mediaGeneration = generation
+        let media = DirectHermesVoiceMediaTransport(
+            authenticator: authenticator,
+            isCurrent: { [weak self] in
+                guard let self else { return false }
+                return !self.terminallyClosed && self.isConnected
+                    && self.generation == mediaGeneration && currentOwner() == owner
+                    && owner.authority.kind == .direct
+            }
+        )
+        return { audio in
+            let recording = try DirectHermesVoiceRecording(bytes: audio, mimeType: "audio/wav")
+            let response = try await media.transcribeVoice(profileID: profileID, recording: recording)
+            return try DirectHermesVoiceConfigurationClient.transcription(response, clientDirect: false).text
+        }
+    }
+
     /// Creates the fixed stock-voice client from this connection's retained
     /// authenticator. The media transport is retired by socket generation as
     /// well as the workspace owner, so reconnects cannot inherit old PCM work.
