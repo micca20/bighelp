@@ -242,7 +242,7 @@ struct FleetHomeView: View {
     private func pinnedRow(_ agents: [FleetAgent]) -> some View {
         PinnedArrangeGrid(
             items: agents,
-            columns: [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: BighelpTokens.space8, alignment: .top)],
+            columns: PinnedAgentsLayout.columns,
             canReorder: true, space: "fleet.pinned", open: onOpen, manage: { managing = $0 },
             reorder: { fleet.reorderPinned($0) }, isArranging: $isArrangingPinned,
             identifier: { "fleet.pinned.\($0.name)" },
@@ -254,25 +254,13 @@ struct FleetHomeView: View {
     }
 
     private func pinnedTile(_ agent: FleetAgent, lifted: Bool) -> some View {
-        VStack(spacing: 6) {
+        PinnedAgentTileLabel(name: agent.name, isLifted: lifted) {
             AvatarView(stableID: agent.profileID, displayName: agent.name,
-                       imageURL: fleet.avatars.url(for: agent.avatarFile), size: 88,
+                       imageURL: fleet.avatars.url(for: agent.avatarFile), size: PinnedAgentsLayout.avatarSize,
                        state: agent.activity?.liveState)
-                .scaleEffect(lifted ? 1.08 : 1)
-                .shadow(color: .black.opacity(lifted ? 0.22 : 0), radius: 12, y: 6)
-            Text(agent.name)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.primaryText)
-                .lineLimit(1)
-            if !agent.role.isEmpty {
-                Text(agent.role)
-                    .font(.caption)
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(1)
-            }
+        } detail: {
+            if let role = AgentFeaturedTile.roleLine(agent.role) { Text(role) }
         }
-        .frame(maxWidth: .infinity)
-        .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }
 

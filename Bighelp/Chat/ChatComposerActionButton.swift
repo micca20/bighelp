@@ -45,6 +45,11 @@ struct AdaptiveComposerActionButton: View {
     var allowedMidSessionBehaviors: [MidSessionChatBehavior] = [.steer, .queued, .interruptAndSend]
     /// Plain-language reason Send is unavailable (read by VoiceOver).
     var unavailableReason: String? = nil
+    /// Bumped by Command-Return on a keyboard: the send choices while the
+    /// agent works (or a plain send when there are none).
+    var keyboardSendOptionsRequest = 0
+    /// The keyboard's send choices closed (picked or dismissed).
+    var onKeyboardSendOptionsClosed: (() -> Void)? = nil
 
     @State private var isMidSessionOptionsPresented = false
     @State private var unlockProgress: Double = 0
@@ -52,6 +57,7 @@ struct AdaptiveComposerActionButton: View {
     @State private var optionsAppeared = false
     @State private var touchIsActive = false
     @State private var touchActiveWhenOptionsAppeared = false
+    @State private var optionsFromKeyboard = false
     /// True only while a finger is down; resets itself on release or cancel.
     @GestureState private var isHolding = false
     private let holdObservationEnabled = ProcessInfo.processInfo.arguments.contains("-observe-send-hold")
@@ -115,13 +121,17 @@ struct AdaptiveComposerActionButton: View {
             unlockProgress = 0
             optionsAppeared = false
             touchActiveWhenOptionsAppeared = false
+            if optionsFromKeyboard { onKeyboardSendOptionsClosed?() }
+            optionsFromKeyboard = false
         }) {
             MidSessionSendOptionsSheet(
                 defaultBehavior: defaultMidSessionBehavior ?? .steer,
                 alternatives: midSessionAlternatives,
+                fromKeyboard: optionsFromKeyboard,
                 onSelect: onMidSessionSend
             )
-            .presentationDetents([.height(300)])
+            .presentationDetents([.height(optionsFromKeyboard ? 380 : 300)])
+            .modifier(FittedSheetSizing())
             .presentationDragIndicator(.visible)
             .onAppear {
                 guard holdObservationEnabled else { return }
@@ -144,6 +154,12 @@ struct AdaptiveComposerActionButton: View {
         .onChange(of: isHolding) { _, holding in
             guard !holding, !holdThresholdReached else { return }
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { unlockProgress = 0 }
+        }
+        .onChange(of: keyboardSendOptionsRequest) { _, _ in
+            guard isEnabled, effectiveAction == .send else { return }
+            guard !midSessionAlternatives.isEmpty else { return perform() }
+            optionsFromKeyboard = true
+            isMidSessionOptionsPresented = true
         }
         // Confirms the mid-session hold unlocked before the options sheet rises.
         .sensoryFeedback(.impact(weight: .medium), trigger: holdThresholdReached) { _, reached in reached }
@@ -302,26 +318,45 @@ struct AdaptiveComposerActionButton: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 }
 
+/// Detents only size sheets on iPhone; on iPad and Mac the sheet fits its choices.
+private struct FittedSheetSizing: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18, visionOS 2, *) {
+            content.presentationSizing(.fitted)
+        } else {
+            content
+        }
+    }
+}
+
 private struct MidSessionSendOptionsSheet: View {
     let defaultBehavior: MidSessionChatBehavior
     let alternatives: [MidSessionChatBehavior]
+    /// From Command-Return: every choice, the usual one first, picked with 1–3 or Return.
+    var fromKeyboard = false
     let onSelect: (MidSessionChatBehavior) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
+    private var choices: [MidSessionChatBehavior] {
+        fromKeyboard ? [defaultBehavior] + alternatives : alternatives
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space16) {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                Text("Send another way")
+                Text(fromKeyboard ? "Send how?" : "Send another way")
                     .bighelpFont(.sectionTitle, weight: .semibold)
                     .foregroundStyle(theme.primaryText)
-                Text("Tap sends with \(defaultBehavior.title). Choose a one-time alternative below.")
+                Text(fromKeyboard
+                     ? "Your agent is still working. Press 1–\(choices.count), or Return to \(defaultBehavior.title.lowercased())."
+                     : "Tap sends with \(defaultBehavior.title). Choose a one-time alternative below.")
                     .bighelpFont(.metadata)
                     .foregroundStyle(theme.secondaryText)
             }
 
             VStack(spacing: BighelpTokens.space8) {
-                ForEach(alternatives) { behavior in
+                ForEach(choices) { behavior in
                     Button {
                         dismiss()
                         onSelect(behavior)
@@ -348,9 +383,22 @@ private struct MidSessionSendOptionsSheet: View {
                 }
             }
         }
+        .background {
+            if fromKeyboard {
+                // 1–3 pick a choice; Return picks the usual one, listed first.
+                KeyboardChoiceKeys(count: choices.count) { index in
+                    guard choices.indices.contains(index) else { return }
+                    dismiss()
+                    onSelect(choices[index])
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+        }
         .padding(BighelpTokens.space20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.send.mid-session.options")
     }
 

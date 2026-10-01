@@ -26,6 +26,8 @@ struct ChatComposer: View {
     let referenceSkills: SkillsAndToolsStore?
     let onReferenceSend: ((ReferenceFrozenDraft, MidSessionChatBehavior?) async -> Void)?
     @State private var referenceEditorSession = ReferenceComposerEditorSession()
+    @AppStorage(ChatLayoutPreferences.returnSendsKey) private var returnSends = true
+    @State private var keyboardSendOptionsRequest = 0
     @State private var referenceSubmissionID: UUID?
     @State private var isDraftOverflowing = false
     @State private var presentedSheet: ChatComposerSheet?
@@ -434,7 +436,9 @@ struct ChatComposer: View {
             defaultMidSessionBehavior: model.isMidSessionTurnLive ? model.defaultMidSessionBehavior : nil,
             onMidSessionSend: sendMidSession,
             allowedMidSessionBehaviors: model.allowedMidSessionBehaviors,
-            unavailableReason: model.sendUnavailableReason
+            unavailableReason: model.sendUnavailableReason,
+            keyboardSendOptionsRequest: keyboardSendOptionsRequest,
+            onKeyboardSendOptionsClosed: { draftFocus.wrappedValue = true }
         )
         .disabled(model.isAwaitingAuthoritativeSessionAllocation)
     }
@@ -467,6 +471,7 @@ struct ChatComposer: View {
             isSurfaceActive: presentedSheet == nil,
             viewportHeight: usesCompactEditingLayout ? max(44, compactDraftLineHeight) : nil,
             onPasteImageProviders: importClipboardImages,
+            onReturnKey: handleReturnKey,
             onSelectionChange: reportComposerSelection,
             onExpansionAvailabilityChange: { isDraftOverflowing = $0 }
         )
@@ -565,13 +570,30 @@ struct ChatComposer: View {
         submit(behavior: nil)
     }
 
+    /// A hardware keyboard's Return (`ComposerReturnKeyAction`). True means handled.
+    private func handleReturnKey(_ key: ComposerReturnKey) -> Bool {
+        switch ComposerReturnKeyAction.resolve(key, returnSends: returnSends, canSend: model.canSend,
+                                               isTurnLive: model.isMidSessionTurnLive) {
+        case .newLine: return false
+        case .nothing: return true
+        case .send: submit(behavior: nil, keepsFocus: true); return true
+        case .sendOptions:
+            // The choices take the keys next (1–3, Return), not the message box.
+            dismissComposerKeyboard()
+            keyboardSendOptionsRequest += 1
+            return true
+        }
+    }
+
     private func sendMidSession(_ behavior: MidSessionChatBehavior) {
         submit(behavior: behavior)
     }
 
-    private func submit(behavior: MidSessionChatBehavior?) {
+    /// `keepsFocus`: sent with a keyboard's Return, so the message box stays
+    /// ready for the next message (Mac, iPad with a keyboard).
+    private func submit(behavior: MidSessionChatBehavior?, keepsFocus: Bool = false) {
         guard model.canSend else { return }
-        dismissComposerKeyboard()
+        if !keepsFocus { dismissComposerKeyboard() }
         if !referenceHub.selected.isEmpty {
             prepareReferenceSend(behavior: behavior)
             return

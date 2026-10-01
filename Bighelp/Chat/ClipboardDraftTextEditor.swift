@@ -9,6 +9,7 @@ struct ClipboardDraftTextEditor: UIViewRepresentable {
     let isFocused: FocusState<Bool>.Binding
     let isEnabled: Bool
     let onPasteImageProviders: ([NSItemProvider]) -> Void
+    var onReturnKey: ((ComposerReturnKey) -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, isFocused: isFocused, onPasteImageProviders: onPasteImageProviders)
@@ -33,10 +34,12 @@ struct ClipboardDraftTextEditor: UIViewRepresentable {
         view.isEditable = isEnabled
         view.isClipboardImagePasteEnabled = isEnabled
         view.onPasteImageProviders = context.coordinator.pasteImages
+        view.onReturnKey = onReturnKey
         return view
     }
 
     func updateUIView(_ view: ClipboardPasteTextView, context: Context) {
+        view.onReturnKey = onReturnKey
         context.coordinator.text = $text
         context.coordinator.isFocused = isFocused
         context.coordinator.onPasteImageProviders = onPasteImageProviders

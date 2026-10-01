@@ -13,6 +13,7 @@ struct RichDraftNativeTextView: UIViewRepresentable {
     let accessibilityLabel: String
     var focus: FocusState<Bool>.Binding
     var onPasteImageProviders: (([NSItemProvider]) -> Void)?
+    var onReturnKey: ((ComposerReturnKey) -> Bool)? = nil
     var onEdit: (AttributedString, AttributedTextSelection, Bool) -> Void
     var onSelectionChange: (AttributedTextSelection) -> Void
     var onPasteRejected: (String) -> Void = { _ in }
@@ -80,6 +81,7 @@ struct RichDraftNativeTextView: UIViewRepresentable {
             view.isEditable = context.environment.isEnabled
         }
         view.onPasteImageProviders = onPasteImageProviders
+        view.onReturnKey = onReturnKey
         if coordinator.appliedRevision != contentRevision, !view.isComposing {
             // Toolbar edits participate in undo. Loading an external document does
             // not replay a stale selection-only echo while the view is focused.
@@ -94,6 +96,7 @@ struct RichDraftNativeTextView: UIViewRepresentable {
     static func dismantleUIView(_ view: RichDraftUIKitTextView, coordinator: Coordinator) {
         coordinator.focusOwner.detach(view)
         view.onPasteImageProviders = nil
+        view.onReturnKey = nil
         view.onCompositionEnded = nil
         view.delegate = nil
         view.pasteDelegate = nil
@@ -322,8 +325,20 @@ struct RichDraftNativeTextView: UIViewRepresentable {
 /// the *first* setMarkedText call, before markedTextRange becomes non-nil.
 @available(iOS 26.0, *)
 @MainActor
-final class RichDraftUIKitTextView: UITextView {
+final class RichDraftUIKitTextView: UITextView, ComposerReturnKeyHandling {
     var onPasteImageProviders: (([NSItemProvider]) -> Void)?
+    /// Hardware Return keys in a chat's message box; nil elsewhere (the Scratchpad).
+    var onReturnKey: ((ComposerReturnKey) -> Bool)?
+
+    override var keyCommands: [UIKeyCommand]? {
+        (super.keyCommands ?? []) + returnKeyCommands(
+            plain: #selector(returnKey(_:)), shift: #selector(shiftReturnKey(_:)),
+            command: #selector(commandReturnKey(_:)))
+    }
+
+    @objc private func returnKey(_ sender: UIKeyCommand) { handleReturnKey(.plain) }
+    @objc private func shiftReturnKey(_ sender: UIKeyCommand) { handleReturnKey(.shift) }
+    @objc private func commandReturnKey(_ sender: UIKeyCommand) { handleReturnKey(.command) }
     var onCompositionEnded: (() -> Void)?
     private var isSettingMarkedText = false
     var isComposing: Bool { isSettingMarkedText || markedTextRange != nil }

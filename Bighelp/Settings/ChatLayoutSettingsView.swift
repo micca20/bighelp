@@ -7,6 +7,8 @@ enum ChatLayoutPreferences {
     static let showsAgentNameKey = "bighelp.chat.shows-agent-name"
     static let textSizeKey = "bighelp.chat.text-size"
     static let densityKey = "bighelp.chat.density"
+    /// With a hardware keyboard, Return sends (true) or adds a line (false).
+    static let returnSendsKey = "bighelp.chat.return-sends"
 
     /// The Pro Max and Plus phones are at least this tall, in points.
     static let tallPhoneHeight: CGFloat = 900

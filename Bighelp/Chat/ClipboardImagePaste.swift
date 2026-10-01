@@ -26,9 +26,22 @@ struct ClipboardImagePasteRequest {
 /// `paste(_:)` keeps text paste entirely native while diverting image providers
 /// into the app's ordinary attachment pipeline.
 @MainActor
-final class ClipboardPasteTextView: UITextView {
+final class ClipboardPasteTextView: UITextView, ComposerReturnKeyHandling {
     var onPasteImageProviders: (([NSItemProvider]) -> Void)?
     var isClipboardImagePasteEnabled = true
+    /// Hardware Return keys. True when the chat handled the key (sent, or
+    /// showed send choices); false types a new line. Nil leaves Return alone.
+    var onReturnKey: ((ComposerReturnKey) -> Bool)?
+
+    override var keyCommands: [UIKeyCommand]? {
+        (super.keyCommands ?? []) + returnKeyCommands(
+            plain: #selector(returnKey(_:)), shift: #selector(shiftReturnKey(_:)),
+            command: #selector(commandReturnKey(_:)))
+    }
+
+    @objc private func returnKey(_ sender: UIKeyCommand) { handleReturnKey(.plain) }
+    @objc private func shiftReturnKey(_ sender: UIKeyCommand) { handleReturnKey(.shift) }
+    @objc private func commandReturnKey(_ sender: UIKeyCommand) { handleReturnKey(.command) }
 
     override func paste(_ sender: Any?) {
         guard let request = ClipboardImagePasteRequest.capture() else {

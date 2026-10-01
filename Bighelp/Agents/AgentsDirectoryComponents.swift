@@ -18,6 +18,46 @@ struct AgentsSectionCaption: View {
     @BighelpThemeReader private var theme
 }
 
+/// The big pinned-agent look Agents and All agents share: a large avatar,
+/// the name, and one short line under it.
+enum PinnedAgentsLayout {
+    static let avatarSize: CGFloat = 88
+    static let columns = [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: BighelpTokens.space8,
+                                   alignment: .top)]
+}
+
+/// A pinned tile's picture, name and line under it; the grid adds the gestures.
+struct PinnedAgentTileLabel<Avatar: View, Detail: View>: View {
+    let name: String
+    var isLifted = false
+    /// The New agent slot's label is quieter than an agent's name.
+    var isPlaceholder = false
+    @ViewBuilder let avatar: () -> Avatar
+    @ViewBuilder let detail: () -> Detail
+
+    var body: some View {
+        VStack(spacing: 6) {
+            avatar()
+                .frame(width: PinnedAgentsLayout.avatarSize, height: PinnedAgentsLayout.avatarSize)
+                .scaleEffect(isLifted ? 1.08 : 1)
+                .shadow(color: .black.opacity(isLifted ? 0.22 : 0), radius: 12, y: 6)
+            Text(name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isPlaceholder ? theme.secondaryText : theme.primaryText)
+                .lineLimit(1)
+            detail()
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
+        .padding(.vertical, BighelpTokens.space4)
+        .contentShape(.rect)
+    }
+
+    @BighelpThemeReader private var theme
+}
+
 /// A grid tile for a pinned or featured agent: large live avatar, name, and
 /// underneath what it's doing, or its role when it's idle. `AgentPinnedGrid`
 /// handles taps, lifting and moving.
@@ -27,11 +67,6 @@ struct AgentFeaturedTile: View {
     let liveState: AgentLiveState
     let isPrimary: Bool
     var isLifted = false
-
-    @ScaledMetric(relativeTo: .footnote) private var nameSize: CGFloat = 13
-    @ScaledMetric(relativeTo: .caption2) private var stateSize: CGFloat = 11
-
-    static let avatarSize: CGFloat = 64
 
     /// The role on one short line; the tile trails off if it's still too wide.
     static func roleLine(_ role: String, limit: Int = 28) -> String? {
@@ -43,65 +78,41 @@ struct AgentFeaturedTile: View {
     }
 
     var body: some View {
-        VStack(spacing: 5) {
+        PinnedAgentTileLabel(name: agent.name, isLifted: isLifted) {
             AvatarView(
                 stableID: agent.id, displayName: agent.name,
-                imageURL: imageURL, size: Self.avatarSize, state: liveState
+                imageURL: imageURL, size: PinnedAgentsLayout.avatarSize, state: liveState
             )
             .accessibilityHidden(true)
-            Text(agent.name)
-                .font(.system(size: nameSize, weight: .semibold))
-                .foregroundStyle(theme.primaryText)
-                .lineLimit(1)
+        } detail: {
             if liveState != .idle {
-                AgentLiveStateLabel(state: liveState, font: .system(size: stateSize))
-                    .lineLimit(1)
+                AgentLiveStateLabel(state: liveState, font: .caption)
             } else if let role = Self.roleLine(agent.role) {
-                Text(role)
-                    .font(.system(size: stateSize))
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                Text(role).truncationMode(.tail)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
-        .padding(.vertical, BighelpTokens.space4)
-        .contentShape(.rect)
-        .scaleEffect(isLifted ? 1.12 : 1)
-        .shadow(color: .black.opacity(isLifted ? 0.18 : 0), radius: 12, y: 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(agent.name)
         .accessibilityValue([liveState == .idle ? Self.roleLine(agent.role) : liveState.label,
                              isPrimary ? "Primary agent" : nil].compactMap { $0 }.joined(separator: ", "))
     }
-
-    @BighelpThemeReader private var theme
 }
 
 /// Dashed "New" slot that trails the featured grid when creation is allowed.
 struct AgentNewTile: View {
     let action: () -> Void
 
-    @ScaledMetric(relativeTo: .footnote) private var labelSize: CGFloat = 13
-
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 5) {
-                AgentDashedPlusCircle(size: AgentFeaturedTile.avatarSize)
-                Text("New agent")
-                    .font(.system(size: labelSize, weight: .semibold))
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(1)
+            PinnedAgentTileLabel(name: "New agent", isPlaceholder: true) {
+                AgentDashedPlusCircle(size: PinnedAgentsLayout.avatarSize)
+            } detail: {
+                EmptyView()
             }
-            .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
-            .padding(.vertical, BighelpTokens.space4)
-            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Create agent")
     }
-
-    @BighelpThemeReader private var theme
 }
 
 /// The "start a group chat" row at the top of the group chats section.

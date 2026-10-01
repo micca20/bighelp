@@ -193,6 +193,7 @@ struct MarkdownSourceTextView: UIViewRepresentable {
     let accessibilityLabel: String
     var focus: FocusState<Bool>.Binding?
     var onPasteImageProviders: (([NSItemProvider]) -> Void)? = nil
+    var onReturnKey: ((ComposerReturnKey) -> Bool)? = nil
     var contentRevision: Int = 0
     var focusOwner: RichDraftFocusOwner? = nil
 
@@ -227,6 +228,7 @@ struct MarkdownSourceTextView: UIViewRepresentable {
         context.coordinator.parent = self
         textView.isClipboardImagePasteEnabled = onPasteImageProviders != nil
         textView.onPasteImageProviders = onPasteImageProviders
+        textView.onReturnKey = onReturnKey
         let isExternalTransaction = context.coordinator.appliedRevision != contentRevision
         if (isExternalTransaction || !textView.isFirstResponder), textView.markedTextRange == nil {
             context.coordinator.isApplyingUpdate = true
@@ -343,6 +345,8 @@ struct RichDraftEditor: View {
     private let isFocused: FocusState<Bool>.Binding
     private let identifierPrefix: String
     private let onPasteImageProviders: (([NSItemProvider]) -> Void)?
+    /// A chat's message box takes hardware Return keys; the Scratchpad doesn't.
+    private let onReturnKey: ((ComposerReturnKey) -> Bool)?
     private let onRecoveryStateChange: (RichDraftRecoveryState) -> Void
     private let initialRecovery: RichDraftRecoveryState?
 
@@ -371,6 +375,7 @@ struct RichDraftEditor: View {
         isFocused: FocusState<Bool>.Binding,
         identifierPrefix: String = "chat.composer.expanded",
         onPasteImageProviders: (([NSItemProvider]) -> Void)? = nil,
+        onReturnKey: ((ComposerReturnKey) -> Bool)? = nil,
         recovery: RichDraftRecoveryState? = nil,
         onRecoveryStateChange: @escaping (RichDraftRecoveryState) -> Void
     ) {
@@ -378,6 +383,7 @@ struct RichDraftEditor: View {
         self.isFocused = isFocused
         self.identifierPrefix = identifierPrefix
         self.onPasteImageProviders = onPasteImageProviders
+        self.onReturnKey = onReturnKey
         self.onRecoveryStateChange = onRecoveryStateChange
         initialRecovery = recovery
     }
@@ -437,6 +443,7 @@ struct RichDraftEditor: View {
                         : "Scratchpad",
                     focus: isFocused,
                     onPasteImageProviders: onPasteImageProviders,
+                    onReturnKey: onReturnKey,
                     contentRevision: sourceRevision,
                     focusOwner: focusOwner
                 )
@@ -451,6 +458,7 @@ struct RichDraftEditor: View {
                         ? "Expanded message" : "Scratchpad",
                     focus: isFocused,
                     onPasteImageProviders: onPasteImageProviders,
+                    onReturnKey: onReturnKey,
                     onEdit: { text, selection, composing in
                         accept(text, selection: selection, isComposing: composing)
                     },

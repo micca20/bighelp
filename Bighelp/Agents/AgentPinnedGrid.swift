@@ -18,7 +18,7 @@ struct AgentPinnedGrid: View {
     var body: some View {
         PinnedArrangeGrid(
             items: agents,
-            columns: Array(repeating: GridItem(.flexible(), spacing: BighelpTokens.space8, alignment: .top), count: 3),
+            columns: PinnedAgentsLayout.columns,
             canReorder: canReorder, space: "agents.pinned", open: open, manage: manage, reorder: reorder,
             isArranging: $isArranging, identifier: { "agents.featured.\($0.id)" },
             tile: { agent, lifted in

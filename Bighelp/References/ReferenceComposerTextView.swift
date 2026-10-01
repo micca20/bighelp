@@ -62,6 +62,8 @@ struct ReferenceComposerTextView: UIViewRepresentable {
     var viewportHeight: CGFloat?
     var expanded = false
     var onPasteImageProviders: (([NSItemProvider]) -> Void)?
+    /// Hardware Return keys (`ComposerReturnKeyHandling`). True means handled.
+    var onReturnKey: ((ComposerReturnKey) -> Bool)?
     var onSelectionChange: (Int?) -> Void = { _ in }
     var onExpansionAvailabilityChange: (Bool) -> Void = { _ in }
 
@@ -181,6 +183,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
             let isEnabled: Bool
             let expanded: Bool
             let onPasteImageProviders: (([NSItemProvider]) -> Void)?
+            let onReturnKey: ((ComposerReturnKey) -> Bool)?
         }
         private weak var requestedHost: ReferenceComposerContainer?
         private var pendingSurfaceUpdate: SurfaceUpdate?
@@ -213,7 +216,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
             pendingSurfaceUpdate = SurfaceUpdate(configuration: surface.configuration,
                 theme: BighelpTheme.resolve(appearance: surface.appearance, colorScheme: surface.colorScheme, contrast: surface.contrast),
                 isEnabled: surface.isEnabled, expanded: surface.expanded,
-                onPasteImageProviders: surface.onPasteImageProviders)
+                onPasteImageProviders: surface.onPasteImageProviders, onReturnKey: surface.onReturnKey)
             guard !surfaceUpdateScheduled else { return }
             surfaceUpdateScheduled = true
             DispatchQueue.main.async { [weak self] in
@@ -251,6 +254,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
             if view.textColor != ink { view.textColor = ink }
             view.isClipboardImagePasteEnabled = update.isEnabled && update.onPasteImageProviders != nil
             view.onPasteImageProviders = update.onPasteImageProviders
+            view.onReturnKey = update.onReturnKey
             view.accessibilityLabel = update.expanded ? "Expanded message" : "Message"
             view.accessibilityIdentifier = update.expanded ? "chat.composer.expanded.text" : "chat.composer.text"
             view.accessibilityHint = "Markdown source. Type slash to find references, skills and commands."
@@ -271,6 +275,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
             discardTransferredSelection()
             scheduleHubDetachment(parent.hub)
             view?.onPasteImageProviders = nil
+            view?.onReturnKey = nil
             view?.isClipboardImagePasteEnabled = false
             cancelFocusRestoration()
             view?.delegate = nil

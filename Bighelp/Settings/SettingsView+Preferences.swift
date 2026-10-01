@@ -197,6 +197,13 @@ extension SettingsView {
             }
             .accessibilityIdentifier("settings.chat.agent-island")
 
+            ReturnSendsToggle {
+                settingLabel(
+                    "Return sends",
+                    detail: "With a keyboard attached. Shift-Return adds a line; Command-Return lets you pick how to send while your agent works."
+                )
+            }
+            .accessibilityIdentifier("settings.chat.return-sends")
         }
         .listRowBackground(theme.surface)
     }
@@ -315,5 +322,16 @@ extension SettingsView {
             }
             .listRowBackground(theme.surface)
         }
+    }
+}
+
+/// Saved with the chat look (`@AppStorage`), which the message boxes read
+/// directly. The on-screen keyboard's Return always adds a line.
+private struct ReturnSendsToggle<Label: View>: View {
+    @AppStorage(ChatLayoutPreferences.returnSendsKey) private var returnSends = true
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Toggle(isOn: $returnSends) { label }
     }
 }

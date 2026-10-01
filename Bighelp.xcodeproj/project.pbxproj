@@ -470,6 +470,7 @@
 		5D96A736C5F8296F93D85491 /* MessageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09F57905AD48E9CD546CB5EB /* MessageViews.swift */; };
 		5DAD7173116DA217836A9D93 /* DirectHermesSecurePromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14ECCEE2E9EEA43F1B402D52 /* DirectHermesSecurePromptTests.swift */; };
 		5DE82EAB3AD3C48E348A86E7 /* DirectHermesArtifactClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2278399EAE3E3DAFDB5D0A38 /* DirectHermesArtifactClient.swift */; };
+		5DEA5937AFB0A225E6C52A79 /* ComposerReturnKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FD31C123E82129F64466A0 /* ComposerReturnKeyTests.swift */; };
 		5E0962BB367FAD16E6A1ADE5 /* WatchDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD3B3FFCC600318BEB64D85 /* WatchDesign.swift */; };
 		5EC267F1C5B61B0DCE02A45F /* RawConfigurationEditorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE935796534DBC9E8697C7AC /* RawConfigurationEditorUITests.swift */; };
 		5F045D1B4AB70D91DD7696CA /* DirectHermesConversationClient+Submission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8DDF0689A3701E95A2D109 /* DirectHermesConversationClient+Submission.swift */; };
@@ -694,6 +695,7 @@
 		8B0AD9715D9FCF459DB03B37 /* HermesBotModeCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867B5FA4CFB7A2BC768EF04E /* HermesBotModeCatalog.swift */; };
 		8B3B670E9977C1FD1E5C50CE /* ProviderKeysOverviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 616D19E9F795349C87ACE003 /* ProviderKeysOverviewTests.swift */; };
 		8B5C4E04472BA3E7E6040F83 /* WorkspaceReconnectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8EE605E09317091AADFEC31 /* WorkspaceReconnectPolicyTests.swift */; };
+		8B8143CDED45304D83ABFE21 /* HardwareKeyboardComposerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE94AC5E581F702B35ABCF2A /* HardwareKeyboardComposerUITests.swift */; };
 		8B9D2DE5DE7AF18F84D1DAE6 /* WorkspaceClientProxies.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4CC044B37E9AE3D8244446 /* WorkspaceClientProxies.swift */; };
 		8BE490A6DB08D5828E763B04 /* DesignSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B164685C8448EC3814C1D248 /* DesignSystemTests.swift */; };
 		8C49974C630D03C98563D621 /* SessionRuntimeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F62CA5A9FEC6B5580D7020 /* SessionRuntimeSelection.swift */; };
@@ -860,6 +862,7 @@
 		B3D4DF884C078EB77DB8E725 /* SettingsPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA29847ABB2B6CF61029A960 /* SettingsPresentation.swift */; };
 		B3D5470D4B9EA03AE60883D5 /* DirectHermesNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA289C3474766DAA42835F53 /* DirectHermesNetworking.swift */; };
 		B46FB0AC1F4E70E1C70B859E /* RichDraftMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A37E1D59199BAE6514567D0 /* RichDraftMarkdown.swift */; };
+		B480B5B9FCECB638734C0B2A /* ComposerReturnKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD099D1782E37EF7351F4BA0 /* ComposerReturnKey.swift */; };
 		B49607CCA26B13A8F4BC854C /* SpatialAvatarPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C391D786C632E57338EFE988 /* SpatialAvatarPreview.swift */; };
 		B4DF99A4471719B41DE3B4AA /* BighelpModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA26E20211920FE4A58BCBD /* BighelpModelPickerSheet.swift */; };
 		B4F4B1352D13D6A5610D71D5 /* NotoSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5075EA67E589FD9D2CB5FC85 /* NotoSans-SemiBold.ttf */; };
@@ -1338,6 +1341,7 @@
 		069FD09F2F97855A9292B399 /* BighelpPlatform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpPlatform.swift; sourceTree = "<group>"; };
 		06CDF83DBBEFEDDE6FD2A98F /* ClarificationAnswers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationAnswers.swift; sourceTree = "<group>"; };
 		06E0752CDEB93F69DFC3661C /* ModelNameCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelNameCatalogTests.swift; sourceTree = "<group>"; };
+		06FD31C123E82129F64466A0 /* ComposerReturnKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerReturnKeyTests.swift; sourceTree = "<group>"; };
 		0719AE56C96E86FC621D9B18 /* BighelpWorkActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpWorkActivityTests.swift; sourceTree = "<group>"; };
 		07658E64F41039CE24E408FE /* AttachmentWireModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentWireModels.swift; sourceTree = "<group>"; };
 		0784CEB5925E132ADFB48EEC /* PairingWireModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingWireModels.swift; sourceTree = "<group>"; };
@@ -2134,6 +2138,7 @@
 		AC5E84BA54BC689F8372A4C5 /* DirectHermesPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesPrompt.swift; sourceTree = "<group>"; };
 		AC8576300258E3A8F5BE068F /* ScheduledTaskBlueprintsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskBlueprintsView.swift; sourceTree = "<group>"; };
 		ACFD343C02B210E5028EAECA /* ChatCapabilityControlSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCapabilityControlSheet.swift; sourceTree = "<group>"; };
+		AD099D1782E37EF7351F4BA0 /* ComposerReturnKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerReturnKey.swift; sourceTree = "<group>"; };
 		AD1C877CBBFBA2516F7DC78C /* ChatModel+Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatModel+Attachments.swift"; sourceTree = "<group>"; };
 		ADBA5038A7DACA3C8A70AE75 /* ChatComposerActionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerActionButton.swift; sourceTree = "<group>"; };
 		ADCC3B055B82A96326367C2B /* HermesFolderPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesFolderPath.swift; sourceTree = "<group>"; };
@@ -2350,6 +2355,7 @@
 		DD3AB6858B9FA111E6A2DC37 /* BighelpCardTemplateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpCardTemplateStore.swift; sourceTree = "<group>"; };
 		DDD30D26F79A0E05511ADF5A /* BighelpCardEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpCardEnvelope.swift; sourceTree = "<group>"; };
 		DE75D7CC7FBD2BA5E7311A0D /* AvatarKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarKit.swift; sourceTree = "<group>"; };
+		DE94AC5E581F702B35ABCF2A /* HardwareKeyboardComposerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareKeyboardComposerUITests.swift; sourceTree = "<group>"; };
 		DE9B61DD708A8115B8EA9C01 /* ThinkingMarkPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingMarkPolicyTests.swift; sourceTree = "<group>"; };
 		DF295D6BA15B0398343E136D /* DirectHermesWebhooksClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesWebhooksClient.swift; sourceTree = "<group>"; };
 		DF986776CE53BEC264AEE5ED /* DirectHermesMessagingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesMessagingClient.swift; sourceTree = "<group>"; };
@@ -3360,6 +3366,7 @@
 				21796C5BE7BB0044774A8C36 /* CompanionReactionTests.swift */,
 				56C6BE492AC88D63BDEC7A9A /* CompanionStoreTests.swift */,
 				EB79AD3628A20BBEB183791B /* CompanionVoicePlaybackTests.swift */,
+				06FD31C123E82129F64466A0 /* ComposerReturnKeyTests.swift */,
 				F74C06EE0964D1605B304CC8 /* CredentialVaultTests.swift */,
 				1A798709937DA6520A2B5190 /* DashboardModelTests.swift */,
 				2505D162745A6571E823C256 /* DashboardWorkTests.swift */,
@@ -3661,6 +3668,7 @@
 				17E85F9A6AACB46250206A20 /* FirstRunOnboardingUITests.swift */,
 				8F175079F751C75D93B66D7B /* FloatingTabBarUITests.swift */,
 				2BEED541376EEBED69B2E068 /* GeneratedMediaUITests.swift */,
+				DE94AC5E581F702B35ABCF2A /* HardwareKeyboardComposerUITests.swift */,
 				813E0B0A5B573690C3466B2A /* HomeWeatherUITests.swift */,
 				E984CD3AC7534AA271A1587C /* HomeWorkUITests.swift */,
 				1F07CA75C67AA3A63BF67E98 /* HostCustomHeadersUITests.swift */,
@@ -4365,6 +4373,7 @@
 				EF0FC423CD328CD1CD1ADF2B /* ClipboardDraftTextEditor.swift */,
 				BCCFBD412402D4F7B54F6035 /* ClipboardImagePaste.swift */,
 				4B45258C70F501D58F768487 /* ClipboardImagePasteControl.swift */,
+				AD099D1782E37EF7351F4BA0 /* ComposerReturnKey.swift */,
 				F91AB3213E2C4E85CBED57B4 /* ConversationClient.swift */,
 				EA34CCD2CFE325CDC15584CB /* ExpandedDraftEditor.swift */,
 				72473030CFED4D30E5FE45EB /* GeneratedCards.swift */,
@@ -5043,6 +5052,7 @@
 				213AF4500013854447A6F8E1 /* CompanionSettingsView.swift in Sources */,
 				5930C45B7848380B5ABA0A76 /* CompanionSurfacePhysics.swift in Sources */,
 				35781E5C253B94D0517FC009 /* CompanionViewportObserver.swift in Sources */,
+				B480B5B9FCECB638734C0B2A /* ComposerReturnKey.swift in Sources */,
 				2D5100CED6FB2884FF8A85B2 /* ConfiguredWorkspaceArtifactsView.swift in Sources */,
 				DEFE130C2DD18618D2073BC9 /* ConnectionIsland.swift in Sources */,
 				2450D94E587D3622A6661A83 /* ConversationClient.swift in Sources */,
@@ -5705,6 +5715,7 @@
 				BBA132CACFBE9000296578AB /* CompanionReactionTests.swift in Sources */,
 				B2DFA7BD7F8DE8846B888F8A /* CompanionStoreTests.swift in Sources */,
 				8FED26FC8F9190D355179D90 /* CompanionVoicePlaybackTests.swift in Sources */,
+				5DEA5937AFB0A225E6C52A79 /* ComposerReturnKeyTests.swift in Sources */,
 				D2B7B05A842B3CECA43F14C0 /* CredentialVaultTests.swift in Sources */,
 				110C1D7EF11DD5793A144D1F /* DashboardModelTests.swift in Sources */,
 				582C79BC0D61BA6F6A1C16C8 /* DashboardWorkTests.swift in Sources */,
@@ -5935,6 +5946,7 @@
 				AF7FE22D884A130746B614BA /* FirstRunOnboardingUITests.swift in Sources */,
 				66B07155819D84F789024E72 /* FloatingTabBarUITests.swift in Sources */,
 				2687F163A577112F21DCAA86 /* GeneratedMediaUITests.swift in Sources */,
+				8B8143CDED45304D83ABFE21 /* HardwareKeyboardComposerUITests.swift in Sources */,
 				9FECD50D52C923C8AEB1B48B /* HomeWeatherUITests.swift in Sources */,
 				0BDC842A2D3009F84F6F9558 /* HomeWorkUITests.swift in Sources */,
 				CC722BC43D3A8B0DB6DFEED9 /* HostCustomHeadersUITests.swift in Sources */,
@@ -6143,7 +6155,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6185,7 +6197,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6218,7 +6230,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6266,7 +6278,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6305,7 +6317,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6416,7 +6428,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6435,7 +6447,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6464,7 +6476,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6497,7 +6509,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6579,7 +6591,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

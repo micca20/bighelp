@@ -13,6 +13,8 @@ struct ExpandedDraftEditor: View {
     var onReferenceMidSessionSend: ((MidSessionChatBehavior) -> Void)? = nil
     @State private var localReferenceEditorSession = ReferenceComposerEditorSession()
     @State private var isReferenceSourceMode = true
+    @AppStorage(ChatLayoutPreferences.returnSendsKey) private var returnSends = true
+    @State private var keyboardSendOptionsRequest = 0
 
     @FocusState private var isEditorFocused: Bool
     @State private var isReferenceEditorFocused = false
@@ -172,7 +174,8 @@ struct ExpandedDraftEditor: View {
                     ? model.defaultMidSessionBehavior
                     : nil,
                 onMidSessionSend: sendMidSession,
-                            allowedMidSessionBehaviors: model.allowedMidSessionBehaviors
+                            allowedMidSessionBehaviors: model.allowedMidSessionBehaviors,
+                keyboardSendOptionsRequest: keyboardSendOptionsRequest
             )
         }
     }
@@ -190,6 +193,7 @@ struct ExpandedDraftEditor: View {
                 session: referenceEditorSession ?? localReferenceEditorSession,
                 focus: $isReferenceEditorFocused, isEnabled: !model.isComposerInputDisabled,
                 expanded: true, onPasteImageProviders: importClipboardImages,
+                onReturnKey: handleReturnKey,
                 onSelectionChange: {
                     model.setMentionCursor(offset: $0)
                     guard Data(model.draft.utf8) == Data(referenceHub.source.utf8) else { return }
@@ -199,6 +203,7 @@ struct ExpandedDraftEditor: View {
         } else if #available(iOS 26.0, *), uiV2Enabled {
             RichDraftEditor(markdown: $model.draft, isFocused: $isEditorFocused,
                             onPasteImageProviders: importClipboardImages,
+                            onReturnKey: handleReturnKey,
                             recovery: model.richDraftRecovery.state,
                             onRecoveryStateChange: { model.richDraftRecovery.update($0) })
                 .id(ObjectIdentifier(model))
@@ -207,7 +212,8 @@ struct ExpandedDraftEditor: View {
                 text: $model.draft,
                 isFocused: $isEditorFocused,
                 isEnabled: !model.isComposerInputDisabled,
-                onPasteImageProviders: importClipboardImages
+                onPasteImageProviders: importClipboardImages,
+                onReturnKey: handleReturnKey
             )
                 .accessibilityLabel("Expanded message")
                 .accessibilityValue(model.draft.isEmpty ? "Empty" : model.draft)
@@ -298,6 +304,23 @@ struct ExpandedDraftEditor: View {
         isReferenceEditorFocused = false
         dismiss()
         onSend()
+    }
+
+    /// A hardware keyboard's Return, the same as in the message box. True means handled.
+    private func handleReturnKey(_ key: ComposerReturnKey) -> Bool {
+        switch ComposerReturnKeyAction.resolve(key, returnSends: returnSends, canSend: model.canSend,
+                                               isTurnLive: model.isMidSessionTurnLive) {
+        case .newLine: return false
+        case .nothing: return true
+        case .send: send(); return true
+        case .sendOptions:
+            isEditorFocused = false
+            isReferenceEditorFocused = false
+            (referenceEditorSession ?? localReferenceEditorSession).dismissKeyboard()
+            BighelpKeyboard.dismiss()
+            keyboardSendOptionsRequest += 1
+            return true
+        }
     }
 
     private func synchronizeReferenceSource() {
