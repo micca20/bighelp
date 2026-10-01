@@ -174,6 +174,134 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
         save("tools-5-question-focused", app)
     }
 
+    // MARK: Media and vault prompts (Scripts/HostProbePlugin)
+
+    /// A generated picture shows while the turn runs and must stay in the
+    /// finished message after Hermes' saved history replaces the live turn,
+    /// and after leaving the chat and coming back.
+    @MainActor func testGeneratedImageStaysAfterTheTurnEnds() throws {
+        let app = try beginSetup(mode: "media")
+        let composer = try openFirstChat(app)
+        send("image test", composer: composer, in: app)
+        let stop = app.buttons["chat.stop"]
+        let ended = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: stop)
+        wait(for: [ended], timeout: 60)
+        // Past the reload from saved history that follows a finished turn.
+        sleep(4)
+        let picture = app.descendants(matching: .any)["chat.message-attachments"].firstMatch
+        XCTAssertTrue(picture.waitForExistence(timeout: 20), "The picture stays when the turn ends")
+        XCTAssertFalse(text("MEDIA:", in: app).exists, "No raw MEDIA line in its place")
+        save("media-1-after-turn", app)
+
+        app.buttons["chat.back"].firstMatch.tap()
+        let row = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.row.")).firstMatch
+        if !row.waitForExistence(timeout: 5) { openRootTab("tab.sessions", in: app) }
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "The chat is listed")
+        row.tap()
+        XCTAssertTrue(picture.waitForExistence(timeout: 30), "The picture is there after reopening the chat")
+        XCTAssertFalse(text("MEDIA:", in: app).exists)
+        save("media-2-reopened", app)
+    }
+
+    /// Hermes' browser vault asks for a one-time code with `vault.code`. It
+    /// used to be refused at once; now the secure pop-up takes the code.
+    @MainActor func testVaultCodePopUpEntersTheCode() throws {
+        let app = try beginSetup(mode: "media")
+        let composer = try openFirstChat(app)
+        send("vault code test", composer: composer, in: app)
+        let field = app.textFields["direct-hermes.vault-code"]
+        XCTAssertTrue(field.waitForExistence(timeout: 30), "The code pop-up appears")
+        XCTAssertTrue(text("example.com", in: app).exists, "It names the site asking")
+        save("media-3-code-pop-up", app)
+        field.tap()
+        field.typeText("482913")
+        app.buttons["direct-hermes.secure-submit"].tap()
+        XCTAssertTrue(text("Vault fixture: received. 6 digits.", in: app).waitForExistence(timeout: 30))
+        XCTAssertFalse(text("482913", in: app).exists, "The code never shows in the chat")
+        save("media-4-code-entered", app)
+    }
+
+    /// `vault.save_login` asks for a site's username and password, which go
+    /// straight to Hermes' vault, never into the chat.
+    @MainActor func testSaveLoginPopUpSavesTheLogin() throws {
+        let app = try beginSetup(mode: "media")
+        let composer = try openFirstChat(app)
+        send("save login test", composer: composer, in: app)
+        let user = app.textFields["direct-hermes.vault-identifier"]
+        XCTAssertTrue(user.waitForExistence(timeout: 30), "The save-login pop-up appears")
+        save("media-5-save-login-pop-up", app)
+        user.tap()
+        user.typeText("fixture-user@example.com")
+        let password = app.secureTextFields["direct-hermes.secure-input"]
+        password.tap()
+        password.typeText("fixture-password-not-real")
+        app.buttons["direct-hermes.secure-submit"].tap()
+        XCTAssertTrue(text("Saved for fixture-user@example.com.", in: app).waitForExistence(timeout: 30))
+        XCTAssertFalse(text("fixture-password-not-real", in: app).exists, "The password never shows in the chat")
+        save("media-6-login-saved", app)
+    }
+
+    /// Issue #18: a card streaming in shows the image loader in its place;
+    /// its code never shows, and the card replaces the loader when it's whole.
+    @MainActor func testACardStreamsBehindALoader() throws {
+        let app = try beginSetup(mode: "media")
+        let composer = try openFirstChat(app)
+        send("card test", composer: composer, in: app)
+        let loader = app.descendants(matching: .any)["chat.card.pending"].firstMatch
+        XCTAssertTrue(loader.waitForExistence(timeout: 30), "The loader holds the card's place")
+        XCTAssertTrue(text("Here's your card.", in: app).exists, "Words before the card stream normally")
+        XCTAssertFalse(text("loopdy-card", in: app).exists, "No card code while it streams")
+        XCTAssertFalse(text("\"schema\"", in: app).exists, "No card code while it streams")
+        save("media-9-card-loading", app)
+        XCTAssertTrue(text("The whole card arrived.", in: app).waitForExistence(timeout: 30), "The card arrives")
+        XCTAssertFalse(loader.exists, "The loader is gone")
+        XCTAssertTrue(text("That's all.", in: app).waitForExistence(timeout: 10))
+        save("media-10-card-arrived", app)
+    }
+
+    /// ☰ › Secure credential vault on a real Hermes: a login typed here and
+    /// two imported from a CSV export land in that host's own vault.
+    @MainActor func testVaultSavesAndImportsLoginsOnTheHost() throws {
+        let app = try beginSetup(mode: "media", extraArguments: ["-test-vault-import"])
+        try connect(app)
+        app.buttons["host-setup.continue"].tap()
+        let menu = app.buttons["home.drawer.open"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        menu.tap()
+        let row = app.buttons["menu.vault"]
+        for _ in 0..<6 where !(row.exists && row.isHittable) { app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(app.staticTexts["vault.empty"].waitForExistence(timeout: 20), "A new host's vault is empty")
+        app.buttons["vault.add"].tap()
+        let site = app.textFields["vault.site"]
+        XCTAssertTrue(site.waitForExistence(timeout: 5))
+        site.tap()
+        site.typeText("login.example.com")
+        app.textFields["vault.username"].tap()
+        app.textFields["vault.username"].typeText("fixture-user")
+        app.secureTextFields["vault.password"].tap()
+        app.secureTextFields["vault.password"].typeText("fixture-password-not-real")
+        app.buttons["vault.save"].tap()
+        XCTAssertTrue(vaultItem("login.example.com", in: app).waitForExistence(timeout: 20), "Saved on the host")
+        let importRow = app.buttons["vault.import"]
+        for _ in 0..<4 where !importRow.isHittable { app.swipeUp() }
+        importRow.tap()
+        XCTAssertTrue(app.buttons["vault.import-confirm"].waitForExistence(timeout: 10))
+        save("media-7-vault-import", app)
+        app.buttons["vault.import-confirm"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["vault.import-done"].waitForExistence(timeout: 30))
+        app.buttons["vault.import-close"].tap()
+        XCTAssertTrue(vaultItem("shop.example.org", in: app).waitForExistence(timeout: 20), "Imported on the host")
+        save("media-8-vault-list", app)
+    }
+
+    @MainActor private func vaultItem(_ label: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "vault.item.", label))
+            .firstMatch
+    }
+
     @MainActor private func openFirstChat(_ app: XCUIApplication) throws -> XCUIElement {
         try connect(app)
         app.buttons["host-setup.continue"].tap()
@@ -203,7 +331,7 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
 
     // MARK: Helpers
 
-    @MainActor private func beginSetup(mode: String) throws -> XCUIApplication {
+    @MainActor private func beginSetup(mode: String, extraArguments: [String] = []) throws -> XCUIApplication {
         guard let path = ProcessInfo.processInfo.environment["BIGHELP_SIGNIN_PROBE"] else {
             throw XCTSkip("Run through Scripts/HostSignInMatrixProbe.py")
         }
@@ -218,6 +346,7 @@ final class HostSignInMatrixUITests: BighelpUITestCase {
         }
         let app = makeApp()
         app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-test-no-configured-hosts"]
+            + extraArguments
         app.launch()
         let address = app.textFields["host-setup.address"]
         XCTAssertTrue(address.waitForExistence(timeout: 10))

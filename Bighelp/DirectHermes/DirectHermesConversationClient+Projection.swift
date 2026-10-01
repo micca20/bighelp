@@ -137,8 +137,10 @@ extension DirectHermesConversationClient {
         scheduleMessageMedia()
     }
 
-    /// Downloads never hold up text, turn settlement, or navigation. Failed
-    /// references remain readable and can retry during explicit recovery.
+    /// Downloads never hold up text, turn settlement, or navigation. A failed
+    /// or empty read is asked again a few times (it can lose to Hermes saving
+    /// the turn or to a reload), then the message says plainly that the file
+    /// couldn't load instead of showing a host path.
     func scheduleMessageMedia() {
         guard connected, let attachmentResolver else { return }
         let owner = generation
@@ -152,6 +154,21 @@ extension DirectHermesConversationClient {
             let key = stored + "\0" + item.role.rawValue + "\0" + text
             guard attachmentAttempts[item.id] != key else { continue }
             attachmentAttempts[item.id] = key
+            if item.role == .assistant {
+                switch livePictures(for: item, text: text) {
+                case .ready(let resolved, let eventIDs) where applyMessageMedia(resolved, replacing: item):
+                    model?.markGeneratedMediaShownInReply(eventIDs: eventIDs)
+                    continue
+                case .loading where (mediaFailures[item.id + "\0live"] ?? 0) < 5:
+                    // The live card is still reading this file. It asks again when it
+                    // lands; a card that never does stops holding the message up.
+                    mediaFailures[item.id + "\0live", default: 0] += 1
+                    waitForLiveCard(item, key: key, owner: owner)
+                    continue
+                case .ready, .loading, .none:
+                    break
+                }
+            }
             attachmentTasks[item.id] = Task { @MainActor [weak self] in
                 guard let self else { return }
                 defer {
@@ -160,20 +177,106 @@ extension DirectHermesConversationClient {
                         self.scheduleMessageMedia()
                     }
                 }
+                var applied = false
                 do {
                     let results = try await attachmentResolver.resolve(agentID: self.profile, storedID: stored,
                         items: [.init(id: item.id, text: text, role: item.role)])
                     try Task.checkCancellation()
-                    guard self.connected, self.generation == owner, self.storedID == stored,
-                          results.count == 1, let result = results.first, result.id == item.id,
-                          !result.attachments.isEmpty,
-                          let enriched = self.projection.resolveMedia(result, replacing: item) else { return }
-                    self.model?.applyNativeMedia(enriched, replacing: item, from: self)
+                    guard self.connected, self.generation == owner, self.storedID == stored else { return }
+                    if results.count == 1, let result = results.first, result.id == item.id,
+                       !result.attachments.isEmpty {
+                        applied = self.applyMessageMedia(result, replacing: item)
+                    }
+                } catch is CancellationError {
+                    return
                 } catch {
-                    // Preserve the original marker on refusal or failure.
+                    // Asked again below; the original marker stays meanwhile.
                 }
+                guard !applied, self.connected, self.generation == owner, self.storedID == stored else { return }
+                self.retryMessageMedia(item, key: key, owner: owner)
             }
         }
+    }
+
+    @discardableResult
+    private func applyMessageMedia(_ result: ResolvedAgentAttachmentItem, replacing item: TimelineItem) -> Bool {
+        guard let enriched = projection.resolveMedia(result, replacing: item) else { return false }
+        return model?.applyNativeMedia(enriched, replacing: item, from: self) ?? true
+    }
+
+    private func waitForLiveCard(_ item: TimelineItem, key: String, owner: UUID) {
+        let delay = mediaRetryDelays.first ?? .seconds(2)
+        mediaRetryTasks[item.id]?.cancel()
+        mediaRetryTasks[item.id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, !Task.isCancelled, self.generation == owner,
+                  self.attachmentAttempts[item.id] == key else { return }
+            self.mediaRetryTasks[item.id] = nil
+            self.attachmentAttempts[item.id] = nil
+            self.scheduleMessageMedia()
+        }
+    }
+
+    private func retryMessageMedia(_ item: TimelineItem, key: String, owner: UUID) {
+        let failureKey = item.id + "\0" + key
+        let failures = (mediaFailures[failureKey] ?? 0) + 1
+        mediaFailures[failureKey] = failures
+        guard failures <= mediaRetryDelays.count else {
+            if item.role == .assistant, case .message(let text) = item.content {
+                applyMessageMedia(.init(id: item.id, text: DirectHermesGeneratedMediaClient.unavailableMessageText(text),
+                                        attachments: []), replacing: item)
+            }
+            return
+        }
+        let delay = mediaRetryDelays[failures - 1]
+        mediaRetryTasks[item.id]?.cancel()
+        mediaRetryTasks[item.id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, !Task.isCancelled, self.generation == owner,
+                  self.attachmentAttempts[item.id] == key else { return }
+            self.mediaRetryTasks[item.id] = nil
+            self.attachmentAttempts[item.id] = nil
+            self.scheduleMessageMedia()
+        }
+    }
+
+    enum LivePictures {
+        case ready(ResolvedAgentAttachmentItem, eventIDs: [String])
+        case loading
+        case none
+    }
+
+    /// A finished message naming the file a live card in this chat reported
+    /// reuses the card's bytes: no second download, nothing to lose to a reload
+    /// in between, and one copy on screen.
+    func livePictures(for item: TimelineItem, text: String) -> LivePictures {
+        let markers = DirectHermesGeneratedMediaClient.mediaMarkers(text)
+        guard !markers.isEmpty, let model else { return .none }
+        var cards: [Data: ChatActivityEvent] = [:]
+        for event in model.activityLedger.allEvents
+        where event.lifecycle == .succeeded && GeneratedMediaProjection.kind(for: event) != nil {
+            let paths = DirectHermesGeneratedMediaClient.outputPaths(event.result)
+            if paths.count == 1, let path = paths.first { cards[Data(path.utf8)] = event }
+        }
+        var attachments: [ChatAttachment] = []
+        var eventIDs: [String] = []
+        for marker in markers {
+            guard let card = cards[Data(marker.path.utf8)] else { return .none }
+            switch card.generatedMedia?.state {
+            case .ready?:
+                guard let resolution = card.generatedMedia, resolution.attachments.count == 1 else { return .none }
+                attachments += resolution.attachments
+                if !eventIDs.contains(card.id) { eventIDs.append(card.id) }
+            case nil:
+                return .loading
+            case .unavailable?, .oversized?:
+                return .none
+            }
+        }
+        let delivered = Set(markers.map { Data($0.line.utf8) })
+        let remaining = text.components(separatedBy: "\n").filter { !delivered.contains(Data($0.utf8)) }
+        return .ready(.init(id: item.id, text: remaining.joined(separator: "\n"), attachments: attachments),
+                      eventIDs: eventIDs)
     }
 
     func validatedActivationSnapshot(
@@ -338,5 +441,14 @@ extension DirectHermesConversationClient {
     private static func nonempty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
+    }
+}
+
+extension DirectHermesConversationClient {
+    /// A reload, reconnect or suspension starts every file read afresh.
+    func resetMediaRetries() {
+        mediaRetryTasks.values.forEach { $0.cancel() }
+        mediaRetryTasks.removeAll()
+        mediaFailures.removeAll()
     }
 }

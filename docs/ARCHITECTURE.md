@@ -566,6 +566,25 @@ Approval cards present the requested action, provenance, consequence, and
 status. Decisions are sent to the authorized host and committed only after an
 authoritative response. Failure leaves the request visible and retryable.
 
+### Credential vault and browser sign-ins
+
+Hermes keeps a credential vault per agent (profile) for its browser tools:
+logins bound to a site's origin, cards and addresses, plus password managers
+it can read once unlocked. The app talks to it over the authenticated socket
+only (`Bighelp/Vault`): `vault.list`/`vault.sources` for labels, never values;
+`vault.add`, `vault.remove`, `vault.source.set`, `vault.unlock` and
+`vault.lock` for changes (`DirectHermesWorkspaceStore.vaultRequest` allows only
+these). A secret typed or imported here is sent once and never stored. CSV
+imports are read in memory where the file is and show only sites and usernames.
+
+During a browser task Hermes asks the person through server requests:
+`vault.code` (a site's one-time code), `vault.save_login` (a login to save for
+the page's origin; the answer is JSON `{identifier, password}`) and
+`vault.unlock_prompt` (a password manager's master password). They open the
+secure pop-up (`DirectHermesSecurePromptStore`) like `secret` and `sudo`, and
+an empty answer declines. Hosts without the vault answer `-32601`, and the
+screen says to update Hermes.
+
 ### Voice
 
 The voice pipeline is:

@@ -53,6 +53,7 @@ struct RootShellView: View {
     @State private var actionErrorRetry: (@MainActor () -> Void)?
     @State var isLinkAccountPresented = false
     @State var isHermesWorkspacePresented = false
+    @State var credentialVault: CredentialVaultModel?
     @State var sessionRestoreRequest: SessionRestoreRequest?
     @State var sessionRestoreTask: Task<Void, Never>?
     @State var managementStore: WorkspaceManagementStore?
@@ -180,6 +181,7 @@ struct RootShellView: View {
             link: readiness.linkState
         )
         agentHomeSheets(rootContent)
+        .modifier(CredentialVaultSheet(model: $credentialVault))
         .modifier(FleetSheets(
             fleet: fleet, gate: $fleetGateRequest, isNewChatPresented: $isFleetNewChatPresented,
             onGate: { destination, hostID in openFleet(.destination(destination), on: hostID) },

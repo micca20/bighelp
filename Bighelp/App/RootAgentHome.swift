@@ -510,6 +510,7 @@ extension RootShellView {
                 : nil,
             onProviderUsage: providerUsage.isAvailable
                 ? { afterClosingHomeSheets { providerUsage.show(agentID: homeAgent?.id ?? "default") } } : nil,
+            onCredentialVault: canOpenCredentialVault ? { afterClosingHomeSheets { openCredentialVault() } } : nil,
             onSettings: { afterClosingHomeSheets { appState.select(.profile) } }
         )
     }

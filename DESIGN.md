@@ -54,7 +54,8 @@ Chat opens that agent's latest chat with its live avatar big at the top: tap the
 model and reasoning, then Activity, Approvals, Schedules, Identity), tap the name to switch agents or open a group
 chat, and ☰ for everything else. ☰'s first screen fits without
 scrolling: the host as one switcher row on top, then New chat (Group beside it), Agents, Projects, Kanban, Scheduled
-tasks and Settings, then Recent chats with See all. Provider usage and Nerd Mode's folder sit under More at the bottom.
+tasks and Settings, then Recent chats with See all. Provider usage, the Secure credential vault and Nerd Mode's folder
+sit under More at the bottom.
 Keep it that short: a new destination goes where people already look, not on the first screen. A tap on the
 header's compose button starts a new chat with this agent right away; touch and hold picks agents: one is a 1:1
 chat, two or more a group. On the chat list, New chat floats centered above the bottom bar, which keeps the
@@ -149,8 +150,8 @@ the lane under it lights up.
 host, like Messages: pinned agents up top, host filter chips, then each agent with its host's name and its latest
 chat, newest first. A tap opens that agent's own chat with Back; if it's on another host, the app switches hosts
 first while the list stays up. ☰'s recent chats, All chats and Scheduled tasks then list every host's, each with
-its host's name. Screens that belong to one host (Settings, Agents, Projects, Kanban, Provider usage, the folder,
-New group) ask which host first. The tab bar hides, ☰ › All agents is home, and the button in the list's top bar
+its host's name. Screens that belong to one host (Settings, Agents, Projects, Kanban, Provider usage, the credential
+vault, the folder, New group) ask which host first. The tab bar hides, ☰ › All agents is home, and the button in the list's top bar
 turns it off. Other hosts are read at most once a minute over their own saved sign-ins (`Bighelp/Fleet`); one
 that can't be reached says so and keeps showing what it had last time. While it's on and the app is open, every
 host stays connected, so a switch opens the agent's chat at once from the copy saved on the phone while that

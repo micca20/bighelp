@@ -1,0 +1,7 @@
+manifest_version: 1
+name: bighelp-probe
+version: "1.0.0"
+license: Apache-2.0
+description: >
+  Test-only tools for bighelp's real-host UI tests. Never install it on a real host.
+author: bighelp contributors

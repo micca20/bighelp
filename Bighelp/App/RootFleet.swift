@@ -55,6 +55,9 @@ extension RootShellView {
         if destinations.onProviderUsage != nil {
             destinations.onProviderUsage = { afterClosingHomeSheets { fleetGate(.providerUsage) } }
         }
+        if destinations.onCredentialVault != nil {
+            destinations.onCredentialVault = { afterClosingHomeSheets { fleetGate(.credentialVault) } }
+        }
         if let folder = destinations.folder {
             destinations.folder = (name: folder.name, open: { afterClosingHomeSheets { fleetGate(.folder) } })
         }
@@ -203,6 +206,7 @@ extension RootShellView {
             case .providerUsage:
                 if providerUsage.isAvailable { providerUsage.show(agentID: homeAgent?.id ?? "default") }
                 else { actionErrorMessage = "Provider usage isn't available on this host." }
+            case .credentialVault: openCredentialVault()
             case .folder: presentHermesWorkspaces()
             case .newGroup: inviteToGroup(seed: nil)
             }

@@ -9,6 +9,10 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         /// A pipe table, drawn as a grid; the text around it stays selectable text.
         case table(MarkdownTable)
         case rule
+        /// A card whose payload is still streaming in (#18): a loader, never its code.
+        case pendingCard
+        /// A finished message's card that never closed or isn't valid.
+        case unavailableCard
     }
 
     /// Text runs stay one selectable document; tables and rules become their own segments.
@@ -41,7 +45,9 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         !cardIDs.isEmpty || segments.contains { if case .markdown = $0 { false } else { true } }
     }
 
-    init(source: String, role: TimelineRole) {
+    /// `isStreaming`: the reply is still arriving, so an open card fence (or a
+    /// half-typed fence marker at the very end) is a card on its way.
+    init(source: String, role: TimelineRole, isStreaming: Bool = false) {
         guard role == .assistant else {
             segments = Self.segments(for: MarkdownDocument(source))
             cardIDs = []
@@ -51,8 +57,18 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         let normalized = source
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        let lines = normalized.components(separatedBy: "\n")
+        var lines = normalized.components(separatedBy: "\n")
         let opening = "```\(Self.fenceLanguage)"
+        var cardIsComing = false
+        if isStreaming, let last = lines.last {
+            let marker = last.trimmingCharacters(in: .whitespaces)
+            // "```" alone may open any code block, but it's hidden for the
+            // moment it takes to see which one.
+            if marker.count >= 3, marker.count < opening.count, opening.hasPrefix(marker) {
+                lines.removeLast()
+                cardIsComing = marker.count > 3
+            }
+        }
         var projected: [Segment] = []
         var markdownLines: [String] = []
         var identities = Set<String>()
@@ -103,7 +119,8 @@ struct ChatCardMessageProjection: Equatable, Sendable {
                 cursor += 1
             }
             guard let closingIndex else {
-                markdownLines.append(contentsOf: lines[index...])
+                flushMarkdown()
+                projected.append(isStreaming ? .pendingCard : .unavailableCard)
                 index = lines.count
                 continue
             }
@@ -113,7 +130,8 @@ struct ChatCardMessageProjection: Equatable, Sendable {
                   data.count <= Self.maximumCardBytes,
                   let envelope = try? JSONDecoder().decode(BighelpCardEnvelope.self, from: data),
                   identities.insert(envelope.id).inserted else {
-                markdownLines.append(contentsOf: lines[index...closingIndex])
+                flushMarkdown()
+                projected.append(.unavailableCard)
                 index = closingIndex + 1
                 continue
             }
@@ -124,7 +142,8 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         }
 
         flushMarkdown()
-        segments = projected.isEmpty ? Self.segments(for: MarkdownDocument(normalized)) : projected
+        if cardIsComing { projected.append(.pendingCard) }
+        segments = projected.isEmpty ? Self.segments(for: MarkdownDocument(lines.joined(separator: "\n"))) : projected
         cardIDs = identities
     }
 }

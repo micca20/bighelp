@@ -16,6 +16,12 @@ struct DirectHermesSecurePrompt: Identifiable {
         case secret
         case sudo
         case mcpSetup(MCPAction)
+        /// Hermes' browser vault: the one-time code a site sent the person.
+        case vaultCode
+        /// Hermes' browser vault: a site's login, saved straight into the vault.
+        case vaultSaveLogin
+        /// Hermes' browser vault: the master password of a password manager.
+        case vaultUnlock
     }
 
     enum MCPAction: String, Equatable, Sendable {
@@ -39,6 +45,8 @@ struct DirectHermesSecurePrompt: Identifiable {
     /// The agent asked for this itself (bighelp_request_secure_input), with a short field label.
     var isAgentRequest = false
     var label: String?
+    /// The site a vault prompt is for, as Hermes names it (host, or the page origin).
+    var site: String?
     let createdAt: Date
     fileprivate let key: DirectHermesSecurePromptKey
 
@@ -53,6 +61,9 @@ struct DirectHermesSecurePrompt: Identifiable {
             case .enable: "Enable MCP server?"
             case .authorize: "Authorize MCP server?"
             }
+        case .vaultCode: "Verification code"
+        case .vaultSaveLogin: "Save a login"
+        case .vaultUnlock: "Unlock \(server ?? "password manager")"
         }
     }
 
@@ -72,6 +83,14 @@ struct DirectHermesSecurePrompt: Identifiable {
             let target = server ?? "this MCP server"
             if let reason, !reason.isEmpty { return "Hermes wants to \(verb) \(target). \(reason)" }
             return "Hermes wants to \(verb) \(target)."
+        case .vaultCode:
+            let place = site.map { "\($0) is asking" } ?? "The site is asking"
+            if let prompt, !prompt.isEmpty { return "\(place) for a one-time code. \(prompt)" }
+            return "\(place) for a one-time code. Enter the code it sent to your phone, email or app."
+        case .vaultSaveLogin:
+            return "Your agent is on the sign-in page of \(site ?? "a site") and needs a login to continue."
+        case .vaultUnlock:
+            return "Your agent wants to use logins saved in \(server ?? "your password manager")."
         }
     }
 }
@@ -107,6 +126,9 @@ fileprivate enum DirectHermesSecurePromptMethod: String, Hashable, Sendable {
     case secret
     case sudo
     case mcpSetup = "mcp.setup"
+    case vaultCode = "vault.code"
+    case vaultSaveLogin = "vault.save_login"
+    case vaultUnlock = "vault.unlock_prompt"
 }
 
 fileprivate struct DirectHermesSecurePromptKey: Hashable {
@@ -554,11 +576,39 @@ final class DirectHermesSecurePromptStore {
 
     func submitSecret(_ candidate: DirectHermesSecurePrompt, value: String) async {
         guard !isWorking, let entry = current(candidate),
-              entry.prompt.kind == .secret || entry.prompt.kind == .sudo,
+              [.secret, .sudo, .vaultUnlock].contains(entry.prompt.kind),
               Self.validSecret(value) else {
             errorMessage = "Enter a nonempty value before sending."
             return
         }
+        errorMessage = nil
+        await respond(entry, value: value)
+    }
+
+    func submitCode(_ candidate: DirectHermesSecurePrompt, code: String) async {
+        let value = code.filter { !$0.isWhitespace && $0 != "-" }
+        guard !isWorking, let entry = current(candidate), entry.prompt.kind == .vaultCode,
+              (1...64).contains(value.count), value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else {
+            errorMessage = "Enter the code the site sent you."
+            return
+        }
+        errorMessage = nil
+        await respond(entry, value: value)
+    }
+
+    /// Hermes parses the answer as `{identifier, password}` and stores it in its
+    /// vault for the page's origin.
+    func submitLogin(_ candidate: DirectHermesSecurePrompt, identifier: String, password: String) async {
+        let name = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isWorking, let entry = current(candidate), entry.prompt.kind == .vaultSaveLogin,
+              Self.validIdentifier(name, maximumBytes: 512), Self.validLoginPassword(password) else {
+            errorMessage = "Enter the email or username and the password."
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(["identifier": name, "password": password]),
+              let value = String(data: data, encoding: .utf8) else { return }
         errorMessage = nil
         await respond(entry, value: value)
     }
@@ -575,7 +625,7 @@ final class DirectHermesSecurePromptStore {
         }
         guard current(candidate)?.prompt.key == entry.prompt.key else { return }
         switch entry.prompt.kind {
-        case .secret, .sudo:
+        case .secret, .sudo, .vaultCode, .vaultSaveLogin, .vaultUnlock:
             await respond(entry, value: "")
         case .mcpSetup:
             let value = Self.mcpOutcome(status: "declined", server: entry.prompt.server ?? "")
@@ -627,6 +677,8 @@ final class DirectHermesSecurePromptStore {
             case .secret: (method, valueKey) = ("secret.respond", "value")
             case .sudo: (method, valueKey) = ("sudo.respond", "password")
             case .mcpSetup: (method, valueKey) = ("mcp.setup.respond", "result")
+            // Vault prompts arrive only as server requests, never legacy events.
+            case .vaultCode, .vaultSaveLogin, .vaultUnlock: remove(entry); return
             }
             // One dispatch only. The input has already been cleared by the view,
             // and this entry is locked while the RPC is in flight. Success,
@@ -661,6 +713,7 @@ final class DirectHermesSecurePromptStore {
         let reason: String?
         var isAgentRequest = false
         var label: String?
+        var site: String?
         switch method {
         case .secret:
             guard Set(params.keys).isSubset(of: ["session_id", "env_var", "prompt", "metadata"]),
@@ -712,6 +765,42 @@ final class DirectHermesSecurePromptStore {
             promptText = nil
             server = serverName
             reason = params["reason"]?.string
+        case .vaultCode:
+            guard Set(params.keys).isSubset(of: ["session_id", "site", "hint"]),
+                  let named = Self.optionalLabel(params["site"], maximumBytes: 255),
+                  let hint = Self.optionalLabel(params["hint"], maximumBytes: 500) else {
+                throw DirectHermesError.invalidResponse
+            }
+            kind = .vaultCode
+            site = named.isEmpty ? nil : named
+            promptText = hint.isEmpty ? nil : hint
+            envVar = nil
+            server = nil
+            reason = nil
+        case .vaultSaveLogin:
+            guard Set(params.keys) == ["session_id", "origin", "site"],
+                  let origin = params["origin"]?.string, Self.validOrigin(origin),
+                  Self.optionalLabel(params["site"], maximumBytes: 255) != nil else {
+                throw DirectHermesError.invalidResponse
+            }
+            kind = .vaultSaveLogin
+            // The origin, not the agent's label: people recognise addresses.
+            site = origin
+            envVar = nil
+            promptText = nil
+            server = nil
+            reason = nil
+        case .vaultUnlock:
+            guard Set(params.keys) == ["session_id", "backend", "display_name"],
+                  let backend = params["backend"]?.string, Self.validIdentifier(backend, maximumBytes: 64),
+                  let name = Self.optionalLabel(params["display_name"], maximumBytes: 120) else {
+                throw DirectHermesError.invalidResponse
+            }
+            kind = .vaultUnlock
+            server = name.isEmpty ? backend : name
+            envVar = nil
+            promptText = nil
+            reason = nil
         }
         let key = DirectHermesSecurePromptKey(
             transportGeneration: expected.transportGeneration,
@@ -733,6 +822,7 @@ final class DirectHermesSecurePromptStore {
             reason: reason,
             isAgentRequest: isAgentRequest,
             label: label,
+            site: site,
             createdAt: .now,
             key: key
         )
@@ -897,6 +987,26 @@ final class DirectHermesSecurePromptStore {
             && !value.contains("\n") && !value.contains("\r") && !value.contains("\0")
     }
 
+    /// A missing or null label is empty; a present one is bounded single-line text.
+    private static func optionalLabel(_ value: BighelpJSONValue?, maximumBytes: Int) -> String? {
+        guard let value, value != .null else { return "" }
+        guard let text = value.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+              text.utf8.count <= maximumBytes,
+              !text.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) else { return nil }
+        return text
+    }
+
+    private static func validOrigin(_ value: String) -> Bool {
+        guard value.utf8.count <= 2_048, let url = URL(string: value),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              let host = url.host, !host.isEmpty, url.user == nil, url.password == nil else { return false }
+        return !value.unicodeScalars.contains(where: { $0.value < 0x21 || $0.value == 0x7f })
+    }
+
+    private static func validLoginPassword(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 4_096 && !value.contains("\0")
+    }
+
     private static func validSecret(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 65_536 && !value.contains("\0")
     }
@@ -945,6 +1055,7 @@ private struct DirectHermesSecurePromptView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var value = ""
+    @State private var identifier = ""
     @State private var environment: [String: String] = [:]
     @FocusState private var focusedField: String?
 
@@ -954,7 +1065,11 @@ private struct DirectHermesSecurePromptView: View {
                 Section {
                     Text(prompt.detail)
                         .textSelection(.enabled)
-                    LabeledContent(prompt.isAgentRequest ? "Agent" : "Profile", value: prompt.profile)
+                    if let site = prompt.site {
+                        LabeledContent("Site", value: site)
+                            .accessibilityIdentifier("direct-hermes.vault-site")
+                    }
+                    LabeledContent(prompt.isAgentRequest || isVault ? "Agent" : "Profile", value: prompt.profile)
                     if let server = prompt.server {
                         LabeledContent("Server", value: server)
                     }
@@ -972,6 +1087,13 @@ private struct DirectHermesSecurePromptView: View {
                     secureValueSection(label: "Password")
                 case .mcpSetup:
                     mcpSection
+                case .vaultCode:
+                    codeSection
+                case .vaultSaveLogin:
+                    loginSection
+                case .vaultUnlock:
+                    secureValueSection(label: "Master password", submitTitle: "Unlock",
+                        footer: "Unlocks it on your computer for this session only. bighelp doesn't keep your master password or add it to chat.")
                 }
 
                 if let errorMessage = store.errorMessage {
@@ -981,7 +1103,7 @@ private struct DirectHermesSecurePromptView: View {
                 }
             }
             .bighelpFormSurface()
-            .navigationTitle(prompt.isAgentRequest ? "Secure input" : "Hermes request")
+            .navigationTitle(prompt.isAgentRequest || isVault ? "Secure input" : "Hermes request")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(store.isWorking)
             .toolbar {
@@ -993,8 +1115,11 @@ private struct DirectHermesSecurePromptView: View {
             .task(id: prompt.id) {
                 clearSensitiveState()
                 if case .mcpSetup = prompt.kind { await store.prepareMCP(prompt) }
-                if case .secret = prompt.kind { focusedField = "primary" }
-                if case .sudo = prompt.kind { focusedField = "primary" }
+                switch prompt.kind {
+                case .secret, .sudo, .vaultCode, .vaultUnlock: focusedField = "primary"
+                case .vaultSaveLogin: focusedField = "identifier"
+                case .mcpSetup: break
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase != .active else { return }
@@ -1005,8 +1130,13 @@ private struct DirectHermesSecurePromptView: View {
         .accessibilityIdentifier("direct-hermes.secure-prompt.\(prompt.id)")
     }
 
+    private var isVault: Bool {
+        [.vaultCode, .vaultSaveLogin, .vaultUnlock].contains(prompt.kind)
+    }
+
     @ViewBuilder
-    private func secureValueSection(label: String) -> some View {
+    private func secureValueSection(label: String, submitTitle: String = "Send securely",
+                                    footer: String? = nil) -> some View {
         Section {
             SecureField(label, text: $value)
                 .focused($focusedField, equals: "primary")
@@ -1014,17 +1144,67 @@ private struct DirectHermesSecurePromptView: View {
                 .autocorrectionDisabled()
                 .privacySensitive()
                 .accessibilityIdentifier("direct-hermes.secure-input")
-            Button("Send securely") { submitSecret() }
+            Button(submitTitle) { submitSecret() }
                 .disabled(value.isEmpty || store.isWorking)
                 .accessibilityIdentifier("direct-hermes.secure-submit")
         } header: {
             Text("Secure response")
         } footer: {
-            if prompt.isAgentRequest, let name = prompt.envVar {
+            if let footer {
+                Text(footer)
+            } else if prompt.isAgentRequest, let name = prompt.envVar {
                 Text("Saved privately on your computer as \(name). Your agent can use it in commands but never sees what you type, and bighelp doesn't keep it or add it to chat.")
             } else {
                 Text("This value is sent only to the waiting request. bighelp does not save it, add it to chat, or copy it to the clipboard.")
             }
+        }
+    }
+
+    /// Not masked: a one-time code is short-lived, and iOS can fill it from Messages.
+    private var codeSection: some View {
+        Section {
+            TextField("Code", text: $value)
+                .focused($focusedField, equals: "primary")
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .privacySensitive()
+                .submitLabel(.send)
+                .onSubmit { submitCode() }
+                .accessibilityIdentifier("direct-hermes.vault-code")
+            Button("Enter code") { submitCode() }
+                .disabled(value.isEmpty || store.isWorking)
+                .accessibilityIdentifier("direct-hermes.secure-submit")
+        } header: {
+            Text("One-time code")
+        } footer: {
+            Text("Hermes types the code into the waiting page on your computer. Your agent never sees it, and bighelp doesn't keep it or add it to chat.")
+        }
+    }
+
+    private var loginSection: some View {
+        Section {
+            TextField("Email or username", text: $identifier)
+                .focused($focusedField, equals: "identifier")
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.emailAddress)
+                .submitLabel(.next)
+                .onSubmit { focusedField = "primary" }
+                .accessibilityIdentifier("direct-hermes.vault-identifier")
+            SecureField("Password", text: $value)
+                .focused($focusedField, equals: "primary")
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .privacySensitive()
+                .accessibilityIdentifier("direct-hermes.secure-input")
+            Button("Save and sign in") { submitLogin() }
+                .disabled(identifier.isEmpty || value.isEmpty || store.isWorking)
+                .accessibilityIdentifier("direct-hermes.secure-submit")
+        } header: {
+            Text("Login")
+        } footer: {
+            Text("Saved in Hermes' vault on your computer for this site only, then filled into the page. Your agent never sees the password, and bighelp doesn't keep it or add it to chat.")
         }
     }
 
@@ -1093,7 +1273,7 @@ private struct DirectHermesSecurePromptView: View {
         case .mcpSetup(.install): "Install and enable"
         case .mcpSetup(.enable): "Enable server"
         case .mcpSetup(.authorize): "Start authorization"
-        case .secret, .sudo: "Continue"
+        case .secret, .sudo, .vaultCode, .vaultSaveLogin, .vaultUnlock: "Continue"
         }
     }
 
@@ -1105,7 +1285,7 @@ private struct DirectHermesSecurePromptView: View {
             "This enables only the named configured server for the requesting profile."
         case .mcpSetup(.authorize):
             "Authorization starts only after you choose Start authorization. bighelp does not expand the server's requested scope."
-        case .secret, .sudo:
+        case .secret, .sudo, .vaultCode, .vaultSaveLogin, .vaultUnlock:
             ""
         }
     }
@@ -1130,6 +1310,23 @@ private struct DirectHermesSecurePromptView: View {
         Task { await store.submitSecret(prompt, value: submitted) }
     }
 
+    private func submitCode() {
+        let submitted = value
+        guard !submitted.isEmpty else { return }
+        value = ""
+        focusedField = nil
+        Task { await store.submitCode(prompt, code: submitted) }
+    }
+
+    private func submitLogin() {
+        let name = identifier
+        let password = value
+        identifier = ""
+        value = ""
+        focusedField = nil
+        Task { await store.submitLogin(prompt, identifier: name, password: password) }
+    }
+
     private func approveMCP() {
         let submitted = environment
         environment.removeAll(keepingCapacity: false)
@@ -1148,6 +1345,7 @@ private struct DirectHermesSecurePromptView: View {
 
     private func clearSensitiveState() {
         value = ""
+        identifier = ""
         environment.removeAll(keepingCapacity: false)
         focusedField = nil
     }

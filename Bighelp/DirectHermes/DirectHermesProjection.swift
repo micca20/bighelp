@@ -258,7 +258,8 @@ struct DirectHermesProjection {
     /// Enrich only the unchanged authenticated message row. Preserve newer
     /// duration and ordering metadata received while bytes were in flight.
     mutating func resolveMedia(_ resolved: ResolvedAgentAttachmentItem, replacing source: TimelineItem) -> TimelineItem? {
-        guard resolved.id == source.id, !resolved.attachments.isEmpty,
+        // Bytes, or only new words: "couldn't load" in place of a host path.
+        guard resolved.id == source.id, !resolved.attachments.isEmpty || source.content != .message(resolved.text),
               let index = items.firstIndex(where: { $0.id == source.id }),
               items[index].role == source.role, items[index].sender == source.sender,
               items[index].content == source.content, items[index].attachments == source.attachments else { return nil }

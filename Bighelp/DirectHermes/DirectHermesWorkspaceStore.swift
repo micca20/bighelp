@@ -347,6 +347,21 @@ final class DirectHermesWorkspaceStore {
         return result
     }
 
+    /// Hermes' credential vault, on this same authenticated socket. Only the
+    /// vault's own methods; a secret passes through once and is never kept.
+    func vaultRequest(_ method: String, params: [String: BighelpJSONValue]) async throws -> BighelpJSONValue {
+        guard Self.vaultMethods.contains(method) else { throw DirectHermesError.invalidResponse }
+        guard isConnected, let client else { throw DirectHermesError.notConnected }
+        let owner = generation
+        let result = try await client.request(method, params: params)
+        guard owner == generation else { throw DirectHermesError.secureStorageChanged }
+        return result
+    }
+
+    private static let vaultMethods: Set<String> = [
+        "vault.list", "vault.sources", "vault.source.set", "vault.unlock", "vault.lock", "vault.add", "vault.remove",
+    ]
+
     private func reloadSavedConnection() throws {
         let latest = try vault.load()
         if !DirectHermesIdentity.matches(latest?.identity, saved?.identity) {
@@ -672,7 +687,9 @@ final class DirectHermesWorkspaceStore {
                 }
                 return response
             }
-            for method in ["secret", "sudo", "mcp.setup"] {
+            // vault.*: Hermes' browser vault asks for a site's one-time code, a login
+            // to save, or a password manager's master password.
+            for method in ["secret", "sudo", "mcp.setup", "vault.code", "vault.save_login", "vault.unlock_prompt"] {
                 try connection.setServerRequestHandler(for: method) { [weak self, weak connection] request in
                     guard let self, let connection,
                           self.ownsPromptConnection(promptConnection, owner: owner, transport: connection) else {

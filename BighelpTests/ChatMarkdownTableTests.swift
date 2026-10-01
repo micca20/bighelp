@@ -75,7 +75,7 @@ struct ChatMarkdownTableTests {
             case .markdown: "text"
             case .table: "table"
             case .rule: "rule"
-            case .card: "card"
+            case .card, .pendingCard, .unavailableCard: "card"
             }
         }
         #expect(kinds == ["text", "table", "text", "rule", "text"])

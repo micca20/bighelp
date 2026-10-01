@@ -163,6 +163,17 @@ extension ChatModel {
         }
     }
 
+    /// The finished message now carries these cards' pictures; the cards keep
+    /// only their labels so each picture shows once.
+    func markGeneratedMediaShownInReply(eventIDs: [String]) {
+        for id in eventIDs {
+            guard var resolution = activityLedger.event(id: id)?.generatedMedia,
+                  resolution.state == .ready, !resolution.shownInReply else { continue }
+            resolution.shownInReply = true
+            updateGeneratedMedia(activityID: id, resolution: resolution)
+        }
+    }
+
     private func updateGeneratedMedia(
         activityID: String,
         resolution: GeneratedMediaResolution
@@ -176,6 +187,8 @@ extension ChatModel {
         updateProjectedActivity(accepted)
         persistSession()
         flushPersistence()
+        // A finished message may be waiting on this card's bytes.
+        nativeConversationClient?.scheduleMessageMedia()
     }
 
     func resetGeneratedMediaResolutions() {

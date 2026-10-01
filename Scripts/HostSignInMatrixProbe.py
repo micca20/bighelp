@@ -21,6 +21,10 @@ HOME and HERMES_HOME, then runs the matching HostSignInMatrixUITests:
   fleet     two hosts with the bighelp plugin (--plugin) and different agents:
             the all-hosts view lists both and opens an agent on the host that
             isn't selected (AllHostsHostUITests)
+  media     no sign-in, with the bighelp plugin (--plugin) and the test-only
+            Scripts/HostProbePlugin: a generated image stays in the chat after
+            the turn ends, and Hermes' vault code and save-login prompts open
+            bighelp's secure pop-up. Needs a Hermes with the vault (canary)
 
 HERMES_DISABLE_LAZY_INSTALLS=1 keeps Hermes from "finishing a source update"
 into its checkout on first launch. Use a separate Hermes checkout anyway: never
@@ -64,10 +68,17 @@ TESTS = {
     "features": ["ProjectsAndBoardHostUITests/testBoardFeedbackAndProjectsOnARealHost"],
     "update": ["PluginReleaseUpdateHostUITests/testUpdatesToTheLatestReleaseOnARealHost"],
     "fleet": ["AllHostsHostUITests/testAllHostsListsBothHostsAndOpensTheOther"],
+    "media": ["testGeneratedImageStaysAfterTheTurnEnds", "testVaultCodePopUpEntersTheCode",
+              "testSaveLoginPopUpSavesTheLogin", "testVaultSavesAndImportsLoginsOnTheHost",
+              "testACardStreamsBehindALoader"],
 }
 # 2.18.2, older than any release the app should offer.
 OLD_PLUGIN_REVISION = "34f2a16938ba69185a7f5ed9fa4a963f9a9fe1b4"
 STEER_OPEN = "[OUT-OF-BAND USER MESSAGE"
+# Streamed a few characters at a time, so the app shows a card still on its way.
+STREAMED_CARD = ("Here's your card.\n\n```loopdy-card\n"
+                 '{"schema":"loopdy.generative_ui","version":1,"component":"summary",'
+                 '"title":"Streamed fixture","body":"The whole card arrived."}\n```\n\n' "That's all.")
 
 
 class ToolTurnModel(BaseHTTPRequestHandler):
@@ -83,13 +94,36 @@ class ToolTurnModel(BaseHTTPRequestHandler):
         messages = request.get("messages", [])
         offered = {t.get("function", {}).get("name", "") for t in request.get("tools", [])}
         texts = [(i, str(m.get("content") or "")) for i, m in enumerate(messages) if m.get("role") == "user"]
-        triggers = ("secure input test", "long tool test", "question test")
+        triggers = ("secure input test", "long tool test", "question test", "image test", "vault code test",
+                    "save login test", "card test")
         start = max((i for i, text in texts if any(t in text for t in triggers)), default=-1)
-        secure = start >= 0 and "secure input test" in messages[start].get("content", "")
-        question = start >= 0 and "question test" in messages[start].get("content", "")
+        asked = str(messages[start].get("content", "")) if start >= 0 else ""
+        secure = "secure input test" in asked
+        question = "question test" in asked
+        probe_tool = ("image_generate", {"prompt": "A probe picture", "aspect_ratio": "square"}) \
+            if "image test" in asked else ("probe_vault_code", {"site": "example.com"}) \
+            if "vault code test" in asked else ("probe_vault_save_login", {"origin": "https://example.com"}) \
+            if "save login test" in asked else None
         results = [str(m.get("content") or "") for m in messages[start + 1:] if m.get("role") == "tool"]
         steers = [re.sub(r"^\[OUT-OF-BAND[^\]]*\]\s*|\s*\[/OUT-OF-BAND USER MESSAGE\]$", "", text.strip())
                   for i, text in texts if i > start and STEER_OPEN in text]
+        if "card test" in asked and request.get("stream"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            pieces = [STREAMED_CARD[i:i + 12] for i in range(0, len(STREAMED_CARD), 12)]
+            for index, piece in enumerate(pieces):
+                delta = {"role": "assistant", "content": piece} if index == 0 else {"content": piece}
+                chunk = {"id": "fixture", "object": "chat.completion.chunk", "created": 1, "model": "fixture-model",
+                         "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+                self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
+                self.wfile.flush()
+                time.sleep(0.35)
+            done = {"id": "fixture", "object": "chat.completion.chunk", "created": 1, "model": "fixture-model",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+            self.wfile.write(("data: " + json.dumps(done) + "\n\ndata: [DONE]\n\n").encode())
+            self.wfile.flush()
+            return
         call = None
         if start >= 0 and not results:
             name, arguments = (("bighelp_request_secure_input",
@@ -97,7 +131,7 @@ class ToolTurnModel(BaseHTTPRequestHandler):
                                  "prompt": "A test of the secure pop-up. Type anything."})
                                if secure else
                                ("clarify", {"question": "Which fixture option?", "choices": ["Alpha", "Beta"]})
-                               if question else ("terminal", {"command": "sleep 20"}))
+                               if question else probe_tool or ("terminal", {"command": "sleep 20"}))
             if name not in offered and "tool_call" in offered:
                 name, arguments = "tool_call", {"name": name, "arguments": arguments}
             call = {"id": "call_tool_turn_fixture", "type": "function",
@@ -111,6 +145,14 @@ class ToolTurnModel(BaseHTTPRequestHandler):
                                                    f"not saved ({outcome.get('error') or 'skipped' if outcome.get('skipped') else results[-1][:120]}).")
             elif question:
                 text = "Question fixture answered: " + results[-1][:80]
+            elif probe_tool and probe_tool[0] == "image_generate":
+                outcome = json.loads(results[-1]) if results and results[-1].startswith("{") else {}
+                text = ("MEDIA:" + outcome["image"]) if outcome.get("image") else "Image fixture failed: " + results[-1][:160]
+            elif probe_tool:
+                outcome = json.loads(results[-1]) if results and results[-1].startswith("{") else {}
+                text = ("Vault fixture: " + ("received." if outcome.get("success") else "nothing entered.")
+                        + (f" {outcome['digits']} digits." if "digits" in outcome else "")
+                        + (f" Saved for {outcome['identifier']}." if outcome.get("identifier") else ""))
             else:
                 text = "Long tool fixture complete."
             if steers:
@@ -277,9 +319,10 @@ def board_feedback(home: Path) -> dict:
 
 class DelayProxy:
     """Forwards a loopback port to another, holding each chunk for `delay` seconds each way, like a slower
-    network (a Tailscale link to another computer). Order is kept and throughput isn't limited."""
+    network (a Tailscale link to another computer). Order is kept; `rate` (bytes a second) limits
+    throughput when set, so a large download takes as long as it would on a phone."""
 
-    def __init__(self, target_port: int, delay: float):
+    def __init__(self, target_port: int, delay: float, rate: float = 0):
         import asyncio
         self.port = free_port()
         self.loop = asyncio.new_event_loop()
@@ -294,6 +337,8 @@ class DelayProxy:
                     await asyncio.sleep(max(0.0, due - self.loop.time()))
                     writer.write(data)
                     await writer.drain()
+                    if rate:
+                        await asyncio.sleep(len(data) / rate)
                 writer.close()
             sender = asyncio.ensure_future(send())
             try:
@@ -333,6 +378,14 @@ def installed_plugin(home: Path) -> dict:
     version = re.search(r'(?m)^version:\s*"?([0-9.]+)"?', manifest)
     metadata = json.loads((home / "plugins" / ".install-metadata.json").read_text()).get("loopdy", {})
     return {"version": version.group(1) if version else None, "revision": metadata.get("revision")}
+
+
+def vault_labels(hermes: str, env: dict, project: Path) -> str:
+    """What the host's vault lists after the run, through Hermes' own CLI (labels, never values)."""
+    listed = subprocess.run([hermes, "vault", "list"], cwd=project, env=dict(env, COLUMNS="240"),
+                            capture_output=True, text=True, timeout=60)
+    return " ".join(word for word in (listed.stdout + listed.stderr).split()
+                    if word.endswith((".com", ".org", ".net")))
 
 
 def session_sources(home: Path) -> list[str]:
@@ -452,26 +505,36 @@ def run_mode(mode: str, args, repo: Path) -> int:
         home, project = temp / "home", temp / "project"
         home.mkdir()
         project.mkdir()
-        model = ThreadingHTTPServer(("127.0.0.1", 0), ToolTurnModel if mode == "tools" else SyntheticModel)
+        model = ThreadingHTTPServer(("127.0.0.1", 0), ToolTurnModel if mode in ("tools", "media") else SyntheticModel)
         threading.Thread(target=model.serve_forever, daemon=True).start()
         port = free_port()
         origin = f"http://127.0.0.1:{port}"
+        # The media mode reaches its host over a slower link, like a phone on Tailscale.
+        proxy = DelayProxy(port, args.latency_ms / 1000, args.rate_kbps * 1024) \
+            if mode == "media" and (args.latency_ms or args.rate_kbps) else None
         # Hermes only gates a dashboard whose public address isn't loopback. *.localhost
         # still resolves to this Mac, so gated hosts use it; single sign-on needs the
         # app on that same name, since the sign-in cookie belongs to it.
-        public = origin if mode in ("open", "tools", "widgets", "features", "update") else f"http://hermes.localhost:{port}"
+        public = f"http://127.0.0.1:{proxy.port}" if proxy \
+            else origin if mode in ("open", "tools", "widgets", "features", "update", "media") \
+            else f"http://hermes.localhost:{port}"
         config = {"dashboard": {"public_url": public},
                   "model": {"default": "fixture-model", "provider": "custom",
                             "base_url": f"http://127.0.0.1:{model.server_port}/v1", "api_key": "local-synthetic-no-auth"},
                   "agent": {"max_turns": 3}, "terminal": {"backend": "local", "cwd": str(project)},
                   "memory": {"memory_enabled": False, "user_profile_enabled": False}}
-        if mode in ("tools", "features"):
+        if mode in ("tools", "features", "media"):
             if not args.plugin:
                 raise SystemExit(f"{mode} mode needs --plugin <bighelp plugin folder>")
             shutil.copytree(args.plugin, home / "plugins" / "loopdy",
                             ignore=shutil.ignore_patterns("tests", "__pycache__", ".git"))
             config["agent"]["max_turns"] = 4
             config["plugins"] = {"enabled": ["loopdy"]}
+        if mode == "media":
+            shutil.copytree(repo / "Scripts" / "HostProbePlugin", home / "plugins" / "bighelp-probe",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            config["plugins"]["enabled"].append("bighelp-probe")
+            config["image_gen"] = {"provider": "bighelp-probe"}
         if mode == "features":
             seed_board(home, args.plugin)
             (project / "garden").mkdir()
@@ -538,6 +601,8 @@ def run_mode(mode: str, args, repo: Path) -> int:
                 print(json.dumps({"board_on_host": board_feedback(home)}), flush=True)
             if mode == "update":
                 print(json.dumps({"plugin_on_host": installed_plugin(home)}), flush=True)
+            if mode == "media":
+                print(json.dumps({"vault_on_host": vault_labels(args.hermes, env, project)}), flush=True)
             # The app's chats must reach Hermes as "bighelp", not its terminal UI.
             print(json.dumps({"session_sources_on_host": session_sources(home)}), flush=True)
             print(json.dumps({"mode": mode, "exit_code": result.returncode}), flush=True)
@@ -554,6 +619,8 @@ def run_mode(mode: str, args, repo: Path) -> int:
             log.close()
             model.shutdown()
             model.server_close()
+            if proxy:
+                proxy.close()
             if idp:
                 idp.close()
 
@@ -567,7 +634,9 @@ def main():
     parser.add_argument("--modes", default="open,password,sso")
     parser.add_argument("--plugin", type=Path, help="bighelp (loopdy) plugin folder, for the tools mode")
     parser.add_argument("--latency-ms", type=int, default=0,
-                        help="fleet mode: network delay each way between the app and each host")
+                        help="fleet and media modes: network delay each way between the app and each host")
+    parser.add_argument("--rate-kbps", type=int, default=0,
+                        help="media mode: throughput limit between the app and the host, in KiB a second")
     args = parser.parse_args()
     args.results.mkdir(parents=True, exist_ok=True)
     repo = Path(__file__).resolve().parents[1]

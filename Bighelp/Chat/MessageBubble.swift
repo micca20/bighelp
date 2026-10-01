@@ -65,22 +65,25 @@ final class ChatMessageContentCache {
         /// The first web link, for the preview under the message.
         private(set) lazy var linkPreviewURL: URL? = LinkPreviewCandidate.firstURL(in: document)
 
-        init(_ source: String, role: TimelineRole) {
+        let isStreaming: Bool
+
+        init(_ source: String, role: TimelineRole, isStreaming: Bool = false) {
             references = ReferenceCodec.decode(source)
             document = MarkdownDocument(references.prose)
-            cardProjection = ChatCardMessageProjection(source: references.prose, role: role)
+            cardProjection = ChatCardMessageProjection(source: references.prose, role: role, isStreaming: isStreaming)
             self.role = role
+            self.isStreaming = isStreaming
         }
     }
 
     private var current: Projection?
 
-    func project(_ source: String, role: TimelineRole = .assistant) -> Projection {
-        if let current, current.role == role,
+    func project(_ source: String, role: TimelineRole = .assistant, isStreaming: Bool = false) -> Projection {
+        if let current, current.role == role, current.isStreaming == isStreaming,
            current.references.source.utf8.elementsEqual(source.utf8) {
             return current
         }
-        let projection = Projection(source, role: role)
+        let projection = Projection(source, role: role, isStreaming: isStreaming)
         current = projection
         return projection
     }
@@ -132,6 +135,10 @@ struct MessageBubble: View {
         self.onReaction = onReaction
     }
 
+    private var isStreaming: Bool {
+        delivery?.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Streaming") == .orderedSame
+    }
+
     /// Written on the way to the answer: shown quieter, like thinking.
     private var isInterimReply: Bool { role == .assistant && metadata?.isInterimReply == true }
 
@@ -145,7 +152,7 @@ struct MessageBubble: View {
     }
 
     var body: some View {
-        let projection = contentCache.project(text, role: role)
+        let projection = contentCache.project(text, role: role, isStreaming: isStreaming)
         let references = projection.references
         let document = projection.document
         let interaction = ChatBubbleInteraction(document: document, canFork: onFork != nil,
@@ -480,6 +487,13 @@ struct MessageBubble: View {
                                           textColor: isPendingSubmission ? theme.secondaryText : theme.primaryText)
                 case .rule:
                     ChatMarkdownRuleView()
+                case .pendingCard:
+                    ChatPendingCardView()
+                case .unavailableCard:
+                    Label("This card couldn't be shown.", systemImage: "rectangle.on.rectangle.slash")
+                        .bighelpFont(.metadata)
+                        .foregroundStyle(theme.secondaryText)
+                        .accessibilityIdentifier("chat.card.unavailable")
                 }
             }
         }

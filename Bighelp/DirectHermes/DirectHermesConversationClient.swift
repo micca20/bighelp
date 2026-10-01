@@ -142,6 +142,11 @@ final class DirectHermesConversationClient: StreamingConversationClient, Stoppab
     @ObservationIgnored var speakerNote: (any ChatSpeakerNoting)?
     @ObservationIgnored var attachmentTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var attachmentAttempts: [String: String] = [:]
+    /// Waits before asking again for a finished message's files. A first read
+    /// can lose to Hermes saving the turn, a reload, or a network hand-off.
+    @ObservationIgnored var mediaRetryDelays: [Duration] = [.seconds(2), .seconds(6), .seconds(15)]
+    @ObservationIgnored var mediaRetryTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var mediaFailures: [String: Int] = [:]
     var retainedMessageReactions: [Int: DirectHermesMessageReaction] = [:]
     @ObservationIgnored var generation = UUID()
     @ObservationIgnored var waiter: CheckedContinuation<ConversationResponse, Error>?
@@ -359,6 +364,7 @@ final class DirectHermesConversationClient: StreamingConversationClient, Stoppab
         attachmentTasks.values.forEach { $0.cancel() }
         attachmentTasks.removeAll()
         attachmentAttempts.removeAll()
+        resetMediaRetries()
         // Suspension revokes transport authority, not the last visible roster.
         // Only a valid replacement snapshot or exact terminal event clears it.
         if let id = pendingID, admitted, !admissionOverlapped, let turnID = pendingTurnID {

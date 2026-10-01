@@ -60,6 +60,8 @@ struct TimelineSenderResolver {
                 case .card(let card): card.title
                 case .table(let table): MarkdownDocument(blocks: [.table(table)]).visiblePlainText
                 case .rule: ""
+                case .pendingCard: "Making a card"
+                case .unavailableCard: "This card couldn't be shown"
                 }
             }.filter { !$0.isEmpty }.joined(separator: ". ")
         } else {

@@ -230,6 +230,99 @@ struct DirectHermesGeneratedMediaTests {
         #expect(transport.requests.count == 1)
     }
 
+    /// Issue #19: one failed read used to leave the finished message showing
+    /// its raw `MEDIA:` line for good. It is asked again a little later.
+    @Test func aFinishedPictureIsReadAgainAfterAFailedRead() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        transport.result = .object(["data_url": .string("data:image/png;base64," + bytes.base64EncodedString())])
+        transport.failuresRemaining = 1
+        let (native, model) = try nativeChat(transport: transport, workspace: workspace, owner: owner)
+        native.mediaRetryDelays = [.milliseconds(10), .milliseconds(10)]
+        finish(native, text: "Here it is.\nMEDIA:/host/.hermes/cache/images/puppy.png")
+        for _ in 0..<200 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(model.items.first?.content == .message("Here it is."))
+        #expect(transport.requests.count == 2)
+    }
+
+    /// The picture the live card already downloaded becomes the finished
+    /// message's picture at once, with no second download, and the card stops
+    /// showing a second copy of it.
+    @Test func theFinishedMessageKeepsTheLivePicture() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        let path = "/host/.hermes/cache/images/puppy.png"
+        let picture = try DirectHermesGeneratedMediaClient.attachment(
+            .object(["data_url": .string("data:image/png;base64," + bytes.base64EncodedString())]),
+            path: path, scope: "live-card-scope")
+        transport.failure = WorkspaceClientError.transportUnavailable
+        let (native, model) = try nativeChat(transport: transport, workspace: workspace, owner: owner)
+        native.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
+        let card = ChatActivityEvent(eventID: "image-event", sessionID: native.conversationID, turnID: "turn",
+            kind: .tool, lifecycle: .succeeded, title: "image_generate", summary: nil, detail: nil, occurredAt: 2,
+            toolCallID: "image-call", toolName: "image_generate",
+            result: #"{"success":true,"image":"\#(path)"}"#, sourceOrder: 1)
+            .resolvingGeneratedMedia(.init(state: .ready, attachments: [picture]))
+        _ = model.acceptActivity(card)
+        #expect(model.activityLedger.event(id: card.id)?.generatedMedia?.state == .ready)
+        native.receive(.init(type: "message.complete", sessionID: "runtime",
+                             payload: ["text": .string("Here it is.\nMEDIA:" + path)], sequence: 2))
+        for _ in 0..<100 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(model.items.first?.content == .message("Here it is."))
+        #expect(transport.requests.isEmpty)
+        #expect(model.activityLedger.event(id: card.id)?.generatedMedia?.shownInReply == true)
+    }
+
+    /// Over a slow link the message can finish before its live card has the
+    /// picture. It waits for the card instead of downloading a second copy.
+    @Test func theFinishedMessageWaitsForTheLiveCard() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        let path = "/host/.hermes/cache/images/puppy.png"
+        transport.failure = WorkspaceClientError.transportUnavailable
+        let slowCard = SlowCardReader()
+        let (native, model) = try nativeChat(transport: transport, workspace: workspace, owner: owner,
+                                             cardReader: slowCard)
+        native.mediaRetryDelays = [.milliseconds(200)]
+        native.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
+        let card = ChatActivityEvent(eventID: "image-event", sessionID: native.conversationID, turnID: "turn",
+            kind: .tool, lifecycle: .running, title: "image_generate", summary: nil, detail: nil, occurredAt: 1,
+            toolCallID: "image-call", toolName: "image_generate", sourceOrder: 1)
+        _ = model.acceptActivity(card)
+        let finished = card.updating(lifecycle: .succeeded, summary: nil, detail: nil, occurredAt: 2,
+                                     result: #"{"success":true,"image":"\#(path)"}"#)
+        _ = model.acceptActivity(finished)
+        native.receive(.init(type: "message.complete", sessionID: "runtime",
+                             payload: ["text": .string("MEDIA:" + path)], sequence: 2))
+        for _ in 0..<20 { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.isEmpty == true)
+        slowCard.finish(with: try DirectHermesGeneratedMediaClient.attachment(
+            .object(["data_url": .string("data:image/png;base64," + bytes.base64EncodedString())]),
+            path: path, scope: "live-card-scope"))
+        for _ in 0..<200 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(transport.requests.isEmpty)
+    }
+
+    /// When a picture can't be read at all, the message says so in plain words
+    /// instead of showing the host's file path.
+    @Test func aPictureThatNeverLoadsSaysSoWithoutItsPath() async throws {
+        let (owner, transport, workspace) = try setup()
+        transport.failure = WorkspaceClientError.transportUnavailable
+        let (native, model) = try nativeChat(transport: transport, workspace: workspace, owner: owner)
+        native.mediaRetryDelays = [.milliseconds(5), .milliseconds(5)]
+        let text = "Here it is.\nMEDIA:/host/.hermes/cache/images/puppy.png"
+        #expect(DirectHermesGeneratedMediaClient.unresolvedMessageText(text, role: .assistant)
+                == "Here it is.\nLoading puppy.png…")
+        finish(native, text: text)
+        let unavailable = TimelineContent.message("Here it is.\nCouldn't load puppy.png. Reopen this chat to try again.")
+        for _ in 0..<200 where model.items.first?.content != unavailable { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.content == unavailable)
+        #expect(transport.requests.count == 3)
+    }
+
     @Test func suspendedNativeOwnerCannotEnrichItsOldFinalRow() async throws {
         let (owner, transport, workspace) = try setup()
         transport.result = .object(["data_url": .string("data:image/png;base64," + image().base64EncodedString())])
@@ -447,6 +540,27 @@ struct DirectHermesGeneratedMediaTests {
         #expect(model.items.first?.attachments.isEmpty == true)
     }
 
+    private func nativeChat(transport: MediaTransport, workspace: DirectHermesWorkspaceClient, owner: WorkspaceOwner,
+                            cardReader: (any GeneratedMediaResolving)? = nil) throws -> (DirectHermesConversationClient, ChatModel) {
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner })
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let native = try DirectHermesConversationClient(rpc: transport, hostIdentity: "media-test", profile: "default",
+            runtimeID: "runtime", storedID: "stored", title: "Media", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: root), attachmentResolver: resolver)
+        let record = SessionRecord(id: native.conversationID, kind: .direct, agentIDs: ["default"], title: "Media",
+                                   remoteStoredID: "stored", remoteSource: "direct-hermes")
+        let model = ChatModel(conversationID: native.conversationID, client: native, initialItems: [],
+                              sourceSession: record, generatedMediaResolver: cardReader)
+        native.model = model
+        return (native, model)
+    }
+
+    private func finish(_ native: DirectHermesConversationClient, text: String) {
+        native.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
+        native.receive(.init(type: "message.complete", sessionID: "runtime", payload: ["text": .string(text)], sequence: 2))
+        native.receive(.init(type: "session.info", sessionID: "runtime", payload: ["running": .boolean(false)], sequence: 3))
+    }
+
     private func generation() -> ChatActivityEvent {
         .init(eventID: "image-event", sessionID: "media-chat", turnID: "turn", kind: .tool,
               lifecycle: .running, title: "image_generate", summary: nil, detail: nil, occurredAt: 1,
@@ -476,12 +590,17 @@ private final class MediaTransport: DirectHermesRPC, DirectHermesAuthenticatedHT
     var result: BighelpJSONValue = .object([:])
     var requests: [DirectHermesHTTPRequest] = []
     var failure: (any Error)?
+    var failuresRemaining = 0
     func request(_ method: String, params: [String: BighelpJSONValue]) async throws -> BighelpJSONValue {
         throw WorkspaceClientError.invalidRequest
     }
     func request(_ request: DirectHermesHTTPRequest) async throws -> BighelpJSONValue {
         requests.append(request)
         if let failure { throw failure }
+        if failuresRemaining > 0 {
+            failuresRemaining -= 1
+            throw WorkspaceClientError.transportUnavailable
+        }
         onRead?()
         return result
     }
@@ -550,5 +669,24 @@ private final class DeliveredFileHTTPFixture: @unchecked Sendable {
         listener.stateUpdateHandler = nil
         listener.newConnectionHandler = nil
         listener.cancel()
+    }
+}
+
+/// A live card reader that answers only when the test says so.
+@MainActor
+private final class SlowCardReader: GeneratedMediaResolving {
+    private var waiting: CheckedContinuation<GeneratedMediaResolution, Never>?
+    private var answer: GeneratedMediaResolution?
+
+    func resolve(agentID: String, storedID: String, event: ChatActivityEvent) async throws -> GeneratedMediaResolution {
+        if let answer { return answer }
+        return await withCheckedContinuation { waiting = $0 }
+    }
+
+    func finish(with picture: ChatAttachment) {
+        let resolution = GeneratedMediaResolution(state: .ready, attachments: [picture])
+        answer = resolution
+        waiting?.resume(returning: resolution)
+        waiting = nil
     }
 }

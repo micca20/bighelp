@@ -39,6 +39,9 @@ struct GeneratedMediaResolution: Codable, Equatable, Sendable {
     let state: State
     let attachments: [ChatAttachment]
     let omittedCount: Int
+    /// The agent's finished message carries this same picture, so the card
+    /// shows only its label instead of a second copy.
+    var shownInReply = false
 
     init(state: State, attachments: [ChatAttachment] = [], omittedCount: Int = 0) {
         self.state = state
@@ -73,6 +76,7 @@ struct GeneratedMediaResolution: Codable, Equatable, Sendable {
         self.state = state
         self.attachments = attachments
         self.omittedCount = omittedCount
+        shownInReply = try container.decodeIfPresent(Bool.self, forKey: .shownInReply) ?? false
     }
 
     private static func isValid(_ attachment: ChatAttachment) -> Bool {

@@ -218,11 +218,27 @@ final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAtta
     /// Preserve raw references for retry and canonical reconciliation, but do not
     /// expose host paths when bytes are still pending or the host refuses access.
     static func unresolvedMessageText(_ text: String, role: TimelineRole) -> String {
+        if role == .assistant {
+            let pending = Dictionary(mediaMarkers(text).map {
+                (Data($0.line.utf8), "Loading " + URL(fileURLWithPath: $0.path).lastPathComponent + "…")
+            }, uniquingKeysWith: { first, _ in first })
+            guard !pending.isEmpty else { return text }
+            return text.components(separatedBy: "\n").map { pending[Data($0.utf8)] ?? $0 }.joined(separator: "\n")
+        }
         guard role == .human else { return text }
         let labels = Dictionary(messageMarkers(text, role: role).map {
             (Data($0.line.utf8), "Attachment unavailable: " + URL(fileURLWithPath: $0.path).lastPathComponent)
         }, uniquingKeysWith: { first, _ in first })
         guard !labels.isEmpty else { return text }
+        return text.components(separatedBy: "\n").map { labels[Data($0.utf8)] ?? $0 }.joined(separator: "\n")
+    }
+
+    /// What a finished message says once its files still can't be read.
+    static func unavailableMessageText(_ text: String) -> String {
+        let labels = Dictionary(mediaMarkers(text).map {
+            (Data($0.line.utf8), "Couldn't load " + URL(fileURLWithPath: $0.path).lastPathComponent
+                + ". Reopen this chat to try again.")
+        }, uniquingKeysWith: { first, _ in first })
         return text.components(separatedBy: "\n").map { labels[Data($0.utf8)] ?? $0 }.joined(separator: "\n")
     }
 

@@ -343,19 +343,22 @@ extension ChatModel {
 
     /// A completed native message can acquire authenticated media bytes later.
     /// Keep its exact owner, identity, source order, and newer timing metadata.
-    func applyNativeMedia(_ item: TimelineItem, replacing source: TimelineItem, from owner: DirectHermesConversationClient) {
+    @discardableResult
+    func applyNativeMedia(_ item: TimelineItem, replacing source: TimelineItem,
+                          from owner: DirectHermesConversationClient) -> Bool {
         guard (client as? DirectHermesConversationClient) === owner,
               !referenceOwnerRetired, !isBotMode, senderBelongsToThisSession(item),
               item.id == source.id, item.role == source.role,
-              let index = itemIndexByID[item.id] else { return }
+              let index = itemIndexByID[item.id] else { return false }
         let existing = items[index]
         guard existing.role == source.role, existing.sender == source.sender, existing.content == source.content,
-              existing.attachments == source.attachments else { return }
+              existing.attachments == source.attachments else { return false }
         replaceItem(at: index, with: TimelineItem(id: existing.id, role: existing.role, sender: existing.sender,
             content: item.content, metadata: existing.metadata, attachments: item.attachments))
         updateProjectedMessage(items[index])
         persistSession()
         flushPersistence()
+        return true
     }
 
     /// Applies metadata from the authenticated native reducer to an existing

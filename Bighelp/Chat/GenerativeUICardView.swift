@@ -146,8 +146,7 @@ struct GenerativeUICardView: View {
                 .foregroundStyle(theme.secondaryText)
             }
             if let periods = card.data["periods"]?.array {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
+                CardScrollingRow(spacing: 10) {
                         ForEach(Array(periods.enumerated()), id: \.offset) { _, value in
                             if let period = value.object {
                                 VStack(spacing: 5) {
@@ -165,9 +164,7 @@ struct GenerativeUICardView: View {
                                 .background(theme.raisedSurface, in: .rect(cornerRadius: 12))
                             }
                         }
-                    }
                 }
-                .scrollIndicators(.hidden)
             }
         }
     }
@@ -854,8 +851,7 @@ private struct GenerativeUIChartView: View {
     }
 
     private var legend: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: BighelpTokens.space12) {
+        CardScrollingRow(spacing: BighelpTokens.space12) {
                 ForEach(Array(series.enumerated()), id: \.offset) { index, item in
                     Label {
                         Text(item["label"]?.string ?? "Series \(index + 1)")
@@ -865,9 +861,7 @@ private struct GenerativeUIChartView: View {
                     .bighelpFont(.metadata)
                     .foregroundStyle(theme.secondaryText)
                 }
-            }
         }
-        .scrollIndicators(.hidden)
     }
 
     private func yPosition(_ value: Double, height: CGFloat) -> CGFloat {

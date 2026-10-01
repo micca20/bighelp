@@ -209,6 +209,7 @@ extension DirectHermesConversationClient {
         attachmentTasks.values.forEach { $0.cancel() }
         attachmentTasks.removeAll()
         attachmentAttempts.removeAll()
+        resetMediaRetries()
 
         let change = projection.accept(event)
         for item in change.items { model?.acceptExternal([item], isLiveAssistantText: false) }

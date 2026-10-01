@@ -66,6 +66,8 @@ struct BighelpMenuDestinations {
     var folder: (name: String, open: () -> Void)?
     /// Plans and limits of the AI providers on the host.
     var onProviderUsage: (() -> Void)? = nil
+    /// Logins, cards and addresses an agent's browser can use (Hermes' vault).
+    var onCredentialVault: (() -> Void)? = nil
     var onSettings: () -> Void
 }
 
@@ -249,7 +251,8 @@ struct BighelpMenu<Recent: View>: View {
 
     @ViewBuilder
     private var moreSection: some View {
-        if destinations.onProviderUsage != nil || destinations.folder != nil || isVision {
+        if destinations.onProviderUsage != nil || destinations.onCredentialVault != nil
+            || destinations.folder != nil || isVision {
             Section("More") {
                 #if os(visionOS)
                 row("Simple mode", symbol: "figure.stand", id: "menu.simple-mode") {
@@ -259,6 +262,9 @@ struct BighelpMenu<Recent: View>: View {
                 if let onProviderUsage = destinations.onProviderUsage {
                     row("Provider usage", symbol: "gauge.with.dots.needle.50percent", id: "menu.usage",
                         action: onProviderUsage)
+                }
+                if let onCredentialVault = destinations.onCredentialVault {
+                    row("Secure credential vault", symbol: "lock.shield", id: "menu.vault", action: onCredentialVault)
                 }
                 if let folder = destinations.folder {
                     row("Folder", detail: folder.name, symbol: "folder.badge.gearshape", id: "menu.folder",

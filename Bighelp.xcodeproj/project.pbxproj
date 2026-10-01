@@ -232,6 +232,7 @@
 		2DA8B5FD9C28B0C587D9779A /* BighelpRelayTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0156FCAF6D581B79EABC68 /* BighelpRelayTrust.swift */; };
 		2E5342D51CCE3005669B0DCD /* VoiceProviderCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9867289EA700DDB16EF0A2 /* VoiceProviderCatalog.swift */; };
 		2E923F9E6D44DE5364D4509A /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B321D90339E5BC788A69BB1A /* ChatView.swift */; };
+		2EA3ABC71FA667A87351F7E8 /* CredentialVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A08E4F2667799009DAF1479 /* CredentialVault.swift */; };
 		2EA50D00EA469BBDE872FEBA /* AgentMediaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2FF592B8A04DEEFD7B17AF /* AgentMediaTests.swift */; };
 		2F3700F6A9F6E5A733978BCF /* AttachmentCapabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA00D2A3F0B2E3DDC831E2D /* AttachmentCapabilityTests.swift */; };
 		2F46E2D89A7FE9EEB8068E01 /* IndependentHostScopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93BCA75E13D979E7977DE481 /* IndependentHostScopeTests.swift */; };
@@ -572,6 +573,7 @@
 		70D0995374462B4034B9D7B2 /* VisionReadabilityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F14F3ADF32EDBDB727499F /* VisionReadabilityUITests.swift */; };
 		70E0A4BE8901B1A6F719E910 /* RuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A45AB908C62F2A6E9C8C89 /* RuntimeConfigurationTests.swift */; };
 		7129683E2C3177283098D05A /* KanbanSpatialDrag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58DFB0DDBF1AAC78CB27C0B4 /* KanbanSpatialDrag.swift */; };
+		71FA8C2FE9169A006365650A /* CredentialVaultImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A827D1766BB83A2036F4617A /* CredentialVaultImport.swift */; };
 		721FE8E8F4863D09653974D6 /* BighelpMacInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A28E7043B8ECAB0BD126136 /* BighelpMacInspector.swift */; };
 		7299EC77E859961D03CA3C86 /* SpatialAvatarModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9DB521E5B92DE23DA51236 /* SpatialAvatarModel.swift */; };
 		72A83A62B47F041E17F9F7DD /* BighelpVisibleChats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DECB1180E7EB7CD9EDDDF1 /* BighelpVisibleChats.swift */; };
@@ -621,6 +623,7 @@
 		7C60484E18FCD122C3526E90 /* DirectHermesHostPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4739CC04F81734EEE532D09 /* DirectHermesHostPayload.swift */; };
 		7CA4FC410BD37D2BBD499618 /* ScheduledTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1977D62C2B1D6F0B5F429E69 /* ScheduledTasksView.swift */; };
 		7D4AAD2B1957CC25252A7408 /* ProjectGitCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C585356AFD2587912A31D12 /* ProjectGitCodec.swift */; };
+		7D6245874ADECC2930343FD7 /* CredentialVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB22627412BAA1980DD6B8A /* CredentialVaultView.swift */; };
 		7D9C86F6D2677088CE860A69 /* HostOnboardingUITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E894A75421815361196871C4 /* HostOnboardingUITestSupport.swift */; };
 		7DF28D17E507AFB0B1A88F53 /* ProviderKeysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906271014BE010238FF40D93 /* ProviderKeysUITests.swift */; };
 		7E6CCF7F4D1EEF225E732201 /* VoiceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B36F2986003ACDB4742582 /* VoiceModels.swift */; };
@@ -992,6 +995,7 @@
 		D286C368BB84B88A155CC0B8 /* SilentReplyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA440374C1140D7507772AD /* SilentReplyUITests.swift */; };
 		D294A9B923AE121DC7321178 /* BighelpLiveActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB17F5FFF5350EB3AFBC03D6 /* BighelpLiveActivityCoordinatorTests.swift */; };
 		D298D910DEC65761AE8B3AF0 /* BighelpAppearanceChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C274F8CDDC43A089AC6DB9 /* BighelpAppearanceChoices.swift */; };
+		D2B7B05A842B3CECA43F14C0 /* CredentialVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F74C06EE0964D1605B304CC8 /* CredentialVaultTests.swift */; };
 		D2C62A26D889E650BD2ECBE4 /* LiveVoiceFailureRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 930BE7C3699C14551E96C567 /* LiveVoiceFailureRecoveryTests.swift */; };
 		D2E25B9FBDB0B6256712C8F8 /* ChatToolDetailStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A2C123996D7D03A29F3318 /* ChatToolDetailStyle.swift */; };
 		D356E3E287F01733D8F8C359 /* AgentActivityIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7F47D20D53B5FF15C7CD63 /* AgentActivityIsland.swift */; };
@@ -1193,6 +1197,7 @@
 		FDA8891F92C8F1E987F54724 /* SessionSubagentRosterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EEB26916CADAA629009A15C /* SessionSubagentRosterSheet.swift */; };
 		FDD8FA29C29BECA75D30572D /* ChatCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0509C3758BF9275859A7DD /* ChatCopyTests.swift */; };
 		FDE81232ACEA70386AC8B2E2 /* AgentEditorLongSoulUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07A1B5D3F1A19EDEA35B9F8 /* AgentEditorLongSoulUITests.swift */; };
+		FDF931038113A673577D553B /* CredentialVaultUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDABE72B40973455A986015 /* CredentialVaultUITests.swift */; };
 		FE11BA3F2CA514FF64EB5B29 /* SkillsAndToolsCatalogContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6370FE65444B974BB2D3DA1 /* SkillsAndToolsCatalogContent.swift */; };
 		FE559685AAA60301826FA380 /* ReferenceQueryContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = E002CA40404DFAD9E74F7572 /* ReferenceQueryContext.swift */; };
 		FE8EC8B99F02CF84A306216D /* HostOperationsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4038907121A33524DF3B42C /* HostOperationsStore.swift */; };
@@ -1347,6 +1352,7 @@
 		09F57905AD48E9CD546CB5EB /* MessageViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageViews.swift; sourceTree = "<group>"; };
 		09FE7AF3652707DEC52C692C /* FleetStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStoreTests.swift; sourceTree = "<group>"; };
 		0A044AC6EE1343EDBF6F530F /* FocusedTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusedTextEditor.swift; sourceTree = "<group>"; };
+		0A08E4F2667799009DAF1479 /* CredentialVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVault.swift; sourceTree = "<group>"; };
 		0A319B9E00DA53C7BB4B58F9 /* ReferenceHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceHistoryView.swift; sourceTree = "<group>"; };
 		0A3A4498EDC5A3D03D206F2D /* BighelpPresentationRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpPresentationRecoveryTests.swift; sourceTree = "<group>"; };
 		0A3F66FAB8AF9CF45DBC1D7C /* ChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModel.swift; sourceTree = "<group>"; };
@@ -1579,6 +1585,7 @@
 		3B3C1B0A38B1107EC89B232D /* ChatIdentityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatIdentityView.swift; sourceTree = "<group>"; };
 		3B5498782DFBE8D73101A4BB /* BuzzKitRetirementTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuzzKitRetirementTestSupport.swift; sourceTree = "<group>"; };
 		3B9C52DFAD9D4D087B0E4799 /* KanbanUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanUITests.swift; sourceTree = "<group>"; };
+		3CDABE72B40973455A986015 /* CredentialVaultUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVaultUITests.swift; sourceTree = "<group>"; };
 		3CEE2FDBEA76CC233FEB5E2A /* DirectHostNotificationClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHostNotificationClient.swift; sourceTree = "<group>"; };
 		3D074072376DAC19ECF4B94A /* WorktreeManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeManagementView.swift; sourceTree = "<group>"; };
 		3D1E7C5319A4161E50413FEF /* BighelpLinkDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpLinkDevicesView.swift; sourceTree = "<group>"; };
@@ -1750,6 +1757,7 @@
 		5F89FBA60057738C3AB76E4F /* BighelpLinkAccountStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpLinkAccountStoreTests.swift; sourceTree = "<group>"; };
 		5F94FF5AF11F7E4EDE07822B /* DirectHermesVoiceClients.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesVoiceClients.swift; sourceTree = "<group>"; };
 		5FA3C250CDD715840DD68725 /* IncomingChatLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingChatLinkTests.swift; sourceTree = "<group>"; };
+		5FB22627412BAA1980DD6B8A /* CredentialVaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVaultView.swift; sourceTree = "<group>"; };
 		5FC16504871822C0D070D37B /* RecordedActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedActivityTests.swift; sourceTree = "<group>"; };
 		5FF31C4FC4CEC312CBA88252 /* SessionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModels.swift; sourceTree = "<group>"; };
 		5FF7ABCA7FA5BE6EEC86947A /* DirectHermesLogsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesLogsClient.swift; sourceTree = "<group>"; };
@@ -2099,6 +2107,7 @@
 		A7849FA017894CE31B416774 /* ChatActivityRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActivityRow.swift; sourceTree = "<group>"; };
 		A7DEA7EB2DEF75A706B51FE3 /* SessionStatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatusModels.swift; sourceTree = "<group>"; };
 		A7EBD6D4D292595F47067DF4 /* NativeSessionControlsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSessionControlsModel.swift; sourceTree = "<group>"; };
+		A827D1766BB83A2036F4617A /* CredentialVaultImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVaultImport.swift; sourceTree = "<group>"; };
 		A883F691674EB2DC16388861 /* GitHubConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubConfiguration.swift; sourceTree = "<group>"; };
 		A8A443E13F77F703CC88751D /* ReferenceWikiAdapterSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceWikiAdapterSections.swift; sourceTree = "<group>"; };
 		A93F1D8C3BDEABBBE407101F /* AgentHomeDrawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHomeDrawer.swift; sourceTree = "<group>"; };
@@ -2447,6 +2456,7 @@
 		F6C9097DA71E5B36A26C212E /* PluginUpdateSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginUpdateSection.swift; sourceTree = "<group>"; };
 		F6CBA45744D6CCCFEE5F627D /* RootWorkspaceActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootWorkspaceActions.swift; sourceTree = "<group>"; };
 		F70C369BED1601B4EBA57E41 /* GitHubResourceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubResourceProvider.swift; sourceTree = "<group>"; };
+		F74C06EE0964D1605B304CC8 /* CredentialVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialVaultTests.swift; sourceTree = "<group>"; };
 		F75F092B85DC870F27D1CDE9 /* KanbanVisionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanVisionUITests.swift; sourceTree = "<group>"; };
 		F785A9AF73A54FED0BFCF6EB /* CapabilityManagementStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityManagementStateTests.swift; sourceTree = "<group>"; };
 		F7BD55E8AB53686D7E461DCC /* AgentDefaultsClientBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDefaultsClientBehaviorTests.swift; sourceTree = "<group>"; };
@@ -2678,6 +2688,16 @@
 				76C13A7AC5884DF983026F2B /* Info.plist */,
 			);
 			path = BighelpLiveActivity;
+			sourceTree = "<group>";
+		};
+		247984879E373A882C64A399 /* Vault */ = {
+			isa = PBXGroup;
+			children = (
+				0A08E4F2667799009DAF1479 /* CredentialVault.swift */,
+				A827D1766BB83A2036F4617A /* CredentialVaultImport.swift */,
+				5FB22627412BAA1980DD6B8A /* CredentialVaultView.swift */,
+			);
+			path = Vault;
 			sourceTree = "<group>";
 		};
 		2DBD76923983CEBD3E8F6608 /* ProfileLifecycle */ = {
@@ -3336,6 +3356,7 @@
 				21796C5BE7BB0044774A8C36 /* CompanionReactionTests.swift */,
 				56C6BE492AC88D63BDEC7A9A /* CompanionStoreTests.swift */,
 				EB79AD3628A20BBEB183791B /* CompanionVoicePlaybackTests.swift */,
+				F74C06EE0964D1605B304CC8 /* CredentialVaultTests.swift */,
 				1A798709937DA6520A2B5190 /* DashboardModelTests.swift */,
 				2505D162745A6571E823C256 /* DashboardWorkTests.swift */,
 				80F5B3E0D1E86EFAAA4E8A02 /* DemoRepositoryTests.swift */,
@@ -3629,6 +3650,7 @@
 				BCDEC62D0B225032B2D37F5C /* ComposerContainmentUITests.swift */,
 				D12AC6E66E242B6AA18EECAF /* ComposerInteractionUITests.swift */,
 				2AD6BDACF948016E39B0BE2D /* ComposerPrefillUITests.swift */,
+				3CDABE72B40973455A986015 /* CredentialVaultUITests.swift */,
 				46D19587978755B4DC4B7D9E /* DeviceToolPermissionsUITests.swift */,
 				D0C6A4CDB962B1DA3DD81BEC /* DirectHermesUITests.swift */,
 				17E85F9A6AACB46250206A20 /* FirstRunOnboardingUITests.swift */,
@@ -4020,6 +4042,7 @@
 				DA26CE5DC0E8D308228DDFF0 /* Shortcuts */,
 				E87317C0A68052515FF0062E /* Spatial */,
 				F3F5C51CEEF50494AB4939B5 /* Usage */,
+				247984879E373A882C64A399 /* Vault */,
 				C79D797A6ACE1F9CBC0CD6B8 /* Voice */,
 				B95B2E2F2A230778B012776C /* Watch */,
 				9F9A13656CA293A51F559EAA /* Wiki */,
@@ -5019,6 +5042,9 @@
 				2450D94E587D3622A6661A83 /* ConversationClient.swift in Sources */,
 				243E3FB9388CBAF7B70DF813 /* ConversationFixtures.swift in Sources */,
 				22938BF7A9E737D8FED74470 /* ConversationMessageWireModels.swift in Sources */,
+				2EA3ABC71FA667A87351F7E8 /* CredentialVault.swift in Sources */,
+				71FA8C2FE9169A006365650A /* CredentialVaultImport.swift in Sources */,
+				7D6245874ADECC2930343FD7 /* CredentialVaultView.swift in Sources */,
 				8369F0E1E52908E735D09E5E /* CuratorView.swift in Sources */,
 				17750F2E6817C42DE01EC83C /* DashboardFixtures.swift in Sources */,
 				B5BE8DDC030CB15AA8BF5C12 /* DashboardModel.swift in Sources */,
@@ -5673,6 +5699,7 @@
 				BBA132CACFBE9000296578AB /* CompanionReactionTests.swift in Sources */,
 				B2DFA7BD7F8DE8846B888F8A /* CompanionStoreTests.swift in Sources */,
 				8FED26FC8F9190D355179D90 /* CompanionVoicePlaybackTests.swift in Sources */,
+				D2B7B05A842B3CECA43F14C0 /* CredentialVaultTests.swift in Sources */,
 				110C1D7EF11DD5793A144D1F /* DashboardModelTests.swift in Sources */,
 				582C79BC0D61BA6F6A1C16C8 /* DashboardWorkTests.swift in Sources */,
 				F8B34FF3713D175B9A66DD19 /* DemoRepositoryTests.swift in Sources */,
@@ -5895,6 +5922,7 @@
 				EF1B4C9EB7229CEBDAFA7BFE /* ComposerContainmentUITests.swift in Sources */,
 				C1FB39C6F4D951394EC6A67A /* ComposerInteractionUITests.swift in Sources */,
 				329ADA678B690BC9A3531C02 /* ComposerPrefillUITests.swift in Sources */,
+				FDF931038113A673577D553B /* CredentialVaultUITests.swift in Sources */,
 				B29EB569692D44B6BB1E2555 /* DeviceToolPermissionsUITests.swift in Sources */,
 				2300F368B1F69AD1F730C5DC /* DirectHermesUITests.swift in Sources */,
 				AF7FE22D884A130746B614BA /* FirstRunOnboardingUITests.swift in Sources */,
@@ -6107,7 +6135,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6149,7 +6177,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6182,7 +6210,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6230,7 +6258,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6269,7 +6297,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6380,7 +6408,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6399,7 +6427,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6428,7 +6456,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6461,7 +6489,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6543,7 +6571,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 52;
+				CURRENT_PROJECT_VERSION = 53;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

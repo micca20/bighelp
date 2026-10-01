@@ -15,12 +15,14 @@ struct GeneratedMediaCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
-            GeometryReader { geometry in
-                content
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+            if event.generatedMedia?.shownInReply != true {
+                GeometryReader { geometry in
+                    content
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .clipped()
             }
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .clipped()
             HStack(spacing: BighelpTokens.space8) {
                 Image(systemName: statusSymbol)
                     .frame(width: statusIconSize, height: statusIconSize)
@@ -150,9 +152,10 @@ struct GeneratedMediaCard: View {
     @BighelpThemeReader private var theme
 }
 
-private struct GeneratedMediaGradient: View {
+struct GeneratedMediaGradient: View {
     let isAnimating: Bool
     let theme: BighelpTheme
+    var aspectRatio = 4.0 / 3.0
 
     @State private var startedAt = Date()
 
@@ -181,7 +184,7 @@ private struct GeneratedMediaGradient: View {
                 )
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(4.0 / 3.0, contentMode: .fit)
+        .aspectRatio(aspectRatio, contentMode: .fit)
         .clipShape(.rect(cornerRadius: BighelpTokens.radius12))
         .accessibilityHidden(true)
     }
@@ -330,5 +333,27 @@ private struct GeneratedMediaVideoView: View {
         guard let temporaryDirectory else { return }
         try? FileManager.default.removeItem(at: temporaryDirectory)
         self.temporaryDirectory = nil
+    }
+}
+
+/// A card still streaming in (#18): the image-generation loader in its place,
+/// so the card's code never shows. Still with Reduce Motion.
+struct ChatPendingCardView: View {
+    @BighelpThemeReader private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space12) {
+            GeneratedMediaGradient(isAnimating: scenePhase == .active && !reduceMotion, theme: theme, aspectRatio: 2)
+            Label("Making a card…", systemImage: "sparkles")
+                .bighelpFont(.body, weight: .semibold)
+                .foregroundStyle(theme.action)
+        }
+        .padding(BighelpTokens.space12)
+        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: BighelpTokens.radius16))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Making a card")
+        .accessibilityIdentifier("chat.card.pending")
     }
 }

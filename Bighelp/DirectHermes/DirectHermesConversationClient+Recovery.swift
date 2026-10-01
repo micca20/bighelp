@@ -25,6 +25,7 @@ extension DirectHermesConversationClient {
             self.recoveryTask = nil
         }
         attachmentAttempts.removeAll()
+        resetMediaRetries()
         let owner = generation
         isHydrating = true
         let task = Task { @MainActor [weak self] in
