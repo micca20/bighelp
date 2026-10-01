@@ -24,7 +24,7 @@ struct WorkspaceProjectsSection: View {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(project.name)
                             if !project.summary.isEmpty {
-                                Text(project.summary).font(.caption).foregroundStyle(.secondary)
+                                Text(project.summary).font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                     } icon: {
@@ -67,7 +67,7 @@ struct WorkspaceProjectDetailView: View {
                     ForEach(project.folders) { folder in
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(folder.label ?? (folder.isPrimary ? "Primary folder" : "Folder"))
-                            Text(folder.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text(folder.path).font(.bighelp(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
                         }
                     }
                 }
@@ -120,7 +120,7 @@ struct WorkspaceModelsSection: View {
                     .frame(minHeight: BighelpTokens.hitTarget)
             }
             Text("Individual sessions can use a different model. Provider requests and credentials remain managed by Hermes.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.bighelp(.footnote)).foregroundStyle(.secondary)
         }
         ForEach(catalog.providers) { provider in
             let models = provider.models.filter { store.matches($0, provider.name) }
@@ -189,7 +189,7 @@ struct WorkspaceFilesSection: View {
     var body: some View {
         Section {
             LabeledContent(listing.rootLabel == nil ? "Permitted root" : "Granted folder", value: listing.rootLabel ?? listing.root)
-            Text(listing.path.isEmpty ? "Root folder" : listing.path).font(.footnote).textSelection(.enabled)
+            Text(listing.path.isEmpty ? "Root folder" : listing.path).font(.bighelp(.footnote)).textSelection(.enabled)
             if listing.rootLabel != nil {
                 Button("All granted folders", systemImage: "folder.badge.gearshape") {
                     Task { await store.load(.files) }
@@ -219,7 +219,7 @@ struct WorkspaceFilesSection: View {
                             Text(entry.name)
                             if let size = entry.size {
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                     } icon: {

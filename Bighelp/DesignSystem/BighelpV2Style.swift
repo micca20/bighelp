@@ -173,7 +173,7 @@ private struct BighelpV3ButtonStyle: ButtonStyle {
         let filled = emphasis == .primary && configuration.role != .destructive
         let quiet = emphasis == .quiet
         let label = configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(.bighelp(.subheadline).weight(.semibold))
             .foregroundStyle(configuration.role == .destructive ? theme.danger
                 : filled ? theme.actionForeground : theme.primaryText)
             .padding(.horizontal, quiet ? BighelpTokens.space8 : BighelpTokens.space16)

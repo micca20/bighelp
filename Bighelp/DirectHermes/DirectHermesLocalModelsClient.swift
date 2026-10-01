@@ -167,7 +167,7 @@ enum HermesLocalModelsError: Error, Equatable, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            "This Hermes host does not expose managed local models. No iPhone-local substitute was used."
+            "This Hermes host does not expose managed local models. No \(BighelpPlatform.isMac ? "Mac" : "iPhone")-local substitute was used."
         case .ownerChanged:
             "The selected host or connection changed. Reopen Local Models before continuing."
         case .invalidRequest:

@@ -280,7 +280,8 @@ final class HostPluginUpdateModel {
 
     static func restartOnComputerMessage(installed: String?, running: String?) -> String {
         "Version \(installed ?? "the update") is installed, but Hermes still runs \(running ?? "an older version"). "
-            + "Restart Hermes on your computer once, then tap Check for Updates. Later updates restart from here."
+            + "Restart Hermes on your computer once, then \(BighelpPlatform.isMac ? "click" : "tap") Check for Updates. "
+            + "Later updates restart from here."
     }
 
     private func fail(_ text: String) {
@@ -331,7 +332,7 @@ struct HostPluginUpdateSection: View {
                         Image(systemName: statusSymbol)
                     }
                 }
-                .font(.footnote)
+                .font(.bighelp(.footnote))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("settings.plugin.status")
@@ -339,7 +340,7 @@ struct HostPluginUpdateSection: View {
             if model.state == .updateAvailable, let release = model.release, !release.whatsNew.isEmpty {
                 DisclosureGroup("What's new in \(release.version)") {
                     Text(release.whatsNew)
-                        .font(.footnote)
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)

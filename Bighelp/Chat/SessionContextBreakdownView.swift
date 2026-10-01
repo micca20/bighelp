@@ -36,15 +36,15 @@ struct SessionContextBreakdownView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                     Text(breakdown.model.isEmpty ? "Current model" : breakdown.model)
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(.primary)
                     Text(breakdown.contextEstimated ? "Estimated context use" : "Context use")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: BighelpTokens.space12)
                 Text("\(clampedPercent)%")
-                    .font(.title2.weight(.semibold))
+                    .font(.bighelp(.title2).weight(.semibold))
                     .foregroundStyle(.primary)
                     .monospacedDigit()
             }
@@ -55,7 +55,7 @@ struct SessionContextBreakdownView: View {
                 .accessibilityValue(contextAccessibilityValue)
 
             Text("\(breakdown.contextUsed.formatted()) of \(breakdown.contextMax.formatted()) tokens")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
@@ -97,7 +97,7 @@ struct SessionContextBreakdownView: View {
                 Text("Source: \(breakdown.contextSource)")
             }
         }
-        .font(.caption)
+        .font(.bighelp(.caption))
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
     }

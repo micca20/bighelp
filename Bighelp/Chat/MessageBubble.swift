@@ -224,20 +224,22 @@ struct MessageBubble: View {
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .bighelpSheetSize(.standard)
             }
+            #if targetEnvironment(macCatalyst)
+            // On the Mac reactions are a small choice, so they pop over the message.
+            .popover(isPresented: $isReactionPickerPresented) {
+                reactionPicker
+                    .frame(width: 360, height: 380)
+                    .presentationCompactAdaptation(.popover)
+            }
+            #else
             .sheet(isPresented: $isReactionPickerPresented) {
-                NativeMessageReactionPicker(
-                    currentReaction: reactionPresentation?.reactions.first {
-                        $0.author == .user
-                    }?.emoji,
-                    onSelection: { emoji in
-                        isReactionPickerPresented = false
-                        onReaction?(emoji)
-                    }
-                )
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+                reactionPicker
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
+            #endif
             if let previewURL = linkPreviewURL(projection) {
                 LinkPreviewCard(url: previewURL)
                     .frame(maxWidth: YouTubeVideo(url: previewURL) == nil
@@ -263,6 +265,18 @@ struct MessageBubble: View {
         }
         .frame(maxWidth: uiV3Enabled ? .infinity : nil,
                alignment: role == .human ? .trailing : .leading)
+    }
+
+    private var reactionPicker: some View {
+        NativeMessageReactionPicker(
+            currentReaction: reactionPresentation?.reactions.first {
+                $0.author == .user
+            }?.emoji,
+            onSelection: { emoji in
+                isReactionPickerPresented = false
+                onReaction?(emoji)
+            }
+        )
     }
 
     @ViewBuilder
@@ -295,13 +309,15 @@ struct MessageBubble: View {
         } else {
             content
                 .accessibilityLabel("\(speakerName): \(document.visiblePlainText)")
-                .accessibilityHint("Links open in your chosen browser. Long press shows message actions.")
+                .accessibilityHint("Links open in your chosen browser. \(BighelpPlatform.isMac ? "Right-click" : "Long press") shows message actions.")
                 .accessibilityAction(named: copyActionLabel) {
                     copy(interaction.copyText)
                 }
+                #if !targetEnvironment(macCatalyst)
                 .accessibilityAction(named: "Select text") {
                     isSelectingText = true
                 }
+                #endif
                 .accessibilityAction(named: "Fork from here") {
                     onFork?()
                 }
@@ -330,10 +346,13 @@ struct MessageBubble: View {
         } label: {
             Label(copyActionLabel, systemImage: "doc.on.doc")
         }
-        Button {
-            isSelectingText = true
-        } label: {
-            Label("Select text", systemImage: "selection.pin.in.out")
+        // The Mac selects message text with the mouse; no separate sheet.
+        if !BighelpPlatform.isMac {
+            Button {
+                isSelectingText = true
+            } label: {
+                Label("Select text", systemImage: "selection.pin.in.out")
+            }
         }
         if let onFork {
             Button(action: onFork) {
@@ -423,7 +442,7 @@ struct MessageBubble: View {
                     document: document,
                     proseLineSpacing: presentation.proseLineSpacing
                 )
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.leading)
                     .modifier(ChatInterimReplyStyle(theme: theme))

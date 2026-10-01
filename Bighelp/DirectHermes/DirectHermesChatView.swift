@@ -48,8 +48,8 @@ struct DirectHermesChatView: View {
         .chatAttention(client: chat.client, agentName: agentName, isPresented: $showsAttention,
                        canPopUp: scenePhase == .active && !showsSupport && !showsControls)
         .background(theme.canvas.ignoresSafeArea())
-        .sheet(isPresented: $showsSupport) { DirectHermesSupportView() }
-        .sheet(isPresented: $showsControls) { DirectHermesControlsView(chat: chat) }
+        .sheet(isPresented: $showsSupport) { DirectHermesSupportView().bighelpSheetSize(.standard) }
+        .sheet(isPresented: $showsControls) { DirectHermesControlsView(chat: chat).bighelpSheetSize(.standard) }
         .task(id: chat.id) {
             // Match the app's new-chat preparation: mounting an empty native
             // chat is an explicit request to write, not to reopen account input.
@@ -111,7 +111,7 @@ private struct DirectHermesControlsView: View {
             .bighelpFormSurface()
             .navigationTitle("Session settings")
             // "Later", not "Done": the card's own Done is what answers.
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
             .task {
                 modelIdentifier = chat.client.modelName
                 do { commands = try await chat.client.commandCatalog() }
@@ -156,7 +156,7 @@ struct DirectHermesAttentionView: View {
             }
             .navigationTitle("Needs attention")
             // "Later", not "Done": the card's own Done is what answers.
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
             .onChange(of: client.prompts.map(\.id)) { _, promptIDs in
                 // Answered, here or elsewhere. A dropped connection also empties
                 // the list, but then the chat isn't live and this stays open.
@@ -220,7 +220,7 @@ struct DirectHermesPromptResponseView: View {
         if let approval = prompt.approval {
             if let command = approval.command, !command.isEmpty {
                 Text(command)
-                    .font(.body.monospaced())
+                    .font(.bighelp(.body).monospaced())
                     .textSelection(.enabled)
             }
             if let description = approval.description, !description.isEmpty {

@@ -83,7 +83,7 @@ struct ScheduledTaskRunsView: View {
     private func rowLabel(_ run: ScheduledTaskRun) -> some View {
         HStack(alignment: .center, spacing: BighelpTokens.space12) {
             Image(systemName: statusSymbol(run))
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .foregroundStyle(statusColor(run))
                 .frame(width: 28, height: 28)
                 .background(statusColor(run).opacity(0.12), in: .circle)
@@ -100,7 +100,7 @@ struct ScheduledTaskRunsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if onOpenSession != nil {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             }

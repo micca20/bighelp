@@ -69,7 +69,7 @@ extension RootShellView {
         return AgentHomeChrome(
             isEnabled: true,
             isHome: isHome,
-            onMenu: { isHomeDrawerPresented = true },
+            onMenu: { isHomeDrawerPresented.toggle() },
             onProfile: { profileAgentID = $0 },
             onSwitchAgent: { isAgentSwitcherPresented = true },
             onNewChat: { presentNewChatPicker(seed: $0) },
@@ -177,6 +177,12 @@ extension RootShellView {
 
     /// Closes the open home sheet, then runs the next step once it is gone.
     func afterClosingHomeSheets(_ action: @escaping @MainActor () -> Void) {
+        // The Mac's ☰ is a sidebar that stays open; with no sheet over it,
+        // there's nothing to wait for.
+        if BighelpPlatform.isMac, !isAgentSwitcherPresented, profileAgentID == nil {
+            action()
+            return
+        }
         afterHomeSheet = action
         isHomeDrawerPresented = false
         isAgentSwitcherPresented = false
@@ -198,7 +204,7 @@ extension RootShellView {
             onProfile: { profileAgentID = agent.id },
             onSwitchAgent: { isAgentSwitcherPresented = true },
             onAsk: askAgent,
-            onMenu: { isHomeDrawerPresented = true },
+            onMenu: { isHomeDrawerPresented.toggle() },
             onNewChat: { startHomeChat(with: agent.id) },
             onPickAgents: { presentNewChatPicker(seed: agent.id) },
             tools: appsTools(for: agent)
@@ -417,10 +423,13 @@ extension RootShellView {
                     guard request.owner == currentWorkspaceOwner else { return }
                     openHostedGroup(roomID, owner: request.owner, settings: false)
                 }
+                .bighelpSheetSize(.standard)
             }
             .sheet(isPresented: $isAgentSwitcherPresented, onDismiss: runAfterHomeSheet) {
                 agentSwitcherSheet
             }
+            .modifier(MacSidebarMemory(isOpen: $isHomeDrawerPresented,
+                                       canShow: !presentsFirstRunOnboarding && !needsInitialHostSetup))
             .modifier(HomeMenuPresentation(isPresented: $isHomeDrawerPresented, onDismiss: runAfterHomeSheet) {
                 homeDrawer
                     .task {

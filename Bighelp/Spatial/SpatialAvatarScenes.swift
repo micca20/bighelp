@@ -119,7 +119,7 @@ struct SpatialAvatarVolume: View {
                 Button("Open bighelp", systemImage: "macwindow") {
                     openWindow(id: SpatialAvatarSceneID.main)
                 }
-                .font(.callout)
+                .font(.bighelp(.callout))
                 .accessibilityIdentifier("spatial-avatar.open-app")
             }
         }
@@ -221,7 +221,7 @@ struct SpatialAvatarVolume: View {
             Text(model.status(pinch: settings.spatialAvatarPinchAction))
                 .foregroundStyle(.secondary)
         }
-        .font(.callout)
+        .font(.bighelp(.callout))
         .lineLimit(1)
         .padding(.horizontal, BighelpTokens.space16)
         .padding(.vertical, BighelpTokens.space8)
@@ -241,13 +241,13 @@ struct SpatialAvatarVolume: View {
                 } icon: {
                     Image(systemName: "hand.pinch")
                 }
-                .font(.callout)
+                .font(.bighelp(.callout))
             }
             .accessibilityIdentifier("spatial-avatar.move-tip")
         } else if let message = model.errorMessage {
             card {
                 Label(message, systemImage: "exclamationmark.triangle")
-                    .font(.callout)
+                    .font(.bighelp(.callout))
             }
             .accessibilityIdentifier("spatial-avatar.error")
         } else if let reply = model.reply {
@@ -255,7 +255,7 @@ struct SpatialAvatarVolume: View {
                 VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                     // A glance; Open chat has the whole answer.
                     Text(reply)
-                        .font(.body)
+                        .font(.bighelp(.body))
                         .lineLimit(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("spatial-avatar.reply.text")
@@ -266,7 +266,7 @@ struct SpatialAvatarVolume: View {
                         Button("Done", systemImage: "checkmark") { model.dismissReply() }
                             .accessibilityIdentifier("spatial-avatar.reply.done")
                     }
-                    .font(.callout)
+                    .font(.bighelp(.callout))
                     .buttonStyle(.borderless)
                 }
             }

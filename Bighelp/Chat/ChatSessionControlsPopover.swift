@@ -38,8 +38,16 @@ struct ChatSessionControlsPopover: View {
     let usesWideLayout: Bool
     let onSeeAllModels: () -> Void
     let onApplied: () -> Void
+    /// The Mac pop-up fits this page's content: its height, with the buttons.
+    var onContentHeight: ((CGFloat) -> Void)? = nil
 
     @State private var draft: SessionRuntimeSelectionDraft
+    #if targetEnvironment(macCatalyst)
+    /// Off while All models covers this page, so Return and Esc reach that page's buttons.
+    @State private var isFrontmost = true
+    @State private var buttonsHeight: CGFloat = 0
+    #endif
+    @State private var contentHeight: CGFloat = 0
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -47,12 +55,14 @@ struct ChatSessionControlsPopover: View {
         controls: SessionRuntimeControlModel,
         usesWideLayout: Bool,
         onSeeAllModels: @escaping () -> Void,
-        onApplied: @escaping () -> Void
+        onApplied: @escaping () -> Void,
+        onContentHeight: ((CGFloat) -> Void)? = nil
     ) {
         self.controls = controls
         self.usesWideLayout = usesWideLayout
         self.onSeeAllModels = onSeeAllModels
         self.onApplied = onApplied
+        self.onContentHeight = onContentHeight
         _draft = State(initialValue: SessionRuntimeSelectionDraft(
             providerID: controls.currentProvider,
             modelID: controls.currentModel,
@@ -77,8 +87,23 @@ struct ChatSessionControlsPopover: View {
             }
             .padding(BighelpTokens.space16)
             .frame(maxWidth: .infinity, alignment: .center)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
+        #if targetEnvironment(macCatalyst)
+        // Cancel and Apply stay along the bottom of the Mac pop-up, like a dialog's buttons.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: BighelpTokens.space8) { cancelButton; applyButton }
+                .padding(.horizontal, BighelpTokens.space16)
+                .padding(.vertical, BighelpTokens.space12)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { buttonsHeight = $0 }
+        }
+        .onChange(of: contentHeight + buttonsHeight, initial: true) { _, height in onContentHeight?(height) }
+        #endif
         .accessibilityIdentifier("chat.session-controls.popover")
+        #if targetEnvironment(macCatalyst)
+        // The Mac pop-up sizes itself to the window (ChatSessionControlsMacPopover).
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #else
         .frame(minWidth: 280, idealWidth: usesWideLayout ? 600 : 338,
                maxWidth: usesWideLayout ? 600 : 338)
         .frame(
@@ -86,6 +111,7 @@ struct ChatSessionControlsPopover: View {
                 isVerticallyCompact: verticalSizeClass == .compact
             )
         )
+        #endif
         .bighelpSurface(
             BighelpPickerSheetLayout.rootSurfaceRole,
             tint: .none
@@ -111,6 +137,10 @@ struct ChatSessionControlsPopover: View {
             draft.reconcile(providerID: controls.currentProvider, modelID: controls.currentModel,
                             reasoningValue: controls.currentReasoningValue)
         }
+        #if targetEnvironment(macCatalyst)
+        .onAppear { isFrontmost = true }
+        .onDisappear { isFrontmost = false }
+        #endif
     }
 
     private var pickerContent: some View {
@@ -122,9 +152,21 @@ struct ChatSessionControlsPopover: View {
                 }
                 Spacer(minLength: 0)
                 Button(action: onSeeAllModels) {
+                    #if targetEnvironment(macCatalyst)
+                    // A bare chevron reads as decoration with a mouse; name where it goes.
+                    HStack(spacing: BighelpTokens.space4) {
+                        Text("All models").bighelpFont(.label, weight: .semibold)
+                        Image(systemName: "chevron.right")
+                    }
+                    .foregroundStyle(theme.action)
+                    .padding(.horizontal, BighelpTokens.space8)
+                    .frame(minHeight: BighelpTokens.hitTarget)
+                    .contentShape(.rect)
+                    #else
                     Image(systemName: "chevron.right")
                         .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                         .contentShape(.circle)
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("See all models")
@@ -180,13 +222,16 @@ struct ChatSessionControlsPopover: View {
                     selectedValue: draft.reasoningValue,
                     isEnabled: !controls.isApplyingSelection,
                     accessibilityIdentifier: "chat.reasoning-slider",
-                    onSelect: { draft.selectReasoning($0) }
+                    onSelect: { draft.selectReasoning($0) },
+                    takesKeyboardFocus: true
                 )
             }
+            #if !targetEnvironment(macCatalyst)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: BighelpTokens.space8) { cancelButton; applyButton }
                 VStack(spacing: BighelpTokens.space8) { cancelButton; applyButton }
             }
+            #endif
         }
         .foregroundStyle(theme.primaryText)
     }
@@ -201,6 +246,9 @@ struct ChatSessionControlsPopover: View {
         .buttonStyle(.plain)
         .bighelpSurface(.capsuleControl, isInteractive: true)
         .disabled(controls.isApplyingSelection)
+        #if targetEnvironment(macCatalyst)
+        .keyboardShortcut(isFrontmost ? .cancelAction : nil)
+        #endif
     }
 
     private var applyButton: some View {
@@ -216,8 +264,50 @@ struct ChatSessionControlsPopover: View {
                 onApplied()
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .keyboardShortcut(isFrontmost ? .defaultAction : nil)
+        #endif
         .accessibilityIdentifier("chat.session-controls.apply")
     }
 
     @BighelpThemeReader private var theme: BighelpTheme
 }
+
+#if targetEnvironment(macCatalyst)
+/// The pages inside the Mac's Model & reasoning pop-up.
+enum ChatSessionControlsPage: Hashable {
+    case allModels
+}
+
+/// The Mac's one surface for Model & reasoning: pinned and recent models with
+/// the reasoning level, and every model pushed inside the same pop-up. iPhone
+/// and iPad close the pop-up and open a sheet for every model instead.
+struct ChatSessionControlsMacPopover<AllModels: View>: View {
+    let controls: SessionRuntimeControlModel
+    @Binding var path: [ChatSessionControlsPage]
+    /// Fits the window; the caller measures the room beside the button.
+    let size: CGSize
+    let onApplied: () -> Void
+    @ViewBuilder let allModels: () -> AllModels
+
+    /// The quick choices' own height; All models takes all the room there is.
+    @State private var firstPageHeight: CGFloat = 0
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            ChatSessionControlsPopover(
+                controls: controls,
+                usesWideLayout: true,
+                onSeeAllModels: { path = [.allModels] },
+                onApplied: onApplied,
+                onContentHeight: { firstPageHeight = $0 }
+            )
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: ChatSessionControlsPage.self) { _ in allModels() }
+        }
+        .frame(width: size.width,
+               height: path.isEmpty && firstPageHeight > 0 ? min(size.height, firstPageHeight) : size.height)
+        .animation(.snappy, value: path.isEmpty)
+    }
+}
+#endif

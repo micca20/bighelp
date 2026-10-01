@@ -17,7 +17,7 @@ extension SettingsView {
                     .accessibilityIdentifier("settings.account.controls")
                 } label: {
                     Image(systemName: "person.crop.circle")
-                        .font(.title3.weight(.semibold))
+                        .font(.bighelp(.title3).weight(.semibold))
                         .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                         .contentShape(.rect)
                 }
@@ -29,6 +29,7 @@ extension SettingsView {
             NavigationStack {
                 accountControlsPage
             }
+            .bighelpSheetSize(.standard)
             .presentationDragIndicator(.visible)
         }
     }
@@ -82,7 +83,7 @@ extension SettingsView {
         } label: {
             HStack(spacing: BighelpTokens.space12) {
                 Image(systemName: presentation.systemImage)
-                    .font(.title3.weight(.semibold))
+                    .font(.bighelp(.title3).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                     .background(theme.action.opacity(0.1), in: .circle)
@@ -127,7 +128,11 @@ extension SettingsView {
                 Button("Done") {
                     isAccountControlsPresented = false
                 }
+                #if targetEnvironment(macCatalyst)
+                .keyboardShortcut(.cancelAction)
+                #endif
                 .accessibilityIdentifier("settings.account.controls.done")
+                    .bighelpToolbarText()
             }
         }
     }
@@ -229,7 +234,7 @@ extension SettingsView {
                         .bighelpFont(.metadata)
                         .foregroundStyle(theme.secondaryText)
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .foregroundStyle(theme.tertiaryText)
                         .accessibilityHidden(true)
                 }

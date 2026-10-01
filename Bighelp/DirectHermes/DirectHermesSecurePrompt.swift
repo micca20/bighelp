@@ -1043,7 +1043,14 @@ struct DirectHermesSecurePromptOverlay: View {
                     store: store,
                     prompt: prompt
                 )
+                .bighelpSheetSize(Self.sheetSize(prompt))
             }
+    }
+
+    /// One secret or password is a short panel; MCP setup lists its settings.
+    private static func sheetSize(_ prompt: DirectHermesSecurePrompt) -> BighelpSheetSize {
+        if case .mcpSetup = prompt.kind { return .standard }
+        return .compact
     }
 }
 
@@ -1109,7 +1116,9 @@ private struct DirectHermesSecurePromptView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", role: .cancel) { cancel() }
+                        .keyboardShortcut(.cancelAction)
                         .disabled(store.isWorking)
+                        .bighelpToolbarText()
                 }
             }
             .task(id: prompt.id) {

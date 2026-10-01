@@ -38,13 +38,13 @@ struct BighelpApp: App {
     private let cardCatalogInstalledVersions: [String: Int]
     @State private var featureStore: ShellFeatureStore
     private let subagentStreamAcceptanceFixture: SubagentStreamAcceptanceFixtureController?
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     private let watchRelay: WatchRelay
     #endif
     @State private var newChatCoordinator: NewChatCoordinator
     private let shortcutService: BighelpShortcutService
     @State private var reflectiveVisionCamera: ReflectiveVisionCamera
-    @State private var visionSideMenu = VisionSideMenu()
+    @State private var sideMenu = BighelpSideMenu()
     @State private var providerLogoStore: ProviderLogoStore?
     #if os(visionOS)
     @State private var spatialAvatar: SpatialAvatarModel
@@ -220,10 +220,12 @@ struct BighelpApp: App {
         bighelpCardDataClient = composition.bighelpCardDataClient
         _featureStore = State(initialValue: composition.featureStore)
         subagentStreamAcceptanceFixture = composition.subagentStreamAcceptanceFixture
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         let watchRelay = Self.makeWatchRelay(composition, connections: connections, arguments: arguments)
         watchRelay.activate()
         self.watchRelay = watchRelay
+        #endif
+        #if os(iOS)
         Self.configureCarPlay(composition, arguments: arguments)
         #endif
         _newChatCoordinator = State(initialValue: composition.newChatCoordinator)
@@ -237,7 +239,7 @@ struct BighelpApp: App {
         #endif
     }
 
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     /// The Watch talks through the same live host as Shortcuts, so it works
     /// with bighelp closed; demo runs use the local fixtures.
     private static func makeWatchRelay(_ composition: BighelpAppComposition, connections: WorkspaceConnectionStore,
@@ -403,7 +405,7 @@ struct BighelpApp: App {
                     NavigationStack(path: $navigation.path) {
                         rootShell(native: native, navigation: navigation)
                     }
-                    .modifier(VisionSideMenuHost(menu: visionSideMenu))
+                    .modifier(BighelpSideMenuHost(menu: sideMenu))
                     // Around the Dynamic Island: which agent is working, on what.
                     .environment(\.agentActivityInIsland, agentIsland.isAvailable)
                     .overlay(alignment: .top) { AgentActivityIslandLayer(model: agentIsland) }
@@ -444,6 +446,7 @@ struct BighelpApp: App {
             .environment(\.bighelpUIV2Enabled, settings.uiV2Enabled)
             .environment(\.bighelpUIV3Enabled, settings.interfaceVersion == .v3)
             .environment(\.nerdModeEnabled, settings.nerdModeEnabled)
+            .modifier(BighelpTextSizing())
             #if os(visionOS)
             .modifier(SpatialAvatarMainWindowHooks(model: spatialAvatar))
             // No app-wide tint here: visionOS would fill every toolbar button with it.
@@ -452,6 +455,7 @@ struct BighelpApp: App {
             // Lavender (asset AccentColor, light/dark) for every control that
             // doesn't set its own tint, including switches that default to green.
             .tint(Color.accentColor)
+            .modifier(BighelpMacWindowStyle())
             #endif
             .environment(\.companionStore, companion)
             .environment(\.providerLogoStore, providerLogoStore)
@@ -510,7 +514,7 @@ struct BighelpApp: App {
                     }
                 }
                 if phase == .active { BighelpBackgroundGrace.shared.cancel() }
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 if phase == .active { Task { await BighelpActivityKitDriver.dismissFinishedActivities() } }
                 #endif
                 Task { @MainActor in
@@ -537,6 +541,7 @@ struct BighelpApp: App {
             }
             }
         }
+        .commands { BighelpMenuCommands() }
         #if os(visionOS)
         // bighelp always starts in its own window; simple mode is a choice.
         .defaultLaunchBehavior(.presented)

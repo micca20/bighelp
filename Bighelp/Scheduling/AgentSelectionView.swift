@@ -6,6 +6,7 @@ struct AgentSelectionView: View {
     let agents: [AgentProfile]
     var avatarURL: @MainActor (AgentProfile) -> URL? = { _ in nil }
     let select: (AgentProfile) -> Void
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
@@ -22,11 +23,11 @@ struct AgentSelectionView: View {
                             .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(agent.name)
-                                    .font(.callout.weight(.semibold))
+                                    .font(.bighelp(.callout).weight(.semibold))
                                     .foregroundStyle(theme.primaryText)
                                 if !agent.role.isEmpty {
                                     Text(agent.role)
-                                        .font(.footnote)
+                                        .font(.bighelp(.footnote))
                                         .foregroundStyle(theme.secondaryText)
                                 }
                             }
@@ -63,6 +64,15 @@ struct AgentSelectionView: View {
         .background(theme.canvas.ignoresSafeArea())
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        #if targetEnvironment(macCatalyst)
+        // A Mac sheet can't be swiped away, so the picker needs its own way out.
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .bighelpToolbarText()
+            }
+        }
+        #endif
     }
 
     @BighelpThemeReader private var theme

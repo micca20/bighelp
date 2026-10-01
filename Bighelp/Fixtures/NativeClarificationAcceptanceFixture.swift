@@ -14,7 +14,7 @@ struct NativeClarificationAcceptanceFixtureView: View {
             if let fixture {
                 VStack(spacing: 0) {
                     Text(fixture.rpc.receipt)
-                        .font(.caption2)
+                        .font(.bighelp(.caption2))
                         .accessibilityIdentifier("native-clarify-fixture.receipt")
                     DirectHermesChatView(chat: fixture.chat, store: fixture.store)
                 }

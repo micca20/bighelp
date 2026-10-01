@@ -23,8 +23,8 @@ struct WorkspaceHubView: View {
         List {
             Section("Current workspace") {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                    Text(hostName).font(.headline)
-                    Text(profileName).font(.subheadline).foregroundStyle(theme.secondaryText)
+                    Text(hostName).font(.bighelp(.headline))
+                    Text(profileName).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Workspace, \(hostName), profile \(profileName)")
@@ -69,21 +69,21 @@ struct WorkspaceHubView: View {
         HStack(alignment: .center, spacing: BighelpTokens.space12) {
             BighelpIconTile(systemName: destination.symbol)
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                Text(destination.title).font(.body)
+                Text(destination.title).font(.bighelp(.body))
                 Text(unavailable[destination] ?? destination.summary)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: BighelpTokens.space8)
             if unavailable[destination] != nil {
                 Image(systemName: "info.circle")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.secondaryText)
                     .accessibilityHidden(true)
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
@@ -122,7 +122,7 @@ struct WorkspaceDocumentationView: View {
             }
             Section("About these links") {
                 Text("These links open the official documentation. They do not enable unavailable host features or change Hermes settings.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
             }
         }
@@ -170,7 +170,7 @@ struct WorkspaceSessionContentView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Label(file.fileName, systemImage: file.kind == .image ? "photo" : "doc")
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(file.data.count), countStyle: .file))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                         Button("Open chat") { onOpenChat(record.summary) }
@@ -183,7 +183,7 @@ struct WorkspaceSessionContentView: View {
             }
             Section {
                 Text("From the latest messages in \(records.count) chats for this agent.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 if catalog.records.filter({ $0.agentIDs.contains(profileID) }).count > limit {
                     Button("Load more chats") { limit += 10 }
                 }

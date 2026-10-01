@@ -36,6 +36,7 @@ struct WorktreeManagementView: View {
         .sheet(isPresented: $showsNewWorktree) {
             newWorktreeSheet
                 .presentationDetents([.medium])
+                .bighelpSheetSize(.compact)
         }
         .alert(item: Binding(
             get: { store.preparedAction },
@@ -77,8 +78,8 @@ struct WorktreeManagementView: View {
                         HStack {
                             Label(branch.name, systemImage: branch.isRemote ? "cloud" : "arrow.triangle.branch")
                             Spacer()
-                            if branch.isDefault { Text("Default").font(.caption).foregroundStyle(.secondary) }
-                            if branch.isCheckedOut { Text("Checked out").font(.caption).foregroundStyle(.secondary) }
+                            if branch.isDefault { Text("Default").font(.bighelp(.caption)).foregroundStyle(.secondary) }
+                            if branch.isCheckedOut { Text("Checked out").font(.bighelp(.caption)).foregroundStyle(.secondary) }
                         }
                         if !branch.isCheckedOut && store.canAct {
                             HStack {
@@ -114,7 +115,7 @@ struct WorktreeManagementView: View {
                             Spacer()
                             if worktree.isLocked { Image(systemName: "lock.fill").accessibilityLabel("Locked") }
                         }
-                        Text(worktree.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text(worktree.path).font(.bighelp(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
                         if !worktree.isMain && !worktree.isLocked {
                             Button("Review removal", role: .destructive) {
                                 store.review(.removeWorktree(path: worktree.path, force: false))
@@ -152,14 +153,15 @@ struct WorktreeManagementView: View {
                 }
                 Section("Location") {
                     Text("Hermes chooses the worktree folder under the repository. This form cannot enter a host path or command.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Add Worktree")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showsNewWorktree = false }
+                    Button("Cancel") { showsNewWorktree = false }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Review") {

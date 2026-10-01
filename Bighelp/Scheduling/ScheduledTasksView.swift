@@ -54,6 +54,7 @@ struct ScheduledTasksView: View {
                         }
                     )
                 }
+                .bighelpSheetSize(.standard)
             }
             .sheet(isPresented: $isAgentPickerPresented) {
                 NavigationStack {
@@ -67,11 +68,13 @@ struct ScheduledTasksView: View {
                         createAgent = agent
                     }
                 }
+                .bighelpSheetSize(.compact)
             }
             .sheet(isPresented: $isBlueprintsPresented) {
                 NavigationStack {
                     ScheduledTaskBlueprintsView(store: store, agents: agents)
                 }
+                .bighelpSheetSize(.large)
             }
     }
 
@@ -202,7 +205,7 @@ struct ScheduledTasksView: View {
             .accessibilityIdentifier("scheduled-task.row.toggle.\(task.identity.accessibilitySuffix)")
         } else {
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .font(.bighelp(.footnote).weight(.semibold))
                 .foregroundStyle(theme.tertiaryText)
                 .accessibilityHidden(true)
         }

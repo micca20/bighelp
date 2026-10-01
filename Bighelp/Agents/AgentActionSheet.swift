@@ -53,7 +53,10 @@ struct AgentActionSheet: View {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
                         .foregroundStyle(theme.action)
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                 }
             }
         }
@@ -66,18 +69,18 @@ struct AgentActionSheet: View {
                        imageURL: imageURL, size: 72)
                 .accessibilityHidden(true)
             Text(agent.name)
-                .font(.title3.weight(.bold))
+                .font(.bighelp(.title3).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .multilineTextAlignment(.center)
             if !agent.role.isEmpty {
                 Text(agent.role)
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
             }
             if !agent.summary.isEmpty {
                 Text(agent.summary)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -119,7 +122,7 @@ struct AgentActionSheet: View {
                         Image(systemName: isMessage ? "message.fill" : item.systemImage)
                             .font(.system(size: 18, weight: .semibold))
                         Text(item.title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                     }
                     .foregroundStyle(isMessage ? theme.actionForeground : theme.action)
                     .frame(maxWidth: .infinity, minHeight: 60)
@@ -167,11 +170,11 @@ struct AgentActionSheet: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
-                            .font(.body)
+                            .font(.bighelp(.body))
                             .foregroundStyle(item.isEnabled ? theme.primaryText : theme.secondaryText)
                         if let detail = item.detail {
                             Text(detail)
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(theme.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

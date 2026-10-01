@@ -41,7 +41,8 @@ struct BighelpLinkPairingView: View {
         .toolbar {
             if allowsDismiss {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
             }
         }
@@ -58,6 +59,7 @@ struct BighelpLinkPairingView: View {
                     Task { await store.completePairing(reference: reference) }
                 }
             }
+            .bighelpSheetSize(.standard)
         }
         .task(id: initialReference) {
             if initialReference != nil {

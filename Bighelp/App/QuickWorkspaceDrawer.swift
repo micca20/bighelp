@@ -72,7 +72,7 @@ enum QuickWorkspaceSectionPresentation {
         .sessions,
         .agents,
     ]
-    static let buttonMinimumHeight: CGFloat = BighelpTokens.hitTarget
+    static var buttonMinimumHeight: CGFloat { BighelpTokens.hitTarget }
     static let sectionContentSpacing: CGFloat = BighelpTokens.space8
 }
 
@@ -209,7 +209,7 @@ struct WorkspaceMenuButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "line.3.horizontal")
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .contentShape(.circle)
@@ -320,7 +320,7 @@ struct QuickWorkspaceDrawer: View {
                             .foregroundStyle(theme.primaryText)
                         Spacer(minLength: BighelpTokens.space8)
                         Image(systemName: "pin.fill")
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(theme.secondaryText)
                             .accessibilityLabel("Pinned")
                     }
@@ -481,7 +481,7 @@ struct ShellNewChatButton: View {
             action()
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(.circle)
         }

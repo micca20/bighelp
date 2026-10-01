@@ -56,7 +56,8 @@ struct BighelpLinkRenameDeviceView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .bighelpToolbarText()
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: save)

@@ -91,25 +91,25 @@ struct LinkPreviewCard: View {
             HStack(spacing: BighelpTokens.space12) {
                 if preview?.imageAspect == nil {
                     Image(systemName: "link")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                         .frame(width: 34, height: 34)
                         .background(theme.surface, in: .rect(cornerRadius: 8, style: .continuous))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(2)
                     if let summary = preview?.summary {
                         Text(summary)
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(2)
                     }
                     if site != title {
                         Text(site)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(theme.tertiaryText)
                             .lineLimit(1)
                     }

@@ -154,7 +154,7 @@ struct HostSetupView: View {
         .environment(\.defaultMinListRowHeight, 44)
         .toolbar {
             if allowsDismiss {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { finish() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { finish() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

@@ -10,7 +10,7 @@ struct AgentStudioCaption: View {
 
     var body: some View {
         Text(title)
-            .font(.caption2.weight(.bold))
+            .font(.bighelp(.caption2).weight(.bold))
             .tracking(0.9)
             .textCase(.uppercase)
             .foregroundStyle(theme.secondaryText)
@@ -109,7 +109,7 @@ struct AgentStartPicker: View {
 
     private func note(_ text: String) -> some View {
         Text(text)
-            .font(.footnote)
+            .font(.bighelp(.footnote))
             .foregroundStyle(theme.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -122,21 +122,21 @@ struct AgentStartPicker: View {
         return Button(action: action) {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : systemImage)
-                    .font(.title3)
+                    .font(.bighelp(.title3))
                     .foregroundStyle(isSelected ? theme.actionForeground : theme.action)
                     .frame(height: 28)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(ink)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.subheadline.weight(.medium))
+                    .font(.bighelp(.subheadline).weight(.medium))
                     .foregroundStyle(secondary)
                     .lineLimit(2)
                 if !detail.isEmpty {
                     Text(detail)
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .foregroundStyle(secondary)
                         .lineLimit(3)
                 }

@@ -154,6 +154,16 @@ struct ChatView: View {
     @State private var isChatVisible = false
 
     @State private var isSessionControlsPresented = false
+    #if targetEnvironment(macCatalyst)
+    /// The Mac's Model & reasoning pop-up hangs from what opened it: the ⋯
+    /// button, or the message box for requests from elsewhere (the context
+    /// ring, chat Info, the agent's profile).
+    private enum SessionControlsOrigin { case options, composer }
+    @State private var sessionControlsOrigin = SessionControlsOrigin.options
+    @State private var sessionControlsPath: [ChatSessionControlsPage] = []
+    @State private var optionsButtonBottom: CGFloat = 0
+    @State private var canvasWidth: CGFloat = 0
+    #endif
     @State private var agentEditorRoute: ChatAgentEditorRoute?
     @State private var sessionTitleDialog: SessionTitleDialog?
     @State private var sessionTitleDraft = ""
@@ -276,34 +286,7 @@ struct ChatView: View {
         }
         .sheet(isPresented: $isAllModelsPresented) {
             if let controls = model.runtimeControls {
-                BighelpModelPickerSheet(
-                    title: "Choose model",
-                    scopeLabel: "This chat only",
-                    providers: controls.modelProviders,
-                    currentProviderID: controls.currentProvider,
-                    currentModelID: controls.currentModel,
-                    isLoading: controls.isLoadingModel,
-                    isApplying: controls.isApplyingSelection,
-                    errorMessage: controls.errorMessage,
-                    onClearError: controls.clearError,
-                    onRetry: {
-                        Task { await controls.loadPickersIfNeeded() }
-                    },
-                    onSelect: { _, _ in },
-                    isModelPinned: controls.isModelPinned,
-                    onToggleModelPin: { providerID, modelID in
-                        controls.toggleModelPin(providerID: providerID, modelID: modelID)
-                    },
-                    reasoningOptions: controls.reasoningOptions,
-                    currentReasoningValue: controls.currentReasoningValue,
-                    statusMessage: controls.statusMessage,
-                    modelUnavailableReason: runtimeSupport?.modelUnavailableReason,
-                    reasoningUnavailableReason: runtimeSupport?.reasoningUnavailableReason,
-                    modelConfirmation: controls.pendingModelConfirmation,
-                    onConfirmModel: confirmSessionModel,
-                    onCancelModelConfirmation: { controls.cancelModelConfirmation(expected: $0) },
-                    onApply: applySelection
-                )
+                allModelsPicker(controls, support: runtimeSupport)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
@@ -332,16 +315,26 @@ struct ChatView: View {
             guard !ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive) else {
                 return
             }
+            #if targetEnvironment(macCatalyst)
+            sessionControlsPath = [.allModels]
+            openSessionControls(controls)
+            #else
             isSessionControlsPresented = false
             isAllModelsPresented = true
             Task { @MainActor in await controls.loadPickersIfNeeded() }
+            #endif
         }
         .onChange(of: model.sessionControlsRequest) { _, _ in
             guard let controls = model.runtimeControls,
                   !ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive) else { return }
             // The sheet or pop-up that asked is still closing; present after it's gone.
             Task { @MainActor in
+                #if targetEnvironment(macCatalyst)
+                await Self.presentationsSettled()
+                sessionControlsOrigin = .composer
+                #else
                 try? await Task.sleep(for: .milliseconds(450))
+                #endif
                 openSessionControls(controls)
             }
         }
@@ -553,6 +546,9 @@ struct ChatView: View {
                     VStack(spacing: 0) {
                         composer
                             .fixedSize(horizontal: false, vertical: !(referenceHub ?? fallbackReferenceHub).isPresented)
+                            #if targetEnvironment(macCatalyst)
+                            .popover(isPresented: sessionControlsPresented(from: .composer)) { macSessionControls }
+                            #endif
                         // The Chat tab keeps its bottom bar under the composer.
                         if homeChrome.isEnabled, homeChrome.isHome, let selection = homeChrome.tabSelection,
                            !isDraftFocused, !BighelpPlatform.usesTabOrnament {
@@ -580,6 +576,9 @@ struct ChatView: View {
                 proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
             } action: { screenHeight = $0 }
             .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomSafeArea = $0 }
+            #if targetEnvironment(macCatalyst)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { canvasWidth = $0 }
+            #endif
     }
 
     /// Each control samples the transcript, never an opaque toolbar slab.
@@ -646,7 +645,7 @@ struct ChatView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.title3.weight(.semibold))
+                        .font(.bighelp(.title3).weight(.semibold))
                         .frame(width: 44, height: 44)
                         .contentShape(.circle)
                         .bighelpNavigationGlass(in: Circle(), isInteractive: true)
@@ -660,7 +659,7 @@ struct ChatView: View {
             HStack(spacing: 4) {
                 Button(action: onNewChatTap) {
                     Image(systemName: "square.and.pencil")
-                        .font(.title3)
+                        .font(.bighelp(.title3))
                         .frame(width: 44, height: 44)
                         .contentShape(.circle)
                         .bighelpNavigationGlass(in: Circle(), isInteractive: true)
@@ -741,10 +740,18 @@ struct ChatView: View {
     }
 
     /// Model & reasoning, from the ⋯ menu. Anchored to whichever header shows
-    /// (the agent-home header has no small identity button).
+    /// (the agent-home header has no small identity button). The Mac hangs it
+    /// from the ⋯ button itself (`macSessionControls`).
     private var sessionControlsAnchor: some View {
         Color.clear
             .frame(width: 1, height: 1)
+            #if targetEnvironment(macCatalyst)
+            .onChange(of: isSessionControlsPresented) { _, presented in
+                guard !presented else { return }
+                sessionControlsPath = []
+                sessionControlsOrigin = .options
+            }
+            #else
             .popover(isPresented: $isSessionControlsPresented, arrowEdge: .top) {
                 if let controls = model.runtimeControls {
                     ChatSessionControlsPopover(
@@ -756,6 +763,9 @@ struct ChatView: View {
                     .presentationCompactAdaptation(.popover)
                 }
             }
+            #endif
+            // Hermes takes a new model or level on the next turn, so a turn that
+            // starts closes the picker rather than promise a change mid-answer.
             .onChange(of: model.runtimeControls?.isTurnActive) { _, active in
                 if active == true {
                     isSessionControlsPresented = false
@@ -764,6 +774,66 @@ struct ChatView: View {
             }
             .accessibilityHidden(true)
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Presented from `origin` only, so the ⋯ button and the message box never both show it.
+    private func sessionControlsPresented(from origin: SessionControlsOrigin) -> Binding<Bool> {
+        Binding(
+            get: { isSessionControlsPresented && sessionControlsOrigin == origin && model.runtimeControls != nil },
+            set: { if !$0 { isSessionControlsPresented = false } }
+        )
+    }
+
+    /// One pop-up for the Mac: quick choices and reasoning, with every model
+    /// pushed inside it instead of closing it for a sheet.
+    @ViewBuilder
+    private var macSessionControls: some View {
+        if let controls = model.runtimeControls {
+            ChatSessionControlsMacPopover(
+                controls: controls,
+                path: $sessionControlsPath,
+                size: sessionControlsSize,
+                onApplied: { isSessionControlsPresented = false }
+            ) {
+                allModelsPicker(controls, support: controls.selectionSupport, isEmbedded: true) {
+                    isSessionControlsPresented = false
+                }
+            }
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    /// Fits the window: the room below the ⋯ button, or above the message box.
+    private var sessionControlsSize: CGSize {
+        let room = sessionControlsOrigin == .options
+            ? screenHeight - optionsButtonBottom
+            : screenHeight - composerHeight - bottomSafeArea
+        let width: CGFloat = canvasWidth > 0 ? min(560, canvasWidth - 32) : 560
+        // Leaves the arrow and a margin clear of the window's edge.
+        return CGSize(width: width, height: min(620, max(320, room - 48)))
+    }
+
+    /// A pop-up presented while a sheet is still closing is dropped. Waits for
+    /// whatever is opening or closing to finish (at most a second), instead of a fixed delay.
+    private static func presentationsSettled() async {
+        for _ in 0..<25 {
+            // The first pause also lets the sheet that asked begin to close.
+            try? await Task.sleep(for: .milliseconds(40))
+            let windows = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+            let isTransitioning = windows.contains { window in
+                var controller = window.rootViewController
+                while let current = controller {
+                    if current.isBeingPresented || current.isBeingDismissed { return true }
+                    controller = current.presentedViewController
+                }
+                return false
+            }
+            if !isTransitioning { return }
+        }
+    }
+    #endif
 
     private var conversationIdentityButton: some View {
         Button {
@@ -951,9 +1021,20 @@ struct ChatView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
+                #if targetEnvironment(macCatalyst)
+                // The same glyph as New chat beside it.
+                .font(.bighelp(.title3).weight(homeChrome.isEnabled ? .semibold : .regular))
+                #endif
                 .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
             .contentShape(.rect)
         }
+        #if targetEnvironment(macCatalyst)
+        // Drawn like the round buttons beside it, not as a Mac pull-down button.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .popover(isPresented: sessionControlsPresented(from: .options), arrowEdge: .top) { macSessionControls }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { optionsButtonBottom = $0 }
+        #endif
         .accessibilityLabel("Conversation options")
         .accessibilityHint(nerdModeEnabled
             ? "Go to, file changes, model, usage, this chat, the agent and advanced options"
@@ -1051,6 +1132,8 @@ struct ChatView: View {
         )]
     }
 
+    /// iPhone and iPad: close the pop-up and open every model in a sheet. (The
+    /// Mac pushes them inside the pop-up; see `ChatSessionControlsMacPopover`.)
     private func showAllModels() {
         guard !model.isAwaitingAuthoritativeSessionAllocation else { return }
         let closingPopover = isSessionControlsPresented
@@ -1110,6 +1193,46 @@ struct ChatView: View {
         BighelpKeyboard.dismiss()
     }
 
+    /// Every model, with reasoning: the iPhone and iPad sheet, or the page the
+    /// Mac pushes inside its Model & reasoning pop-up.
+    private func allModelsPicker(
+        _ controls: SessionRuntimeControlModel,
+        support: SessionRuntimeControlSupport?,
+        isEmbedded: Bool = false,
+        onClose: (() -> Void)? = nil
+    ) -> BighelpModelPickerSheet {
+        BighelpModelPickerSheet(
+            title: "Choose model",
+            scopeLabel: "This chat only",
+            providers: controls.modelProviders,
+            currentProviderID: controls.currentProvider,
+            currentModelID: controls.currentModel,
+            isLoading: controls.isLoadingModel,
+            isApplying: controls.isApplyingSelection,
+            errorMessage: controls.errorMessage,
+            onClearError: controls.clearError,
+            onRetry: {
+                Task { await controls.loadPickersIfNeeded() }
+            },
+            onSelect: { _, _ in },
+            isModelPinned: controls.isModelPinned,
+            onToggleModelPin: { providerID, modelID in
+                controls.toggleModelPin(providerID: providerID, modelID: modelID)
+            },
+            reasoningOptions: controls.reasoningOptions,
+            currentReasoningValue: controls.currentReasoningValue,
+            statusMessage: controls.statusMessage,
+            modelUnavailableReason: support?.modelUnavailableReason,
+            reasoningUnavailableReason: support?.reasoningUnavailableReason,
+            modelConfirmation: controls.pendingModelConfirmation,
+            onConfirmModel: confirmSessionModel,
+            onCancelModelConfirmation: { controls.cancelModelConfirmation(expected: $0) },
+            isEmbedded: isEmbedded,
+            onClose: onClose,
+            onApply: applySelection
+        )
+    }
+
     private func applySelection(_ draft: SessionRuntimeSelectionDraft) {
         guard let controls = model.runtimeControls else { return }
         Task {
@@ -1119,7 +1242,7 @@ struct ChatView: View {
             guard controls.errorMessage == nil else { return }
             await controls.loadReasoningPicker()
             guard controls.errorMessage == nil else { return }
-            isAllModelsPresented = false
+            closeAllModels()
         }
     }
 
@@ -1129,8 +1252,16 @@ struct ChatView: View {
             guard await controls.confirmModelSelection(confirmation) else { return }
             await controls.loadPickersIfNeeded()
             guard controls.errorMessage == nil else { return }
-            isAllModelsPresented = false
+            closeAllModels()
         }
+    }
+
+    private func closeAllModels() {
+        isAllModelsPresented = false
+        #if targetEnvironment(macCatalyst)
+        // Every model is a page inside the pop-up there.
+        isSessionControlsPresented = false
+        #endif
     }
 
     @BighelpThemeReader var theme: BighelpTheme

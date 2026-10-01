@@ -304,11 +304,11 @@ final class ProviderHostSignInStore {
             case "sign_in_not_waiting": return "\(client) isn't waiting for a code right now."
             case "sign_in_code_invalid": return "That doesn't look like the code from the page. Copy it again."
             case "sign_in_busy": return "Too many sign-ins are running on \(hostName). Try again in a minute."
-            case "sign_in_unavailable": return "This account can't sign in from the phone."
+            case "sign_in_unavailable": return "This account can't sign in from \(BighelpPlatform.isMac ? "this Mac" : "the phone")."
             default: return "\(hostName) couldn't start the sign-in. Try again."
             }
         case .unavailable?:
-            return "Update the bighelp plugin on \(hostName) to sign in from your phone."
+            return "Update the bighelp plugin on \(hostName) to sign in from your \(BighelpPlatform.isMac ? "Mac" : "phone")."
         case .outcomeUnknown?, .transportUnavailable?:
             return "\(client) couldn't start on \(hostName). Check that the computer is online and try again."
         default:

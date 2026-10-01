@@ -148,20 +148,20 @@ struct LocalModelsView: View {
                 ForEach(store.jobs) { job in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack {
-                            Text(job.target).font(.headline)
+                            Text(job.target).font(.bighelp(.headline))
                             Spacer()
                             jobState(job)
                         }
                         Text(job.phase.replacingOccurrences(of: "-", with: " ").capitalized)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(.secondary)
                         if !job.detail.isEmpty {
-                            Text(job.detail).font(.footnote).foregroundStyle(.secondary)
+                            Text(job.detail).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                         }
                         if let total = job.totalBytes, total > 0 {
                             ProgressView(value: Double(min(job.completedBytes, total)), total: Double(total))
                             Text("\(LocalModelsStore.byteLabel(job.completedBytes)) of \(LocalModelsStore.byteLabel(total))")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         } else if job.state == .running {
                             ProgressView()
                         }
@@ -186,23 +186,23 @@ struct LocalModelsView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                Text(model.id).font(.headline)
-                                Text(model.sizeLabel).font(.caption).foregroundStyle(.secondary)
+                                Text(model.id).font(.bighelp(.headline))
+                                Text(model.sizeLabel).font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if status.activeModelID == model.id {
-                                Label("Default", systemImage: "checkmark.circle.fill").font(.caption)
+                                Label("Default", systemImage: "checkmark.circle.fill").font(.bighelp(.caption))
                             }
                         }
                         if let resident = status.loadedModels[model.id] {
                             LabeledContent("Memory", value: resident.capitalized)
                             if let placement = status.placements[model.id] {
-                                Text(placementText(placement)).font(.caption).foregroundStyle(.secondary)
+                                Text(placementText(placement)).font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         } else if let loading = status.loadingModels[model.id] {
                             ProgressView(value: loading.percent, total: 100)
                             Text("Loading: \(loading.stage) • \(loading.percent.formatted(.number.precision(.fractionLength(0))))%")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         } else {
                             LabeledContent("Memory", value: "Not resident")
                         }
@@ -243,22 +243,22 @@ struct LocalModelsView: View {
                 ForEach(store.catalog) { model in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(model.displayName).font(.headline)
+                            Text(model.displayName).font(.bighelp(.headline))
                             Spacer()
-                            if model.isRecommended { Label("Recommended", systemImage: "star.fill").font(.caption) }
+                            if model.isRecommended { Label("Recommended", systemImage: "star.fill").font(.bighelp(.caption)) }
                         }
-                        if !model.summary.isEmpty { Text(model.summary).font(.footnote) }
+                        if !model.summary.isEmpty { Text(model.summary).font(.bighelp(.footnote)) }
                         Text("\(model.sizeLabel) • \(model.nativeContextLabel) native context")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         Label(model.fitSummary, systemImage: model.fitsHost ? "checkmark.circle" : "xmark.circle")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(model.fitsHost ? Color.secondary : Color.orange)
                         if let detail = model.fitDetail {
-                            Text(detail).font(.caption).foregroundStyle(.secondary)
+                            Text(detail).font(.bighelp(.caption)).foregroundStyle(.secondary)
                         }
                         if model.needsNewerRuntime {
                             Text("Requires \(model.minimumRuntime ?? "a newer llama.cpp runtime") before download or use.")
-                                .font(.caption).foregroundStyle(.orange)
+                                .font(.bighelp(.caption)).foregroundStyle(.orange)
                         }
                         if model.isDownloaded {
                             Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.secondary)
@@ -296,7 +296,7 @@ struct LocalModelsView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Text(result.repository)
                         Text("\(result.downloads.formatted()) downloads • \(result.likes.formatted()) likes\(result.isGated ? " • gated" : "")")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -305,9 +305,9 @@ struct LocalModelsView: View {
             if let repository = store.selectedRepository {
                 ForEach(store.repositoryFiles) { group in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                        Text(group.label).font(.headline)
+                        Text(group.label).font(.bighelp(.headline))
                         Text("\(LocalModelsStore.byteLabel(group.totalBytes)) • \(fitLabel(group.fit))")
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(group.fit == .tooBig ? Color.orange : Color.secondary)
                         Button("Review Download") {
                             store.prepareBrowsedDownload(repository: repository, group: group)
@@ -346,11 +346,11 @@ struct LocalModelsView: View {
     private func jobState(_ job: HermesLocalRuntimeJob) -> some View {
         switch job.state {
         case .running:
-            Label("Running", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            Label("Running", systemImage: "clock").font(.bighelp(.caption)).foregroundStyle(.secondary)
         case .done:
-            Label("Done", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+            Label("Done", systemImage: "checkmark.circle.fill").font(.bighelp(.caption)).foregroundStyle(.green)
         case .error:
-            Label("Failed", systemImage: "xmark.circle.fill").font(.caption).foregroundStyle(.red)
+            Label("Failed", systemImage: "xmark.circle.fill").font(.bighelp(.caption)).foregroundStyle(.red)
         }
     }
 

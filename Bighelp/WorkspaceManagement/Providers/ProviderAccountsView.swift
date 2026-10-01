@@ -625,6 +625,7 @@ struct ProviderAccountsView: View {
             if let target = lastSignIn { Task { await store.closeSignIn(target) } }
         }) { provider in
             ProviderSignInSheet(store: store, provider: provider)
+                .bighelpSheetSize(.standard)
         }
         .confirmationDialog(
             "Disconnect this account?", isPresented: Binding(
@@ -703,7 +704,7 @@ struct ProviderAccountsView: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
-                                .font(.title3)
+                                .font(.bighelp(.title3))
                                 .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
                                 .contentShape(.rect)
                         }
@@ -813,11 +814,13 @@ struct ProviderAccountsView: View {
             NavigationStack {
                 ProviderEndpointEditorView(store: store, endpoint: nil) { addingEndpoint = false }
             }
+            .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: $addingPoolCredential) {
             NavigationStack {
                 ProviderPoolCredentialEditorView(store: store) { addingPoolCredential = false }
             }
+            .bighelpSheetSize(.standard)
         }
         .confirmationDialog(
             "Remove this account credential?", isPresented: Binding(
@@ -896,7 +899,7 @@ struct ProviderAccountsView: View {
             if let provider = snapshot.runtime?.providerID { LabeledContent("Effective provider", value: provider) }
             if let model = snapshot.runtime?.modelID { LabeledContent("Effective model", value: model) }
             if let error = snapshot.runtime?.errorMessage, !error.isEmpty {
-                Text(error).font(.footnote).foregroundStyle(.secondary)
+                Text(error).font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
     }
@@ -926,7 +929,7 @@ struct ProviderAccountsView: View {
                         }
                     }
                     Text([provider.authType, "\(provider.modelCount) models"].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.bighelp(.caption)).foregroundStyle(.secondary)
                 }
                 .accessibilityIdentifier("providers.supported.\(provider.id)")
             }
@@ -945,7 +948,7 @@ struct ProviderAccountsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(ProviderCredentialPresentation.title(credential))
                         Text(ProviderCredentialPresentation.subtitle(credential))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -966,7 +969,7 @@ struct ProviderAccountsView: View {
                             Text(endpoint.name)
                             if endpoint.isCurrent { Image(systemName: "checkmark").accessibilityLabel("Profile default") }
                         }
-                        Text(endpoint.baseURL).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        Text(endpoint.baseURL).font(.bighelp(.caption)).foregroundStyle(.secondary).lineLimit(2)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -985,7 +988,7 @@ struct ProviderAccountsView: View {
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(entry.label)
-                                    Text(entry.source).font(.caption).foregroundStyle(.secondary)
+                                    Text(entry.source).font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Button("Remove", role: .destructive) {
@@ -1084,7 +1087,7 @@ struct ProviderCredentialEditorView: View {
                     LabeledContent("Field", value: credential.id)
                     LabeledContent("Provider", value: ProviderCredentialPresentation.providerName(credential))
                     LabeledContent("Status", value: credential.isSet ? "Configured" : "Not configured")
-                    if !credential.description.isEmpty { Text(credential.description).font(.footnote) }
+                    if !credential.description.isEmpty { Text(credential.description).font(.bighelp(.footnote)) }
                 }
                 Section {
                     SecureField("New value", text: $value)
@@ -1217,7 +1220,7 @@ private struct ProviderEndpointEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if onDone != nil {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onDone?() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onDone?() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
             }
         }
         .onChange(of: apiKey) { _, _ in store.clearEndpointValidation() }
@@ -1293,7 +1296,7 @@ private struct ProviderPoolCredentialEditorView: View {
         }
         .navigationTitle("Add Account Credential")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onDone) } }
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onDone).keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         .onDisappear { apiKey = "" }
         .confirmationDialog("Add this account credential?", isPresented: $confirm, titleVisibility: .visible) {
             Button("Add") {

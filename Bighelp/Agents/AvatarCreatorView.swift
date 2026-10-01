@@ -161,8 +161,12 @@ struct AvatarCreatorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                         .accessibilityIdentifier("avatar.creator.cancel")
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use avatar") {
@@ -184,9 +188,11 @@ struct AvatarCreatorView: View {
 
     /// Phone and iPad: the character on top, choices under it. Vision Pro: the
     /// 3D character beside the choices, in a wider sheet, so both have room.
+    /// The Mac too: its sheet is wide and short, so a stage on top left the
+    /// choices a sliver.
     @ViewBuilder
     private var layout: some View {
-        #if os(visionOS)
+        #if os(visionOS) || targetEnvironment(macCatalyst)
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 stage
@@ -244,7 +250,7 @@ struct AvatarCreatorView: View {
                 reaction: model.isCelebrating ? .celebrate : .idle,
                 isAnimating: true
             )
-            .frame(width: 180, height: 180)
+            .frame(width: Self.previewSize, height: Self.previewSize)
             .contentShape(.rect)
             .onTapGesture { model.celebrate() }
             .accessibilityAddTraits(.isButton)
@@ -254,7 +260,7 @@ struct AvatarCreatorView: View {
             .padding(.top, BighelpTokens.space20)
             #endif
             Text(model.appearance.character.displayName)
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(theme.primaryText)
                 .padding(.horizontal, BighelpTokens.space16)
                 .padding(.vertical, BighelpTokens.space16)
@@ -278,12 +284,17 @@ struct AvatarCreatorView: View {
             .accessibilityHint("Tries a random character and look.")
             .accessibilityIdentifier("avatar.creator.shuffle")
         }
-        #if os(visionOS)
+        #if os(visionOS) || targetEnvironment(macCatalyst)
         .frame(maxHeight: .infinity)
         #else
         .frame(height: 260)
         #endif
     }
+
+    #if !os(visionOS)
+    /// The Mac's stage is the sheet's full height, so the character can be bigger.
+    private static var previewSize: CGFloat { BighelpPlatform.isMac ? 240 : 180 }
+    #endif
 
     #if os(visionOS)
     /// Moods to try on the 3D stage: how it looks while the agent works.
@@ -314,7 +325,7 @@ struct AvatarCreatorView: View {
                             withAnimation(.snappy) { tryingMood = tryout.mood }
                         } label: {
                             Text(tryout.title)
-                                .font(.callout.weight(.semibold))
+                                .font(.bighelp(.callout).weight(.semibold))
                                 .foregroundStyle(isSelected ? theme.actionForeground : theme.primaryText)
                                 .padding(.horizontal, BighelpTokens.space16)
                                 .frame(minHeight: BighelpTokens.hitTarget)
@@ -334,7 +345,7 @@ struct AvatarCreatorView: View {
                         } label: {
                             Label(isShowingInRoom ? "In your room" : "See it in your room",
                                   systemImage: "cube.transparent")
-                                .font(.callout.weight(.semibold))
+                                .font(.bighelp(.callout).weight(.semibold))
                                 .foregroundStyle(theme.action)
                                 .padding(.horizontal, BighelpTokens.space16)
                                 .frame(minHeight: BighelpTokens.hitTarget)
@@ -378,7 +389,7 @@ struct AvatarCreatorView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .frame(height: 22)
                         Text(tab.title)
-                            .font(.caption2.weight(.semibold))
+                            .font(.bighelp(.caption2).weight(.semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -476,7 +487,7 @@ struct AvatarCreatorView: View {
                     label: "Theme color",
                     identifier: "avatar.creator.color.theme"
                 ) { model.selectThemeColor() } overlay: {
-                    Image(systemName: "sparkles").font(.caption.weight(.bold)).foregroundStyle(theme.actionForeground)
+                    Image(systemName: "sparkles").font(.bighelp(.caption).weight(.bold)).foregroundStyle(theme.actionForeground)
                 }
                 ForEach(AvatarCreatorModel.palette, id: \.hex) { color in
                     swatch(
@@ -624,7 +635,7 @@ struct AvatarCreatorView: View {
                         withAnimation(.snappy) { model.appearance.vibe = vibe }
                     } label: {
                         Label(vibe.displayName, systemImage: vibe.systemImage)
-                            .font(.body.weight(.semibold))
+                            .font(.bighelp(.body).weight(.semibold))
                             .foregroundStyle(isSelected ? theme.actionForeground : theme.primaryText)
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(
@@ -682,7 +693,7 @@ struct AvatarCreatorView: View {
                     .frame(width: 58, height: 58)
                     .allowsHitTesting(false)
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                     .foregroundStyle(isSelected ? theme.action : theme.secondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

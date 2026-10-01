@@ -15,7 +15,7 @@ struct VoiceConfigurationRecordingControls: View {
 
             if let error = controller.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("voice.configuration.recording-error")
             }

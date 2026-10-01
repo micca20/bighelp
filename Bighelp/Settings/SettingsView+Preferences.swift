@@ -133,7 +133,7 @@ extension SettingsView {
                             .foregroundStyle(theme.secondaryText)
                     }
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .foregroundStyle(theme.tertiaryText)
                         .accessibilityHidden(true)
                 }
@@ -145,7 +145,10 @@ extension SettingsView {
         .listRowBackground(theme.surface)
     }
 
+    /// A Mac has no screen edges to swipe from.
+    @ViewBuilder
     var edgeGestures: some View {
+        #if !targetEnvironment(macCatalyst)
         Section {
             Picker("Swipe from left edge", selection: $settings.leftEdgeSwipeAction) {
                 ForEach(WorkspaceSwipeAction.allCases) { action in
@@ -169,10 +172,12 @@ extension SettingsView {
                 .bighelpFont(.metadata)
         }
         .listRowBackground(theme.surface)
+        #endif
     }
 
     private var chatBasics: some View {
         Section {
+            #if !targetEnvironment(macCatalyst) // A Mac has no haptics.
             Toggle(isOn: $settings.responseHapticsEnabled) {
                 settingLabel(
                     "Response haptics",
@@ -180,6 +185,7 @@ extension SettingsView {
                 )
             }
             .accessibilityIdentifier("settings.chat.response-haptics")
+            #endif
 
             Toggle(isOn: $settings.reactionsReachAgent) {
                 settingLabel(
@@ -189,6 +195,7 @@ extension SettingsView {
             }
             .accessibilityIdentifier("settings.chat.reactions-reach-agent")
 
+            #if !targetEnvironment(macCatalyst) // The island is an iPhone's.
             Toggle(isOn: $settings.agentIslandEnabled) {
                 settingLabel(
                     "Agent in the Dynamic Island",
@@ -196,16 +203,23 @@ extension SettingsView {
                 )
             }
             .accessibilityIdentifier("settings.chat.agent-island")
+            #endif
 
             ReturnSendsToggle {
-                settingLabel(
-                    "Return sends",
-                    detail: "With a keyboard attached. Shift-Return adds a line; Command-Return lets you pick how to send while your agent works."
-                )
+                settingLabel("Return sends", detail: Self.returnSendsDetail)
             }
             .accessibilityIdentifier("settings.chat.return-sends")
         }
         .listRowBackground(theme.surface)
+    }
+
+    private static var returnSendsDetail: String {
+        let keys = "Shift-Return adds a line; Command-Return lets you pick how to send while your agent works."
+        #if targetEnvironment(macCatalyst)
+        return keys
+        #else
+        return "With a keyboard attached. " + keys
+        #endif
     }
 
     /// Settings › Chat. Nerd Mode adds what chats show and how the chat list and

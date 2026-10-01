@@ -17,7 +17,7 @@ private struct CarPlaySessionFixtureView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text(phase).font(.title2).accessibilityIdentifier("carplay.phase")
+            Text(phase).font(.bighelp(.title2)).accessibilityIdentifier("carplay.phase")
             Text(session.agentName).accessibilityIdentifier("carplay.agent")
             HStack {
                 Button("Talk") { Task { await session.start() } }.accessibilityIdentifier("carplay.talk")

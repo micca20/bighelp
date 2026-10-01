@@ -29,23 +29,23 @@ struct BighelpModelChoiceRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if let label {
                         Text(label)
-                            .font(.footnote.weight(.semibold))
+                            .font(.bighelp(.footnote).weight(.semibold))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
                     }
                     Text(isEmpty ? emptyTitle : ModelNameCatalogStore.shared.displayName(for: modelID))
-                        .font(.body)
+                        .font(.bighelp(.body))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(2)
                     if !isEmpty {
                         Text(providerName)
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
                     }
                     if let detail {
                         Text(detail)
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
                     }
@@ -53,7 +53,7 @@ struct BighelpModelChoiceRow: View {
                 Spacer(minLength: BighelpTokens.space8)
                 if isEmpty && showsDefaultBadge {
                     Text("Default")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                         .padding(.horizontal, BighelpTokens.space8)
                         .padding(.vertical, 3)
@@ -61,7 +61,7 @@ struct BighelpModelChoiceRow: View {
                 }
                 if isEnabled {
                     Text("Change")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .foregroundStyle(theme.action)
                 }
             }

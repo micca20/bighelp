@@ -29,7 +29,9 @@ struct AgentShortcutsView: View {
                 }
 
                 Section {
+                    #if !targetEnvironment(macCatalyst)
                     SiriTipView(intent: SendLoopdyChatIntent(), isVisible: $isSiriTipVisible)
+                    #endif
 
                     ShortcutsLink()
                         .frame(minHeight: BighelpTokens.hitTarget)
@@ -48,7 +50,10 @@ struct AgentShortcutsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                 }
             }
         }
@@ -59,10 +64,10 @@ struct AgentShortcutsView: View {
         Label {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Text(title)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                 Text(detail)
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.secondaryText)
             }
         } icon: {

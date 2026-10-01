@@ -66,16 +66,16 @@ struct ProfileLifecycleView: View {
         }
         .onDisappear { if !store.ownsScope { store.retire() } }
         .sheet(isPresented: reviewBinding(\.renameReview, clear: store.clearRenameReview)) {
-            if let review = store.renameReview { renameReviewSheet(review) }
+            if let review = store.renameReview { renameReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.deleteReview, clear: store.clearDeleteReview)) {
-            if let review = store.deleteReview { deleteReviewSheet(review) }
+            if let review = store.deleteReview { deleteReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.activationReview, clear: store.clearActivationReview)) {
-            if let review = store.activationReview { activationReviewSheet(review) }
+            if let review = store.activationReview { activationReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.importReview, clear: store.clearImportReview)) {
-            if let review = store.importReview { importReviewSheet(review) }
+            if let review = store.importReview { importReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .confirmationDialog(
             "Generate a profile description?", isPresented: $confirmsAutoDescription,
@@ -223,8 +223,8 @@ struct ProfileLifecycleView: View {
 
             if let export = store.archiveExport {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                    Text("Host archive").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    Text(export.archivePath).font(.caption.monospaced()).textSelection(.enabled)
+                    Text("Host archive").font(.bighelp(.caption).weight(.semibold)).foregroundStyle(.secondary)
+                    Text(export.archivePath).font(.bighelp(.caption).monospaced()).textSelection(.enabled)
                 }
                 Button("Dismiss Export Path") { store.clearArchiveExport() }
             }
@@ -253,7 +253,7 @@ struct ProfileLifecycleView: View {
             }
             .disabled(store.isBusy)
             if let command = store.setupCommand {
-                Text(command.command).font(.body.monospaced()).textSelection(.enabled)
+                Text(command.command).font(.bighelp(.body).monospaced()).textSelection(.enabled)
             }
         } header: { Text("Advanced · Host setup") }
           footer: { Text("This is a read-only command supplied by Hermes. bighelp does not execute it or open a host terminal.") }
@@ -302,7 +302,7 @@ struct ProfileLifecycleView: View {
                 }
             }
             .navigationTitle("Review Rename")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearRenameReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearRenameReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -320,7 +320,7 @@ struct ProfileLifecycleView: View {
                 }
             }
             .navigationTitle("Review Profile Deletion")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearDeleteReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearDeleteReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -343,7 +343,7 @@ struct ProfileLifecycleView: View {
                 }
             }
             .navigationTitle("Review Default Profile")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearActivationReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearActivationReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -353,8 +353,8 @@ struct ProfileLifecycleView: View {
                 Section {
                     LabeledContent("Host", value: store.hostName)
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text("Archive path").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(review.archivePath).font(.caption.monospaced()).textSelection(.enabled)
+                        Text("Archive path").font(.bighelp(.caption).weight(.semibold)).foregroundStyle(.secondary)
+                        Text(review.archivePath).font(.bighelp(.caption).monospaced()).textSelection(.enabled)
                     }
                     LabeledContent("Imported identifier", value: review.requestedProfileID ?? "From archive")
                 }
@@ -368,7 +368,7 @@ struct ProfileLifecycleView: View {
                 }
             }
             .navigationTitle("Review Profile Import")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearImportReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearImportReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 

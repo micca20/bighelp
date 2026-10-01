@@ -46,7 +46,8 @@ struct ScheduledTaskBlueprintsView: View {
         .searchable(text: $searchQuery, prompt: "Search ideas")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Done") { dismiss() }
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .bighelpToolbarText()
             }
         }
         .task {
@@ -57,6 +58,7 @@ struct ScheduledTaskBlueprintsView: View {
             NavigationStack {
                 ScheduledTaskBlueprintPreviewView(store: store, agents: agents, blueprint: blueprint)
             }
+            .bighelpSheetSize(.standard)
         }
         .accessibilityIdentifier("scheduled-task.blueprints.screen")
     }
@@ -77,15 +79,15 @@ struct ScheduledTaskBlueprintsView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 HStack(alignment: .firstTextBaseline) {
                                     Text(blueprint.title)
-                                        .font(.callout.weight(.semibold))
+                                        .font(.bighelp(.callout).weight(.semibold))
                                         .foregroundStyle(theme.primaryText)
                                 }
                                 Text(blueprint.summary)
-                                    .font(.subheadline)
+                                    .font(.bighelp(.subheadline))
                                     .foregroundStyle(theme.secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Label(blueprint.scheduleDescription, systemImage: "calendar")
-                                    .font(.footnote)
+                                    .font(.bighelp(.footnote))
                                     .foregroundStyle(theme.action)
                             }
                             .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget, alignment: .leading)
@@ -184,11 +186,11 @@ private struct ScheduledTaskBlueprintPreviewView: View {
                 ForEach(blueprint.fields) { field in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         Text(field.label + (field.isOptional ? " (Optional)" : ""))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                         fieldControl(field)
                         if !field.help.isEmpty {
                             Text(field.help)
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(theme.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -233,6 +235,8 @@ private struct ScheduledTaskBlueprintPreviewView: View {
                         dismiss()
                     }
                 }
+                .keyboardShortcut(.cancelAction)
+                .bighelpToolbarText()
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") { review() }

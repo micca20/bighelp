@@ -127,6 +127,16 @@ struct SessionsView: View {
             prompt: "Search chats"
         )
         .toolbar {
+            #if targetEnvironment(macCatalyst)
+            // A Mac list can't be pulled down to refresh.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    Task { await model.load() }
+                }
+                .keyboardShortcut("r")
+                .accessibilityIdentifier("sessions.refresh")
+            }
+            #endif
             if uiV3Enabled {
                 ToolbarItem(placement: .topBarTrailing) {
                     nativeFilterMenu(model: model)
@@ -204,7 +214,7 @@ struct SessionsView: View {
         List {
             if isSearching(model) {
                 Text("Search covers chats already loaded on this device.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -313,11 +323,11 @@ struct SessionsView: View {
             Section {
                 VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Retry") { Task { await model.load() } }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .tint(theme.action)
                         .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -577,6 +587,10 @@ struct SessionsView: View {
                 .buttonStyle(.bighelpTilePress)
                 .menuIndicator(.hidden)
                 .disabled(mutatingSessionIDs.contains(session.id))
+                #if targetEnvironment(macCatalyst)
+                // A Mac opens that menu only on click and hold; right-click is the habit there.
+                .overlay { MacTileMenu(items: { macPinnedMenu(session, model: model) }).accessibilityHidden(true) }
+                #endif
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Pinned chat, \(session.title)")
                 .accessibilityValue(state == .idle ? "" : state.label)
@@ -685,6 +699,36 @@ struct SessionsView: View {
             }
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// `sessionActions` as a pinned tile's right-click menu (see `MacTileMenu`).
+    private func macPinnedMenu(_ session: SessionSummary, model: SessionsModel) -> [MacTileMenu.Item] {
+        guard model.canManageConversation(session), !mutatingSessionIDs.contains(session.id) else { return [] }
+        var items = [
+            MacTileMenu.Item(title: "Rename", systemImage: "pencil") {
+                renameDraft = session.title
+                actionDialog = .rename(session)
+            },
+            MacTileMenu.Item(title: session.isPinned ? "Unpin" : "Pin",
+                             systemImage: session.isPinned ? "pin.slash" : "pin") {
+                performMutation(sessionID: session.id) {
+                    try await model.setSessionPinned(id: session.id, pinned: !session.isPinned)
+                }
+            },
+            MacTileMenu.Item(title: "Archive", systemImage: "archivebox") {
+                performMutation(sessionID: session.id) {
+                    try await model.archiveSession(id: session.id)
+                }
+            },
+        ]
+        if model.canDeleteConversation {
+            items.append(MacTileMenu.Item(title: "Delete", systemImage: "trash", isDestructive: true, startsGroup: true) {
+                actionDialog = .delete(session)
+            })
+        }
+        return items
+    }
+    #endif
 
     private func filters(model: SessionsModel) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {

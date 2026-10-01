@@ -56,6 +56,7 @@ struct MemoryManagementView: View {
         }
         .sheet(item: $configuringProvider) { provider in
             MemoryProviderConfigurationView(store: store, provider: provider)
+                .bighelpSheetSize(.standard)
         }
         .confirmationDialog(
             providerSelection?.title ?? "Change memory provider?",
@@ -165,10 +166,10 @@ struct MemoryManagementView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .firstTextBaseline) {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(provider.name).font(.headline)
+                                    Text(provider.name).font(.bighelp(.headline))
                                     if !provider.description.isEmpty {
                                         Text(provider.description)
-                                            .font(.subheadline)
+                                            .font(.bighelp(.subheadline))
                                             .foregroundStyle(.secondary)
                                     }
                                 }
@@ -183,12 +184,12 @@ struct MemoryManagementView: View {
 
                             HStack {
                                 Label(provider.state.title, systemImage: providerSymbol(provider))
-                                    .font(.caption)
+                                    .font(.bighelp(.caption))
                                     .foregroundStyle(.secondary)
                                 Spacer()
                                 if !provider.setup.dependenciesInstalled {
                                     Text("Dependencies needed")
-                                        .font(.caption)
+                                        .font(.bighelp(.caption))
                                         .foregroundStyle(.orange)
                                 }
                             }
@@ -213,7 +214,7 @@ struct MemoryManagementView: View {
                                     Button("Check sign-in") {
                                         Task { await store.refreshOAuth(provider) }
                                     }
-                                    .font(.footnote)
+                                    .font(.bighelp(.footnote))
                                 }
 
                                 Spacer()
@@ -265,9 +266,9 @@ struct MemoryManagementView: View {
             Image(systemName: "internaldrive")
                 .foregroundStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             VStack(alignment: .leading, spacing: 4) {
-                Text(name).font(.headline)
-                Text(description).font(.caption).foregroundStyle(.secondary)
-                Text(state).font(.caption2).foregroundStyle(active ? .green : .secondary)
+                Text(name).font(.bighelp(.headline))
+                Text(description).font(.bighelp(.caption)).foregroundStyle(.secondary)
+                Text(state).font(.bighelp(.caption2)).foregroundStyle(active ? .green : .secondary)
             }
             Spacer()
             if !active {
@@ -389,7 +390,8 @@ private struct MemoryProviderConfigurationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Review Save") { showingSaveConfirmation = true }
@@ -461,12 +463,12 @@ private struct MemoryProviderConfigurationView: View {
     private func fieldEditor(_ field: HermesMemoryProviderConfiguration.Field) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(field.label).font(.headline)
-                if field.isRequired { Text("Required").font(.caption2).foregroundStyle(.secondary) }
+                Text(field.label).font(.bighelp(.headline))
+                if field.isRequired { Text("Required").font(.bighelp(.caption2)).foregroundStyle(.secondary) }
                 Spacer()
                 if field.isSecret, field.isSet {
                     Label("Saved", systemImage: "checkmark.circle")
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -487,7 +489,7 @@ private struct MemoryProviderConfigurationView: View {
                 .labelsHidden()
             case .json:
                 TextEditor(text: binding(field.key))
-                    .font(.body.monospaced())
+                    .font(.bighelp(.body).monospaced())
                     .frame(minHeight: 120)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
             case .number, .integer:
@@ -499,11 +501,11 @@ private struct MemoryProviderConfigurationView: View {
                     .autocorrectionDisabled()
             case .unsupported(let kind):
                 Label("This host field type (\(kind)) is not editable in bighelp.", systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
             }
             if let description = field.description, !description.isEmpty {
-                Text(description).font(.footnote).foregroundStyle(.secondary)
+                Text(description).font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)

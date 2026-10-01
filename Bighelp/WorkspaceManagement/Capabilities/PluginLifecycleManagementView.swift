@@ -34,7 +34,7 @@ struct PluginLifecycleManagementView: View {
                                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                     Text(plugin.name)
                                     Text("\(plugin.source) • \(plugin.runtimeStatus.capitalized)")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 }
                                 .frame(minHeight: BighelpTokens.hitTarget)
                             }
@@ -51,11 +51,11 @@ struct PluginLifecycleManagementView: View {
                         ForEach(catalog) { entry in
                             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                                 HStack {
-                                    Text(entry.name).font(.headline)
+                                    Text(entry.name).font(.bighelp(.headline))
                                     Spacer()
-                                    Text(entry.tier.capitalized).font(.caption).foregroundStyle(.secondary)
+                                    Text(entry.tier.capitalized).font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 }
-                                if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
+                                if !entry.summary.isEmpty { Text(entry.summary).font(.bighelp(.subheadline)) }
                                 LabeledContent("Capabilities", value: capabilitySummary(entry.capabilities))
                                 if entry.isInstalled {
                                     Label(entry.updateAvailable ? "Update available" : "Installed", systemImage: "checkmark.circle")
@@ -74,7 +74,7 @@ struct PluginLifecycleManagementView: View {
 
                     if !snapshot.removedCatalogEntries.isEmpty, !ManagementSearch.isActive(search) {
                         Section("Advanced · Removed from catalog") {
-                            ForEach(snapshot.removedCatalogEntries, id: \.self) { Text($0).font(.footnote) }
+                            ForEach(snapshot.removedCatalogEntries, id: \.self) { Text($0).font(.bighelp(.footnote)) }
                         }
                     }
                 }
@@ -89,6 +89,7 @@ struct PluginLifecycleManagementView: View {
                 installCandidate = nil
                 Task { await model.install(entry) }
             }
+            .bighelpSheetSize(.standard)
         }
     }
 
@@ -142,7 +143,7 @@ private struct PluginInstallReviewView: View {
             }
             .navigationTitle("Review plugin")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -183,7 +184,7 @@ private struct InstalledPluginDetailView: View {
                     Section("Authentication") {
                         Text("This plugin requires host-side authentication.")
                         if !plugin.authenticationCommand.isEmpty {
-                            Text(plugin.authenticationCommand).font(.footnote.monospaced()).textSelection(.enabled)
+                            Text(plugin.authenticationCommand).font(.bighelp(.footnote).monospaced()).textSelection(.enabled)
                         }
                     }
                 }

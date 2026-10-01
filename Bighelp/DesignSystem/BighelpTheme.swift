@@ -867,6 +867,11 @@ enum BighelpFontRole: Sendable {
         }
     }
 
+    /// The Mac's size at the chosen text size (its text styles are fixed).
+    fileprivate var macSize: CGFloat {
+        (size * BighelpInterfaceSize.shared.textSize.macFactor * 2).rounded() / 2
+    }
+
     fileprivate var weight: Font.Weight {
         switch self {
         case .display, .screenTitle: .bold
@@ -930,8 +935,12 @@ extension BighelpTheme {
 
         let resolved: Font
         if let name = BighelpFontCatalog.resolveFontName(candidates: candidates, in: .main) {
+            #if targetEnvironment(macCatalyst)
+            resolved = Font.custom(name, fixedSize: role.macSize).weight(weight)
+            #else
             resolved = Font.custom(name, size: role.size, relativeTo: role.textStyle)
                 .weight(weight)
+            #endif
         } else {
             let design: Font.Design
             if role == .code {
@@ -944,7 +953,11 @@ extension BighelpTheme {
                 case .serif: .serif
                 }
             }
+            #if targetEnvironment(macCatalyst)
+            resolved = .system(size: role.macSize, weight: weight, design: design)
+            #else
             resolved = .system(role.textStyle, design: design, weight: weight)
+            #endif
         }
         return italic ? resolved.italic() : resolved
     }
@@ -958,13 +971,21 @@ extension BighelpTheme {
             usesEmphasizedFace: role.uiWeight >= .semibold
         )
         let metrics = UIFontMetrics(forTextStyle: role.uiTextStyle)
+        #if targetEnvironment(macCatalyst)
+        // The Mac's text styles are fixed; use the chosen text size directly.
+        let size = role.macSize
+        func scaled(_ font: UIFont) -> UIFont { font }
+        #else
+        let size = role.size
+        func scaled(_ font: UIFont) -> UIFont { metrics.scaledFont(for: font, compatibleWith: traitCollection) }
+        #endif
 
         if let name = BighelpFontCatalog.resolveFontName(candidates: candidates, in: .main),
-           let font = UIFont(name: name, size: role.size) {
-            return metrics.scaledFont(for: font, compatibleWith: traitCollection)
+           let font = UIFont(name: name, size: size) {
+            return scaled(font)
         }
 
-        let baseFont = UIFont.systemFont(ofSize: role.size, weight: role.uiWeight)
+        let baseFont = UIFont.systemFont(ofSize: size, weight: role.uiWeight)
         let design: UIFontDescriptor.SystemDesign? = if role == .code {
             .monospaced
         } else {
@@ -978,11 +999,11 @@ extension BighelpTheme {
         let designedFont: UIFont
         if let design,
            let descriptor = baseFont.fontDescriptor.withDesign(design) {
-            designedFont = UIFont(descriptor: descriptor, size: role.size)
+            designedFont = UIFont(descriptor: descriptor, size: size)
         } else {
             designedFont = baseFont
         }
-        return metrics.scaledFont(for: designedFont, compatibleWith: traitCollection)
+        return scaled(designedFont)
     }
 
     private func fontCandidates(

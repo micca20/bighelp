@@ -106,9 +106,9 @@ struct ProjectsLifecycleView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Label(node.label, systemImage: node.isHome ? "house" : "externaldrive")
                         Text("\(node.sessionCount) session\(node.sessionCount == 1 ? "" : "s")")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         if let path = node.path {
-                            Text(path).font(.caption2).foregroundStyle(.tertiary).lineLimit(2)
+                            Text(path).font(.bighelp(.caption2)).foregroundStyle(.tertiary).lineLimit(2)
                         }
                     }
                     .frame(minHeight: BighelpTokens.hitTarget, alignment: .leading)
@@ -136,7 +136,7 @@ struct ProjectsLifecycleView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(repository.label)
                                 Text("\(repository.sessionCount) session\(repository.sessionCount == 1 ? "" : "s")")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         } icon: {
                             Image(systemName: "folder.badge.plus")
@@ -161,9 +161,9 @@ struct ProjectsLifecycleView: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Text(project.name)
                 Text("\(project.folders.count) folder\(project.folders.count == 1 ? "" : "s") · \(node?.sessionCount ?? 0) sessions")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                 if !project.summary.isEmpty {
-                    Text(project.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(project.summary).font(.bighelp(.caption)).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
         }
@@ -177,11 +177,11 @@ struct ProjectsLifecycleView: View {
                     TextField("Project name", text: $projectName)
                         .textInputAutocapitalization(.words)
                     LabeledContent("Discovered folder", value: repository.label)
-                    Text(repository.root).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(repository.root).font(.bighelp(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 Section {
                     Text("The folder was reported by the selected Hermes host. Creating a project registers it; no files are copied or modified.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("New Project")
@@ -189,6 +189,7 @@ struct ProjectsLifecycleView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { createRepository = nil }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Review") {
@@ -307,9 +308,9 @@ private struct ProjectLifecycleDetailView: View {
                     HStack {
                         Label(folder.label ?? (folder.isPrimary ? "Primary folder" : "Folder"), systemImage: folder.isPrimary ? "star.fill" : "folder")
                         Spacer()
-                        if folder.isPrimary { Text("Primary").font(.caption).foregroundStyle(.secondary) }
+                        if folder.isPrimary { Text("Primary").font(.bighelp(.caption)).foregroundStyle(.secondary) }
                     }
-                    Text(folder.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(folder.path).font(.bighelp(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
                     if store.canMutate {
                         HStack {
                             if !folder.isPrimary {
@@ -370,14 +371,14 @@ private struct ProjectLifecycleDetailView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(session.title)
                                 if !session.preview.isEmpty {
-                                    Text(session.preview).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(session.preview).font(.bighelp(.caption)).foregroundStyle(.secondary).lineLimit(2)
                                 }
                                 HStack {
-                                    if let branch = session.branch { Text(branch).font(.caption2).foregroundStyle(.tertiary) }
+                                    if let branch = session.branch { Text(branch).font(.bighelp(.caption2)).foregroundStyle(.tertiary) }
                                     Spacer()
                                     if let pullRequest = session.pullRequest {
                                         Link("PR #\(pullRequest.number)", destination: pullRequest.url)
-                                            .font(.caption)
+                                            .font(.bighelp(.caption))
                                     }
                                 }
                             }

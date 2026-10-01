@@ -64,24 +64,24 @@ struct KanbanTaskSheet: View {
         return VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             HStack(spacing: BighelpTokens.space8) {
                 Label(lane.title, systemImage: lane.symbol)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.bighelp(.subheadline).weight(.semibold))
                     .foregroundStyle(lane.tint)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(lane.tint.opacity(0.13), in: .capsule)
                 if let note = task.statusNote {
-                    Text(note).font(.subheadline).foregroundStyle(theme.secondaryText)
+                    Text(note).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 }
                 Spacer(minLength: 0)
                 priorityMenu(task)
             }
             if isEditing {
                 TextField("Title", text: $draftTitle, axis: .vertical)
-                    .font(.title2.weight(.bold))
+                    .font(.bighelp(.title2).weight(.bold))
                     .accessibilityIdentifier("kanban.task.title-field")
             } else {
                 Text(task.title)
-                    .font(.title2.weight(.bold))
+                    .font(.bighelp(.title2).weight(.bold))
                     .foregroundStyle(theme.primaryText)
                     .textSelection(.enabled)
             }
@@ -98,10 +98,11 @@ struct KanbanTaskSheet: View {
             }
         } label: {
             Label(task.urgency.title, systemImage: task.urgency.rawValue > 0 ? "flag.fill" : "flag")
-                .font(.subheadline.weight(.medium))
+                .font(.bighelp(.subheadline).weight(.medium))
                 .foregroundStyle(task.urgency == .urgent ? KanbanLane.needsYou.tint
                                  : task.urgency == .high ? theme.warning : theme.secondaryText)
         }
+        .kanbanMacMenu(.bordered)
         .accessibilityLabel("Priority: \(task.urgency.title)")
         .accessibilityIdentifier("kanban.task.priority")
     }
@@ -120,18 +121,19 @@ struct KanbanTaskSheet: View {
             HStack(spacing: BighelpTokens.space8) {
                 if let agent = model.agent(task.assignee) {
                     AvatarView(stableID: agent.id, displayName: agent.name, imageURL: agent.imageURL, size: 30)
-                    Text(agent.name).font(.body.weight(.semibold)).foregroundStyle(theme.primaryText)
+                    Text(agent.name).font(.bighelp(.body).weight(.semibold)).foregroundStyle(theme.primaryText)
                 } else {
-                    Image(systemName: "person.crop.circle.badge.questionmark").font(.title2).foregroundStyle(theme.secondaryText)
-                    Text("Anyone can take this").font(.body.weight(.semibold)).foregroundStyle(theme.primaryText)
+                    Image(systemName: "person.crop.circle.badge.questionmark").font(.bighelp(.title2)).foregroundStyle(theme.secondaryText)
+                    Text("Anyone can take this").font(.bighelp(.body).weight(.semibold)).foregroundStyle(theme.primaryText)
                 }
-                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold)).foregroundStyle(theme.tertiaryText)
+                Image(systemName: "chevron.up.chevron.down").font(.bighelp(.caption).weight(.semibold)).foregroundStyle(theme.tertiaryText)
                 Spacer(minLength: 0)
                 Text(task.createdAt, format: .relative(presentation: .named))
-                    .font(.caption).foregroundStyle(theme.tertiaryText)
+                    .font(.bighelp(.caption)).foregroundStyle(theme.tertiaryText)
             }
             .contentShape(.rect)
         }
+        .kanbanMacMenu(.asDrawn)
         .accessibilityLabel("Agent: \(model.agent(task.assignee)?.name ?? "anyone")")
         .accessibilityHint("Give this card to another agent.")
         .accessibilityIdentifier("kanban.task.agent")
@@ -164,7 +166,7 @@ struct KanbanTaskSheet: View {
                               systemImage: "arrow.turn.down.right")
                     }
                 }
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
             }
         }
@@ -173,7 +175,7 @@ struct KanbanTaskSheet: View {
     private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text(title.uppercased())
-                .font(.caption.weight(.bold))
+                .font(.bighelp(.caption).weight(.bold))
                 .tracking(0.6)
                 .foregroundStyle(theme.secondaryText)
             content()
@@ -199,7 +201,7 @@ struct KanbanTaskSheet: View {
                 .accessibilityIdentifier("kanban.task.composer")
             Button { Task { await send(task) } } label: {
                 Image(systemName: "arrow.up")
-                    .font(.body.weight(.bold))
+                    .font(.bighelp(.body).weight(.bold))
                     .foregroundStyle(theme.actionForeground)
                     .frame(width: 38, height: 38)
                     .background(theme.action, in: .circle)
@@ -233,9 +235,12 @@ struct KanbanTaskSheet: View {
     @ToolbarContentBuilder private func toolbar(_ task: HermesKanbanTask) -> some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             if isEditing {
-                Button("Cancel") { isEditing = false }
+                Button("Cancel") { isEditing = false }.keyboardShortcut(.cancelAction).bighelpToolbarText()
             } else {
-                Button("Done") { dismiss() }.accessibilityIdentifier("kanban.task.done")
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .bighelpToolbarText()
+                    .accessibilityIdentifier("kanban.task.done")
             }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -300,7 +305,7 @@ struct KanbanNeedsYouCard: View {
         let name = model.agent(task.assignee)?.name.split(separator: " ").first.map(String.init) ?? "Your agent"
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             Label(title(name), systemImage: symbol)
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(KanbanLane.needsYou.tint)
             if let context {
                 Text(context)
@@ -361,8 +366,9 @@ struct KanbanNeedsYouCard: View {
                 }
             } label: {
                 Label("Give it to another agent", systemImage: "arrow.turn.up.right")
-                    .font(.subheadline.weight(.medium))
+                    .font(.bighelp(.subheadline).weight(.medium))
             }
+            .kanbanMacMenu(.bordered)
             .accessibilityIdentifier("kanban.give-to")
         }
     }
@@ -458,9 +464,9 @@ struct KanbanThread: View {
                 Text(event.kind == "gave_up"
                      ? "Hermes stopped trying after \(event.failures ?? 2) failed runs in a row"
                      : "Paused for you")
-                    .font(.subheadline).foregroundStyle(theme.secondaryText)
+                    .font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 if event.kind == "blocked", let reason = event.reason {
-                    Text(reason).font(.subheadline).foregroundStyle(theme.primaryText).textSelection(.enabled)
+                    Text(reason).font(.bighelp(.subheadline)).foregroundStyle(theme.primaryText).textSelection(.enabled)
                 }
             }
         }
@@ -484,7 +490,7 @@ struct KanbanThread: View {
                                 in: .rect(cornerRadius: 18, style: .continuous))
                     .textSelection(.enabled)
                 Text(comment.createdAt, format: .relative(presentation: .named))
-                    .font(.caption2).foregroundStyle(theme.tertiaryText)
+                    .font(.bighelp(.caption2)).foregroundStyle(theme.tertiaryText)
             }
             if !fromYou { Spacer(minLength: 40) }
         }
@@ -496,13 +502,13 @@ struct KanbanThread: View {
             Image(systemName: run.isActive ? "bolt.circle.fill" : run.error == nil ? "checkmark.circle" : "exclamationmark.circle")
                 .foregroundStyle(run.isActive ? KanbanLane.working.tint : run.error == nil ? theme.secondaryText : KanbanLane.needsYou.tint)
             VStack(alignment: .leading, spacing: 4) {
-                Text(runText(run, name: name)).font(.subheadline).foregroundStyle(theme.secondaryText)
+                Text(runText(run, name: name)).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 if let summary = run.summary, !summary.isEmpty {
-                    Text(summary).font(.subheadline).foregroundStyle(theme.primaryText).textSelection(.enabled)
+                    Text(summary).font(.bighelp(.subheadline)).foregroundStyle(theme.primaryText).textSelection(.enabled)
                 }
                 if let error = run.error, !error.isEmpty {
                     Text(KanbanFailure.explain(error))
-                        .font(.subheadline).foregroundStyle(theme.primaryText)
+                        .font(.bighelp(.subheadline)).foregroundStyle(theme.primaryText)
                         .accessibilityIdentifier("kanban.run.\(run.id).why")
                     errorDetails(run.id, error)
                 }
@@ -519,12 +525,12 @@ struct KanbanThread: View {
                 if shown { shownErrors.remove(id) } else { shownErrors.insert(id) }
             }
         }
-        .font(.caption.weight(.semibold))
+        .font(.bighelp(.caption).weight(.semibold))
         .buttonStyle(.borderless)
         .accessibilityIdentifier("kanban.run.\(id).details")
         if shown {
             Text(error)
-                .font(.caption.monospaced())
+                .font(.bighelp(.caption).monospaced())
                 .foregroundStyle(theme.secondaryText)
                 .textSelection(.enabled)
                 .padding(BighelpTokens.space8)
@@ -567,7 +573,7 @@ struct KanbanNerdDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("NERD MODE").font(.caption.weight(.bold)).tracking(0.6).foregroundStyle(theme.secondaryText)
+            Text("NERD MODE").font(.bighelp(.caption).weight(.bold)).tracking(0.6).foregroundStyle(theme.secondaryText)
             row("Task", task.id)
             row("Status", task.status.rawValue + (task.blockKind.map { " (\($0))" } ?? ""))
             row("Priority", "\(task.priority)")
@@ -586,7 +592,7 @@ struct KanbanNerdDetails: View {
                 }
             }
         }
-        .font(.caption.monospaced())
+        .font(.bighelp(.caption).monospaced())
         .foregroundStyle(theme.secondaryText)
         .textSelection(.enabled)
         .accessibilityElement(children: .contain)

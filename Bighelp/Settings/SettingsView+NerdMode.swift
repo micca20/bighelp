@@ -100,7 +100,7 @@ extension SettingsView {
             Spacer(minLength: BighelpTokens.space8)
             if showsChevron {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             }

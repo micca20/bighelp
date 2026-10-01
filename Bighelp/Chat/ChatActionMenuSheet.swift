@@ -58,12 +58,16 @@ struct ChatActionMenuSheet: View {
                     if page != .main {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Add to chat", systemImage: "chevron.left") { page = .main }
+                                .bighelpToolbarText()
                         }
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                             .foregroundStyle(theme.action)
                             .accessibilityIdentifier("chat.action-drawer.done")
+                            #if targetEnvironment(macCatalyst)
+                            .keyboardShortcut(.cancelAction)
+                            #endif
                     }
                 }
         }
@@ -96,14 +100,27 @@ struct ChatActionMenuSheet: View {
         .sheet(isPresented: $isCapabilityManagerPresented) {
             NavigationStack {
                 SkillsAndToolsCatalogView(store: skillsAndTools, agentID: effectiveAgentID)
+                    #if targetEnvironment(macCatalyst)
+                    // A Mac sheet can't be swiped away.
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { isCapabilityManagerPresented = false }
+                                .keyboardShortcut(.cancelAction)
+                                .accessibilityIdentifier("chat.skills-tools.done")
+                                .bighelpToolbarText()
+                        }
+                    }
+                    #endif
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .bighelpSheetSize(.large)
         }
         .sheet(item: $pdfPagesPickerTarget) { picker in
             pdfPagesPicker(picker)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .bighelpSheetSize(.large)
         }
         .sheet(isPresented: $isModelPickerPresented) {
             if let controls = runtimeControls {
@@ -163,7 +180,7 @@ struct ChatActionMenuSheet: View {
                 Section {
                     Text(allowsFiles ? DirectHermesFileAttachments.imagesUnavailable
                          : "Attachments are unavailable on this connection.")
-                        .font(.footnote)
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("chat.attachments.images-unavailable")
                 }
@@ -253,7 +270,7 @@ struct ChatActionMenuSheet: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Text(title).foregroundStyle(.primary)
                 Text(detail)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -606,7 +623,7 @@ struct ChatActionMenuSheet: View {
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
+                .font(.bighelp(.caption).weight(.bold))
                 .foregroundStyle(theme.tertiaryText)
         }
         .foregroundStyle(theme.primaryText)

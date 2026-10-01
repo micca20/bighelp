@@ -178,12 +178,14 @@ private struct AgentActionsSheets: ViewModifier {
             }
             .sheet(item: $actions.shortcutsAgent) { agent in
                 AgentShortcutsView(agent: agent)
+                    .bighelpSheetSize(.standard)
             }
             .sheet(item: $actions.duplicateModel) { model in
                 AgentDuplicateView(model: model) {
                     actions.duplicateModel = nil
                     Task { await config.store.loadReportingErrors() }
                 }
+                .bighelpSheetSize(.standard)
             }
             .confirmationDialog(actions.pendingDeletion.map(AgentDeletionPresentation.title) ?? "Delete agent?",
                                 isPresented: Binding(get: { actions.pendingDeletion != nil },

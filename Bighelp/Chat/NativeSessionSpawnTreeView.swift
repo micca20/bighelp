@@ -82,6 +82,7 @@ struct NativeSessionSpawnTreeView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
+                    .bighelpToolbarText()
             }
         }
         .task(id: entry.path) {

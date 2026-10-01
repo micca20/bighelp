@@ -333,7 +333,7 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
             }
             return
         }
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         // "Open on iPhone" from the Watch carries one of bighelp's own links.
         if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
            let url = WatchOpenRequest.url(in: response.notification.request.content.userInfo) {

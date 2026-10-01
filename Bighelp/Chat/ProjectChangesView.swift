@@ -488,7 +488,7 @@ struct ProjectChangesView: View {
                                 .padding(BighelpTokens.space16)
                         } else {
                             Text(content)
-                                .font(.system(.body, design: .monospaced))
+                                .font(.bighelp(.body, design: .monospaced))
                                 .foregroundStyle(theme.primaryText)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -522,7 +522,7 @@ struct ProjectChangesView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.bighelp(.caption, design: .monospaced))
                         .foregroundStyle(theme.primaryText)
                         .padding(.horizontal, BighelpTokens.space8)
                         .padding(.vertical, 3)
@@ -583,6 +583,7 @@ struct ProjectChangesView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { isCommitPresented = false }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Review") {

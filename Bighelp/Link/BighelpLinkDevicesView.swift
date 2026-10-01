@@ -123,7 +123,7 @@ struct BighelpLinkDevicesView: View {
         } label: {
             HStack(spacing: BighelpTokens.space12) {
                 Image(systemName: presentation.systemImage)
-                    .font(.title3.weight(.semibold))
+                    .font(.bighelp(.title3).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                     .background(theme.action.opacity(0.1), in: .circle)
@@ -152,7 +152,7 @@ struct BighelpLinkDevicesView: View {
                 }
                 Spacer(minLength: BighelpTokens.space8)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             }

@@ -34,7 +34,9 @@ enum AgentDeletionPresentation {
         case HermesProfileLifecycleError.reviewChanged:
             "This agent changed while it was being deleted. Try again."
         case HermesProfileLifecycleError.outcomeUnknown:
-            "Hermes didn't confirm the deletion. Pull down to refresh the list before trying again."
+            BighelpPlatform.isMac
+                ? "Hermes didn't confirm the deletion. Refresh the list before trying again."
+                : "Hermes didn't confirm the deletion. Pull down to refresh the list before trying again."
         default:
             (error as? LocalizedError)?.errorDescription ?? "The agent couldn't be deleted. Try again."
         }

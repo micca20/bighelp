@@ -151,6 +151,7 @@ struct ChatComposer: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .bighelpSheetSize(.standard)
         }
         .sheet(item: $presentedStatus) { destination in
             Group {
@@ -178,6 +179,7 @@ struct ChatComposer: View {
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .bighelpSheetSize(.standard)
         }
         .alert("Couldn’t Paste Image", isPresented: clipboardErrorIsPresented) {
             Button("OK", role: .cancel) { clipboardErrorMessage = nil }
@@ -359,7 +361,7 @@ struct ChatComposer: View {
                 if showsExpandButton {
                     Button(action: openExpandedEditor) {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.footnote.weight(.medium))
+                            .font(.bighelp(.footnote).weight(.medium))
                             .foregroundStyle(theme.secondaryText)
                             .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                             .contentShape(.rect)
@@ -572,6 +574,11 @@ struct ChatComposer: View {
 
     /// A hardware keyboard's Return (`ComposerReturnKeyAction`). True means handled.
     private func handleReturnKey(_ key: ComposerReturnKey) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        // Return picks the Skills & commands row chosen with ↑ ↓.
+        if key == .plain, referenceHub.isPresented, presentedSheet == nil,
+           referenceHub.keyboard.pickHighlighted() { return true }
+        #endif
         switch ComposerReturnKeyAction.resolve(key, returnSends: returnSends, canSend: model.canSend,
                                                isTurnLive: model.isMidSessionTurnLive) {
         case .newLine: return false
@@ -728,10 +735,10 @@ private enum ChatComposerSheet: String, Identifiable {
 /// continuous corner's visual footprint at single-line height so the first
 /// glyph and the placeholder never touch the curve.
 enum ComposerFieldMetrics {
-    static let cornerRadius: CGFloat = 24
-    /// Painted diameter of the attach and send circles; hit areas stay 44pt.
-    static let controlDiameter: CGFloat = 36
+    static var cornerRadius: CGFloat { BighelpTokens.scaled(24) }
+    /// Painted diameter of the attach and send circles; hit areas stay at the hit target.
+    static var controlDiameter: CGFloat { BighelpTokens.scaled(36) }
     static let leadingInset: CGFloat = 16
     static let trailingInset: CGFloat = 12
-    static let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous) }
 }

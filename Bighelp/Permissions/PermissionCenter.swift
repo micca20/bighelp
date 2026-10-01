@@ -577,7 +577,7 @@ struct ContextualPermissionRecoveryPresentation: Equatable, Sendable {
     var message: String? {
         switch status.authorization {
         case .denied:
-            "\(kind.title) access is denied. You can allow it in iOS Settings."
+            "\(kind.title) access is denied. You can allow it in \(BighelpPlatform.isMac ? "System Settings" : "iOS Settings")."
         case .restricted:
             "\(kind.title) access is restricted on this device."
         case .notDetermined, .authorized, .provisional, .ephemeral:

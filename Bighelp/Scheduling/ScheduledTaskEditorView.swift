@@ -117,7 +117,8 @@ struct ScheduledTaskEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .bighelpToolbarText()
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(task == nil ? "Create" : "Save") { Task { await save() } }
@@ -159,7 +160,7 @@ struct ScheduledTaskEditorView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
+                        .font(.bighelp(.footnote).weight(.semibold))
                         .foregroundStyle(theme.tertiaryText)
                         .accessibilityHidden(true)
                 }
@@ -378,7 +379,7 @@ struct ScheduledTaskEditorView: View {
         let isSelected = pickerState.selectedDays.contains(day)
         return Button(title) { toggle(day) }
             .buttonStyle(.plain)
-            .font(.subheadline.weight(.semibold))
+            .font(.bighelp(.subheadline).weight(.semibold))
             .foregroundStyle(isSelected ? theme.actionForeground : theme.primaryText)
             .frame(maxWidth: .infinity, minHeight: 38)
             .background(isSelected ? theme.action : theme.incomingMessageBackground, in: .capsule)

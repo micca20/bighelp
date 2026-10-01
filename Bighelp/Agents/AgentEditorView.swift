@@ -96,7 +96,7 @@ struct AgentEditorView: View {
                 if let reason = runtimeDefaultsReadOnlyReason {
                     Section {
                         Label(reason, systemImage: "lock")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                     } header: {
                         if runtimeDefaultsModel == nil { AgentStudioCaption("Model") }
@@ -118,7 +118,7 @@ struct AgentEditorView: View {
                                      : runtimeDefaultsModel == nil
                                         ? "Mention handle"
                                         : "Subagent and task models, mention handle")
-                                    .font(.footnote)
+                                    .font(.bighelp(.footnote))
                                     .foregroundStyle(theme.secondaryText)
                             }
                         } icon: {
@@ -199,9 +199,13 @@ struct AgentEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: requestDismissal)
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
                         .disabled(isSaving)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                         .accessibilityIdentifier("agent.editor.cancel")
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(model.isEditing ? "Save" : "Create", action: saveAgent)
@@ -224,6 +228,8 @@ struct AgentEditorView: View {
                 #endif
             }
         }
+        // Always a sheet (Agents, chat, home), so every opening gets the studio's size on the Mac.
+        .bighelpSheetSize(.large)
         // Starts once for the whole editor, including Advanced. See loadIfNeeded().
         .task { await runtimeDefaultsModel?.loadIfNeeded() }
         .interactiveDismissDisabled(hasUnsavedChanges || isSaving)
@@ -248,6 +254,8 @@ struct AgentEditorView: View {
             // Wide enough for the 3D character beside the choices.
             .presentationSizing(.page)
             #endif
+            // The Mac: wide enough for the character beside the choices.
+            .bighelpSheetSize(.large)
         }
         // Modal ownership must outlive the lazy sections while a picker is presented.
         .sheet(item: $modelPickerScope) { scope in
@@ -341,6 +349,7 @@ struct AgentEditorView: View {
         )
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .bighelpSheetSize(.standard)
     }
 
     private var isSaving: Bool {
@@ -479,7 +488,7 @@ struct AgentEditorView: View {
                 }
                 .padding(.bottom, BighelpTokens.space4)
             Text(heroTitle)
-                .font(.title2.weight(.bold))
+                .font(.bighelp(.title2).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -487,7 +496,7 @@ struct AgentEditorView: View {
             let role = model.draft.role.trimmingCharacters(in: .whitespacesAndNewlines)
             if !role.isEmpty {
                 Text(role)
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -497,7 +506,7 @@ struct AgentEditorView: View {
                     isAvatarCreatorPresented = true
                 } label: {
                     Label(hasAvatar ? "Edit avatar" : "Design avatar", systemImage: "wand.and.stars")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .foregroundStyle(theme.action)
                         .padding(.horizontal, BighelpTokens.space16)
                         .frame(minHeight: 36)
@@ -515,7 +524,7 @@ struct AgentEditorView: View {
                         photoSelection = nil
                     } label: {
                         Text("Remove")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                             .foregroundStyle(theme.secondaryText)
                             .padding(.horizontal, BighelpTokens.space12)
                             .frame(minHeight: BighelpTokens.hitTarget)
@@ -532,7 +541,7 @@ struct AgentEditorView: View {
             .fixedSize(horizontal: false, vertical: true)
             if let avatarPreparationLabel {
                 ProgressView(avatarPreparationLabel)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .accessibilityIdentifier("agent.editor.avatar.loading")
             }
             if let avatarError = model.avatarError {
@@ -834,7 +843,7 @@ struct AgentEditorView: View {
         Section {
             LabeledContent("Mention handle") {
                 Text("@\(model.handlePreview)")
-                    .font(.body.monospaced())
+                    .font(.bighelp(.body).monospaced())
                     .foregroundStyle(theme.action)
             }
         } header: {
@@ -849,7 +858,7 @@ struct AgentEditorView: View {
 
     private func fieldCaption(_ title: String) -> some View {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(.bighelp(.caption).weight(.semibold))
             .foregroundStyle(theme.secondaryText)
             .accessibilityHidden(true)
     }
@@ -886,13 +895,13 @@ struct AgentEditorView: View {
             // so the sections below it (the agent's model) stay within easy reach.
             TextEditor(text: text)
                 .focused($focusedField, equals: focus)
-                .font(.body)
+                .font(.bighelp(.body))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 140, maxHeight: 260)
                 .overlay(alignment: .topLeading) {
                     if text.wrappedValue.isEmpty {
                         Text(placeholder)
-                            .font(.body)
+                            .font(.bighelp(.body))
                             .foregroundStyle(theme.tertiaryText)
                             .padding(.top, 8)
                             .padding(.leading, 5)

@@ -19,7 +19,7 @@ struct ClipboardDraftTextEditor: UIViewRepresentable {
         let view = ClipboardPasteTextView()
         view.delegate = context.coordinator
         view.backgroundColor = .clear
-        view.font = UIFont.preferredFont(forTextStyle: .body)
+        view.font = UIFont.bighelp(.body)
         view.adjustsFontForContentSizeCategory = true
         view.isScrollEnabled = true
         view.alwaysBounceVertical = true

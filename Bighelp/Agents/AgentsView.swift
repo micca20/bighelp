@@ -125,6 +125,16 @@ struct AgentsView: View {
             .searchable(text: $query, isPresented: $isSearchPresented,
                         placement: .navigationBarDrawer, prompt: "Search agents and groups")
             .toolbar {
+                #if targetEnvironment(macCatalyst)
+                // A Mac list can't be pulled down to refresh.
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Refresh", systemImage: "arrow.clockwise") {
+                        Task { await refresh() }
+                    }
+                    .keyboardShortcut("r")
+                    .accessibilityIdentifier("agents.refresh")
+                }
+                #endif
                 ToolbarItem(placement: .primaryAction) {
                     Button("Create agent", systemImage: "plus", action: startCreating)
                         .disabled(!supports(.profilesCreate))
@@ -172,10 +182,7 @@ struct AgentsView: View {
                 await botModeRooms?.refreshNativeRoomCatalog()
             }
         }
-        .refreshable {
-            await store.loadReportingErrors()
-            await botModeRooms?.refreshNativeRoomCatalog()
-        }
+        .refreshable { await refresh() }
         .sheet(item: $actionAgent, onDismiss: finishAgentActionSheet) { agent in
             AgentActionSheet(
                 agent: agent,
@@ -186,6 +193,7 @@ struct AgentsView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            .bighelpSheetSize(.standard)
         }
         .alert("Rename group", isPresented: Binding(get: { renameGroup != nil }, set: { if !$0 { renameGroup = nil } })) {
             TextField("Group name", text: $renameText)
@@ -250,7 +258,7 @@ struct AgentsView: View {
                 if let profileID = groupFilterProfileID {
                     HStack {
                         Text("Groups with \(store.profiles.first(where: { $0.id == profileID })?.name ?? "this agent")")
-                            .font(.subheadline)
+                            .font(.bighelp(.subheadline))
                             .foregroundStyle(theme.primaryText)
                         Spacer()
                         Button("Clear group filter", systemImage: "xmark.circle.fill") {
@@ -299,7 +307,7 @@ struct AgentsView: View {
                 }
                 if groups.isEmpty, !visibleGroups.isEmpty {
                     Text(showsArchivedGroups ? "No archived groups." : "No groups to show.")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                         .listRowInsets(Self.rowInsets)
                 }
@@ -324,11 +332,11 @@ struct AgentsView: View {
             } label: {
                 HStack(spacing: BighelpTokens.space12) {
                     Image(systemName: showsArchivedGroups ? "chevron.backward" : "archivebox")
-                        .font(.body.weight(.semibold))
+                        .font(.bighelp(.body).weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                         .frame(width: 52)
                     Text(showsArchivedGroups ? "Back to group chats" : "Archived group chats (\(archivedCount))")
-                        .font(.subheadline.weight(.medium))
+                        .font(.bighelp(.subheadline).weight(.medium))
                         .foregroundStyle(theme.primaryText)
                     Spacer(minLength: 0)
                 }
@@ -353,7 +361,7 @@ struct AgentsView: View {
                 HStack(spacing: BighelpTokens.space4) {
                     AgentsSectionCaption(title: showsArchivedGroups ? "Archived group chats" : "Group chats")
                     Image(systemName: areGroupsExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.bold))
+                        .font(.bighelp(.caption2).weight(.bold))
                         .foregroundStyle(theme.tertiaryText)
                         .accessibilityHidden(true)
                 }
@@ -385,7 +393,7 @@ struct AgentsView: View {
         case .loaded:
             if visibleGroups.isEmpty {
                 Text(query.isEmpty && groupFilterProfileID == nil ? "No groups yet." : "No matching groups.")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .accessibilityIdentifier("agents.groups.empty")
             }
@@ -483,6 +491,11 @@ struct AgentsView: View {
         }
     }
 
+    private func refresh() async {
+        await store.loadReportingErrors()
+        await botModeRooms?.refreshNativeRoomCatalog()
+    }
+
     private func avatarURL(_ agent: AgentProfile) -> URL? { store.avatarURL(for: agent) }
     private func isPrimary(_ agent: AgentProfile) -> Bool { store.isPrimary(agent.id) }
     private func reorderPinned(_ ids: [String]) { store.reorderPinnedAgents(ids) }
@@ -513,7 +526,7 @@ struct AgentsView: View {
     private func recovery(_ message: String, identifier: String, retry: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Label(message, systemImage: "exclamationmark.triangle")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {

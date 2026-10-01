@@ -34,7 +34,7 @@ struct HermesAchievementsView: View {
                             LabeledContent("Completed runs", value: String(status.runCount))
                         }
                         if let message = store.statusMessage {
-                            Text(message).font(.footnote).foregroundStyle(.secondary)
+                            Text(message).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                         }
                     }
                     feedback
@@ -181,11 +181,11 @@ private struct HermesAchievementRow: View {
                 Image(systemName: achievement.isUnlocked ? "trophy.fill" : (achievement.state == "secret" ? "questionmark.circle" : "trophy"))
                     .foregroundStyle(achievement.isUnlocked ? .yellow : .secondary)
                     .accessibilityHidden(true)
-                Text(achievement.name).font(.headline)
+                Text(achievement.name).font(.bighelp(.headline))
                 Spacer()
-                if let tier = achievement.tier { Text(tier).font(.caption).foregroundStyle(.secondary) }
+                if let tier = achievement.tier { Text(tier).font(.bighelp(.caption)).foregroundStyle(.secondary) }
             }
-            Text(achievement.summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+            Text(achievement.summary).font(.bighelp(.subheadline)).foregroundStyle(.secondary).lineLimit(2)
             ProgressView(value: Double(achievement.progressPercent), total: 100)
                 .accessibilityLabel("Achievement progress")
                 .accessibilityValue("\(achievement.progressPercent) percent")

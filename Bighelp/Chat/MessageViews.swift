@@ -184,7 +184,7 @@ struct TimelineItemView: View {
 
             if let reference = item.metadata.contentReference {
                 Text("Preview — complete content is stored on Hermes.")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                 BighelpSessionContentDisclosure(sessionID: reference.sessionID, rowID: reference.rowID)
             }

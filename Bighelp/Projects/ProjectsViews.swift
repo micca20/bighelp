@@ -25,7 +25,7 @@ struct ProjectsHomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: BighelpTokens.space12) {
                 Text("Keep related chats and folders together. Chats you start in a project work in its folder.")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .padding(.bottom, BighelpTokens.space4)
                 if let catalog = workspaces.catalog {
@@ -47,7 +47,7 @@ struct ProjectsHomeView: View {
                 }
                 if let message = context.store.errorMessage, workspaces.catalog != nil {
                     Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(theme.secondaryText)
                 }
             }
@@ -61,6 +61,14 @@ struct ProjectsHomeView: View {
         .navigationTitle("Projects")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            #if targetEnvironment(macCatalyst)
+            // A Mac list can't be pulled down to refresh.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Refresh", systemImage: "arrow.clockwise") { Task { await reload() } }
+                    .keyboardShortcut("r")
+                    .accessibilityIdentifier("projects.refresh")
+            }
+            #endif
             ToolbarItem(placement: .topBarTrailing) {
                 Button { isCreating = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel("New project")
@@ -73,6 +81,7 @@ struct ProjectsHomeView: View {
             HermesWorkspaceCreateView(store: context.workspaces, agentID: context.agentID, noun: "Project") {
                 Task { await context.store.refresh() }
             }
+            .bighelpSheetSize(.standard)
         }
         .accessibilityIdentifier("projects.screen")
     }
@@ -98,10 +107,10 @@ struct ProjectsHomeView: View {
                 .font(.system(size: 40))
                 .foregroundStyle(theme.action)
             Text("No projects yet")
-                .font(.title3.weight(.semibold))
+                .font(.bighelp(.title3).weight(.semibold))
                 .foregroundStyle(theme.primaryText)
             Text("Make one for anything you come back to: an app, a trip, your home.")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
             Button("New project") { isCreating = true }
@@ -118,10 +127,10 @@ struct ProjectsHomeView: View {
     private func unavailable(_ message: String?) -> some View {
         VStack(spacing: BighelpTokens.space8) {
             Text("Projects aren't available right now")
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(theme.primaryText)
-            Text(message ?? "Check that your computer is on and connected, then pull down to try again.")
-                .font(.subheadline)
+            Text(message ?? "Check that your computer is on and connected, then \(BighelpPlatform.isMac ? "click Refresh" : "pull down") to try again.")
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -144,12 +153,12 @@ private struct ProjectCard: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 HStack(spacing: BighelpTokens.space8) {
                     Text(project.name)
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
                     if project.isActive {
                         Text("Current")
-                            .font(.caption.weight(.semibold))
+                            .font(.bighelp(.caption).weight(.semibold))
                             .foregroundStyle(theme.action)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
@@ -158,18 +167,18 @@ private struct ProjectCard: View {
                 }
                 if !project.description.isEmpty {
                     Text(project.description)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
                 Text(footnote)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .font(.bighelp(.footnote).weight(.semibold))
                 .foregroundStyle(theme.secondaryText)
                 .padding(.top, 4)
         }
@@ -266,7 +275,7 @@ struct ProjectDetailView: View {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 160)
                 } else {
                     Text("This project isn't available anymore.")
-                        .font(.body)
+                        .font(.bighelp(.body))
                         .foregroundStyle(theme.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 160)
                 }
@@ -288,6 +297,13 @@ struct ProjectDetailView: View {
         .navigationTitle(project?.name ?? "Project")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            #if targetEnvironment(macCatalyst)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Refresh", systemImage: "arrow.clockwise") { Task { await refresh() } }
+                    .keyboardShortcut("r")
+                    .accessibilityIdentifier("project.refresh")
+            }
+            #endif
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if project?.isActive == false {
@@ -306,10 +322,7 @@ struct ProjectDetailView: View {
                 .accessibilityIdentifier("project.options")
             }
         }
-        .refreshable {
-            await context.store.refresh()
-            await context.store.loadChats(projectID: projectID)
-        }
+        .refreshable { await refresh() }
         .task(id: projectID) {
             if context.workspaces.catalog == nil { await context.workspaces.load(agentID: context.agentID) }
             if context.store.details.isEmpty { await context.store.refresh() }
@@ -328,16 +341,21 @@ struct ProjectDetailView: View {
         .accessibilityIdentifier("project.screen")
     }
 
+    private func refresh() async {
+        await context.store.refresh()
+        await context.store.loadChats(projectID: projectID)
+    }
+
     private func header(_ project: HermesWorkspaceSummary, details: ProjectsStore.Details?) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             ProjectTile(id: project.id, icon: details?.icon, color: details?.color, size: 64)
             Text(project.name)
-                .font(.largeTitle.weight(.bold))
+                .font(.bighelp(.largeTitle).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .accessibilityAddTraits(.isHeader)
             if !project.description.isEmpty {
                 Text(project.description)
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.secondaryText)
             }
         }
@@ -350,7 +368,7 @@ struct ProjectDetailView: View {
             context.onNewChat(projectID)
         } label: {
             Label("New chat in this project", systemImage: "square.and.pencil")
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
         }
         .bighelpProminentButtonStyle()
@@ -366,7 +384,7 @@ struct ProjectDetailView: View {
         let rows = context.store.chats[projectID]
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text("Chats")
-                .font(.title3.weight(.bold))
+                .font(.bighelp(.title3).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .accessibilityAddTraits(.isHeader)
             if let rows, !rows.isEmpty {
@@ -383,7 +401,7 @@ struct ProjectDetailView: View {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 80)
             } else {
                 Text("No chats yet. Start one above and it'll show up here.")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .accessibilityIdentifier("project.chats.empty")
             }
@@ -394,12 +412,12 @@ struct ProjectDetailView: View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(chat.title.isEmpty ? "Untitled chat" : chat.title)
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                 if !chat.preview.isEmpty {
                     Text(chat.preview)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(2)
                 }
@@ -407,7 +425,7 @@ struct ProjectDetailView: View {
             Spacer(minLength: BighelpTokens.space8)
             if let last = chat.lastActive {
                 Text(last.formatted(.relative(presentation: .named)))
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
             }
         }
@@ -421,14 +439,14 @@ struct ProjectDetailView: View {
     private func folders(_ paths: [String]) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text("Folders")
-                .font(.title3.weight(.bold))
+                .font(.bighelp(.title3).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(paths, id: \.self) { path in
                     Label {
                         Text(HermesFolderPath.abbreviated(path, home: context.workspaces.homePath))
-                            .font(.system(.subheadline, design: .monospaced))
+                            .font(.bighelp(.subheadline, design: .monospaced))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
                             .truncationMode(.head)
@@ -441,7 +459,7 @@ struct ProjectDetailView: View {
             }
             .background(theme.surface, in: .rect(cornerRadius: BighelpTokens.radius16))
             Text("Chats in this project work in the first folder.")
-                .font(.footnote)
+                .font(.bighelp(.footnote))
                 .foregroundStyle(theme.secondaryText)
         }
         .accessibilityIdentifier("project.folders")

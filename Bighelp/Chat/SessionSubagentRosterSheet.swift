@@ -17,10 +17,10 @@ struct SessionSubagentRosterSheet: View {
                             totalSubagents == 1 ? "1 subagent" : "\(totalSubagents) subagents",
                             systemImage: "cpu"
                         )
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(theme.primaryText)
                         Text("Open a subagent to follow its persisted session and live activity.")
-                            .font(.subheadline)
+                            .font(.bighelp(.subheadline))
                             .foregroundStyle(theme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -50,7 +50,7 @@ struct SessionSubagentRosterSheet: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
+                                    .font(.bighelp(.caption).weight(.semibold))
                                     .foregroundStyle(theme.tertiaryText)
                                     .accessibilityHidden(true)
                             }
@@ -139,7 +139,7 @@ struct SessionSubagentRosterSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if showsNavigation {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             }
@@ -189,18 +189,18 @@ private struct SessionSubagentDetailView: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(card.name)
-                                .font(.headline)
+                                .font(.bighelp(.headline))
                                 .foregroundStyle(theme.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(record.map(SessionSubagentDetailPresentation.statusTitle)
                                 ?? "Waiting for child session")
-                                .font(.subheadline)
+                                .font(.bighelp(.subheadline))
                                 .foregroundStyle(theme.secondaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Text(card.summary)
-                        .font(.body)
+                        .font(.bighelp(.body))
                         .foregroundStyle(theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -209,11 +209,11 @@ private struct SessionSubagentDetailView: View {
                 .accessibilityIdentifier("subagent.detail.summary.\(subagent.sessionID)")
 
                 Text("Assigned goal")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .accessibilityAddTraits(.isHeader)
                 Text(subagent.goal)
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(BighelpTokens.space16)

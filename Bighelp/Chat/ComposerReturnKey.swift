@@ -50,20 +50,24 @@ extension ComposerReturnKeyHandling {
 
 /// Takes the keyboard when the send choices open from Command-Return. The
 /// message box gave up focus for them, and without a first responder in the
-/// sheet no key reaches it: 1–9 pick a choice, Return picks the first.
+/// sheet no key reaches it: 1–9 pick a choice, Return picks the first, and
+/// Esc closes the choices when `onCancel` is given.
 struct KeyboardChoiceKeys: UIViewRepresentable {
     let count: Int
+    var onCancel: (() -> Void)? = nil
     let onPick: (Int) -> Void
 
     func makeUIView(context: Context) -> KeysView { KeysView() }
     func updateUIView(_ view: KeysView, context: Context) {
         view.count = min(count, 9)
         view.onPick = onPick
+        view.onCancel = onCancel
     }
 
     final class KeysView: UIView {
         var count = 0
         var onPick: ((Int) -> Void)?
+        var onCancel: (() -> Void)?
 
         override var canBecomeFirstResponder: Bool { true }
 
@@ -71,7 +75,10 @@ struct KeyboardChoiceKeys: UIViewRepresentable {
             let digits = (0..<count).map { index in
                 UIKeyCommand(input: String(index + 1), modifierFlags: [], action: #selector(pickDigit(_:)))
             }
-            let commands = digits + [UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(pickFirst))]
+            var commands = digits + [UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(pickFirst))]
+            if onCancel != nil {
+                commands.append(UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(cancel)))
+            }
             for command in commands { command.wantsPriorityOverSystemBehavior = true }
             return commands
         }
@@ -88,5 +95,6 @@ struct KeyboardChoiceKeys: UIViewRepresentable {
         }
 
         @objc private func pickFirst() { onPick?(0) }
+        @objc private func cancel() { onCancel?() }
     }
 }

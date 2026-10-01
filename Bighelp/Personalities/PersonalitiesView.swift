@@ -38,6 +38,9 @@ struct PersonalitiesView: View {
                     accessibilityLabel: "Back to Settings",
                     action: { dismiss() }
                 )
+                #if targetEnvironment(macCatalyst)
+                .keyboardShortcut(.cancelAction)
+                #endif
                 .accessibilityIdentifier("personalities.back")
             }
             ToolbarItem(placement: .primaryAction) {
@@ -54,6 +57,7 @@ struct PersonalitiesView: View {
             NavigationStack {
                 PersonalityEditorView(store: store, presentation: presentation)
             }
+            .bighelpSheetSize(.standard)
         }
         .confirmationDialog(
             pendingDelete?.deleteLabel ?? "Delete Personality",
@@ -187,7 +191,7 @@ struct PersonalitiesView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.title3)
+                    .font(.bighelp(.title3))
                     .foregroundStyle(theme.secondaryText)
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                     .contentShape(Rectangle())
@@ -254,7 +258,7 @@ struct PersonalitiesView: View {
                     .accessibilityLabel("Active")
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             }
@@ -363,6 +367,10 @@ private struct PersonalityEditorView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
+                    #if targetEnvironment(macCatalyst)
+                    .keyboardShortcut(.cancelAction)
+                    #endif
+                    .bighelpToolbarText()
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }

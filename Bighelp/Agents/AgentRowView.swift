@@ -50,7 +50,7 @@ struct AgentRowView: View {
 
             Button("More actions for \(agent.name)", systemImage: "ellipsis", action: onManage)
                 .labelStyle(.iconOnly)
-                .font(.body)
+                .font(.bighelp(.body))
                 .foregroundStyle(theme.secondaryText)
                 // A little over the 44pt minimum so pixel rounding never undercuts it.
                 .frame(width: 48, height: 48)

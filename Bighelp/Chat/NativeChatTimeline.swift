@@ -543,7 +543,7 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
             case .transcript(.completed): return BighelpTokens.hitTarget + BighelpTokens.space16
             case .transcript(.entry(.message(let item))), .earlierMessage(let item):
                 guard case .message(let text) = item.content else { return 240 }
-                let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: tableView.traitCollection)
+                let font = UIFont.bighelp(.body, compatibleWith: tableView.traitCollection)
                 let width = max(80, min(tableView.bounds.width - 40, ChatCanvasLayout.regularLaneMaximumWidth))
                 let columns = max(10, width / (font.pointSize * 0.5))
                 let lines = text.split(separator: "\n", omittingEmptySubsequences: false)

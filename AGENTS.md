@@ -7,7 +7,7 @@ It isn't in the public mirror.
 
 ## What bighelp is
 
-bighelp is a native iPhone, iPad and Vision Pro app (plus Watch, widgets, Live Activities and Shortcuts) for personal AI agents running
+bighelp is a native iPhone, iPad, Mac and Vision Pro app (plus Watch, widgets, Live Activities and Shortcuts) for personal AI agents running
 on [Hermes](https://github.com/NousResearch/hermes-agent). It should feel like texting a friend, not like running a
 server. The app talks straight to the user's own Hermes host. There's no bighelp account.
 
@@ -204,6 +204,35 @@ sections can crash only on devices ("Thread stack size exceeded").
 - The chat lane (messages, message box, status rail) is `ChatCanvasLayout.regularLaneMaximumWidth` wide on iPad
   and Vision Pro. Bubbles take their share of it; don't reintroduce a fixed narrow column.
 
+### Mac
+
+- The Mac app is the iPad app through Mac Catalyst in "Optimize for Mac" mode (family 6, `UIUserInterfaceIdiom.mac`;
+  scheme `BighelpCatalyst`): full size, with the Mac's own menus, pickers and sheets. Every change must build for it:
+  `xcodebuild -scheme BighelpCatalyst -destination 'platform=macOS,variant=Mac Catalyst'`.
+- It ships only as a Developer ID–signed, notarized DMG on GitHub Releases (`Scripts/release-mac.sh`), never
+  through App Store Connect. It shares the iPhone app's ID (`app.loopdy.mobile`) because pushes are addressed to
+  it; never upload a Mac build. It runs sandboxed (`BighelpCatalyst.entitlements`; `network.server` is for the
+  127.0.0.1 browser sign-in callback) and embeds the notification extension for sealed alerts.
+- `os(iOS)` is true on the Mac, and `canImport(ActivityKit)` and `canImport(AppKit)` are too, though ActivityKit's
+  types are unavailable there. Fence with `!targetEnvironment(macCatalyst)` or `BighelpPlatform.isMac`. The Mac has
+  no Watch relay, Live Activities, widgets, Siri tips, haptics or edge swipes. `horizontalSizeClass` is always
+  regular there.
+- Text: the Mac's text styles are fixed (Dynamic Type doesn't reach them). Write `.font(.bighelp(.caption))`, never
+  `.font(.caption)`, and `UIFont.bighelp(.body)` in UIKit; `.bighelpFont(role)` already follows. They use the size
+  from Settings › Appearance › Text and buttons (`BighelpInterfaceSize`; ⌘+ ⌘− ⌘0). Control sizes come from
+  `BighelpTokens.hitTarget` and `BighelpTokens.scaled(_:)`, which follow the Button size there.
+- Sheets open as panels at their content's minimum size and ignore detents: put `.bighelpSheetSize(.compact |
+  .standard | .large)` on every sheet's content. Prefer popovers for pickers anchored to a button. Menus draw only
+  their label (`BighelpMacMenuStyle`). Long-press-only actions need a `.contextMenu` (right-click) on the Mac.
+- ☰ is the window's sidebar (`BighelpSideMenu`, shared with Vision Pro): it stays open while you pick, ☰ and ⌃⌘S
+  toggle it, and the Mac remembers it.
+- Keys: Return sends (Settings › Chat › Return sends), Shift-Return adds a line, Command-Return shows the send
+  choices while the agent works. ⌘N starts a chat and ⌘, opens Settings (`BighelpMenuCommands`).
+- `BighelpMac` (`BighelpMac/`) is a separate, fixture-only desktop prototype. It isn't the shipping Mac app.
+- Driving the Mac app by hand (`cua-driver`): background key presses don't reach a Catalyst window, and a first
+  click on an inactive window only activates it. Use a desktop-scope session and click twice. Sheets are separate
+  windows. `.dynamicTypeSize` has no effect on the Mac.
+
 ### Vision Pro
 
 - The app target builds natively for visionOS (`supportedDestinations`), not as the iPad app in a window. Every
@@ -234,7 +263,7 @@ sections can crash only on devices ("Thread stack size exceeded").
   overrides the appearance and turns titles white again.
 - Tabs sit in a leading ornament (`VisionTabOrnament`), not a bar along the bottom by the system's window
   controls. A screen covered by a pushed one hides its ornaments, so the pushed home chat carries its own.
-  ☰ opens as a column beside the page (`VisionSideMenu`), not a sheet.
+  ☰ opens as a column beside the page (`BighelpSideMenu`), not a sheet; the Mac uses the same column as its sidebar.
 - Eye targets: controls are 56pt or more (`BighelpTokens.hitTarget`), header buttons 52pt glass plus margin.
 - Forms on visionOS: section headers don't grow to fit (Agent Studio's hero lives in a row there), a row of
   plain buttons can be laid out zero points tall (pin it with `.fixedSize(horizontal: false, vertical: true)`),

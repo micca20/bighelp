@@ -45,7 +45,9 @@ struct BighelpLinkQRScannerView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .foregroundStyle(.white)
+                    .bighelpToolbarText()
             }
         }
         .accessibilityIdentifier("link.pairing.scanner")

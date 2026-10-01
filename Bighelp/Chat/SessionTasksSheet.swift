@@ -23,12 +23,12 @@ struct SessionTasksSheet: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Session progress")
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(theme.primaryText)
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: BighelpTokens.space8)
                     Text("\(state.completedCount) of \(state.totalCount)")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                         .monospacedDigit()
                 }
@@ -52,14 +52,14 @@ struct SessionTasksSheet: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(task.content)
-                                .font(.body)
+                                .font(.bighelp(.body))
                                 .foregroundStyle(task.status == .cancelled
                                     ? theme.tertiaryText
                                     : theme.primaryText)
                                 .strikethrough(task.status == .cancelled)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(taskStatus(task.status))
-                                .font(.caption)
+                                .font(.bighelp(.caption))
                                 .foregroundStyle(theme.secondaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

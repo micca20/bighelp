@@ -124,6 +124,9 @@ struct BighelpPickerSheetSurfacePresentation: Equatable, Sendable {
 struct BighelpPickerSheetBackgroundModifier: ViewModifier {
     let usesNativePresentation: Bool
     let legacyTint: BighelpSurfaceTint
+    /// A page pushed inside another presentation (the Mac's Model & reasoning
+    /// pop-up) draws its own surface and leaves that presentation's background alone.
+    var isEmbedded = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -136,7 +139,9 @@ struct BighelpPickerSheetBackgroundModifier: ViewModifier {
             colorScheme: colorScheme,
             contrast: colorSchemeContrast
         )
-        if usesNativePresentation {
+        if isEmbedded {
+            content.bighelpSurface(BighelpPickerSheetLayout.rootSurfaceRole, tint: .none)
+        } else if usesNativePresentation {
             content
                 .background(Color.clear)
                 .bighelpTranslucentPresentationBackground(fallback: theme.canvas)
@@ -144,6 +149,21 @@ struct BighelpPickerSheetBackgroundModifier: ViewModifier {
             content
                 .bighelpSurface(BighelpPickerSheetLayout.rootSurfaceRole, tint: legacyTint)
                 .presentationBackground(.clear)
+        }
+    }
+}
+
+/// A sheet brings its own navigation stack; a page pushed into one mustn't nest a second.
+private struct BighelpPickerNavigation<Content: View>: View {
+    let isEmbedded: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        if isEmbedded {
+            content
+        } else {
+            NavigationStack { content }
+                .bighelpSheetSize(.standard)
         }
     }
 }
@@ -321,6 +341,11 @@ struct BighelpModelPickerSheet: View {
     let applyTitle: String
     /// Shown when nothing specific is chosen, e.g. an agent that uses the default model.
     let defaultModelTitle: String
+    /// Pushed inside another navigation stack (the Mac's Model & reasoning
+    /// pop-up) instead of presented as its own sheet.
+    let isEmbedded: Bool
+    /// Close replaces `dismiss`, which only pops an embedded page.
+    let onClose: (() -> Void)?
 
     @State private var searchText = ""
     @State private var isSearchPresented = false
@@ -330,6 +355,9 @@ struct BighelpModelPickerSheet: View {
     @State private var pinMutationRevision = 0
     @State private var isModelConfirmationPresented = false
     @State private var didSubmitModelConfirmation = false
+    #if targetEnvironment(macCatalyst)
+    @FocusState private var isSearchFocused: Bool
+    #endif
     @Environment(\.bighelpUIV3Enabled) private var uiV3Enabled
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -358,6 +386,8 @@ struct BighelpModelPickerSheet: View {
         onCancelModelConfirmation: ((SessionRuntimeModelConfirmation) -> Void)? = nil,
         applyTitle: String = "Apply to current chat",
         defaultModelTitle: String = "Host default",
+        isEmbedded: Bool = false,
+        onClose: (() -> Void)? = nil,
         onApply: ((SessionRuntimeSelectionDraft) -> Void)? = nil
     ) {
         self.title = title
@@ -384,6 +414,8 @@ struct BighelpModelPickerSheet: View {
         self.onCancelModelConfirmation = onCancelModelConfirmation
         self.applyTitle = applyTitle
         self.defaultModelTitle = defaultModelTitle
+        self.isEmbedded = isEmbedded
+        self.onClose = onClose
         _disclosure = State(initialValue: BighelpModelPickerDisclosureState(
             expandedProviderIDs: Set([currentProviderID].compactMap { $0 })
         ))
@@ -395,7 +427,7 @@ struct BighelpModelPickerSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        BighelpPickerNavigation(isEmbedded: isEmbedded) {
             VStack(spacing: 0) {
                 if !uiV3Enabled {
                     ZStack(alignment: .topTrailing) {
@@ -422,13 +454,16 @@ struct BighelpModelPickerSheet: View {
                             style: BighelpPickerSheetLayout.dismissButtonStyle,
                             action: closeOrReturn
                         )
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                         .accessibilityIdentifier("model-picker.dismiss")
                     }
                     .padding(.horizontal, BighelpTokens.space20)
                     .padding(.top, BighelpTokens.space20)
                 }
 
-                if !uiV3Enabled && !isChoosingReasoning {
+                if showsInlineSearch {
                     searchField
                         .padding(.horizontal, BighelpTokens.space20)
                         .padding(.top, BighelpTokens.space16)
@@ -439,7 +474,7 @@ struct BighelpModelPickerSheet: View {
                 LazyVStack(alignment: .center, spacing: BighelpTokens.space16) {
                     if uiV3Enabled {
                         Text(scopeLabel)
-                            .font(.subheadline)
+                            .font(.bighelp(.subheadline))
                             .foregroundStyle(theme.secondaryText)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
@@ -491,7 +526,8 @@ struct BighelpModelPickerSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .modifier(BighelpPickerSheetBackgroundModifier(
                 usesNativePresentation: uiV3Enabled,
-                legacyTint: sheetSurfacePresentation.surfaceTint
+                legacyTint: sheetSurfacePresentation.surfaceTint,
+                isEmbedded: isEmbedded
             ))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("model-picker.surface")
@@ -513,19 +549,30 @@ struct BighelpModelPickerSheet: View {
             .toolbar(uiV3Enabled ? .visible : .hidden, for: .navigationBar)
             .toolbar {
                 if uiV3Enabled {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close", systemImage: "xmark", action: dismiss.callAsFunction)
+                    // Pushed, the leading spot is the back button.
+                    ToolbarItem(placement: isEmbedded ? .topBarTrailing : .cancellationAction) {
+                        Button("Close", systemImage: "xmark", action: close)
                             .labelStyle(.iconOnly)
+                            #if targetEnvironment(macCatalyst)
+                            .keyboardShortcut(.cancelAction)
+                            #endif
                             .accessibilityIdentifier("model-picker.dismiss")
                     }
                 }
             }
+            // The Mac's search sits in the page (see `showsInlineSearch`).
             .modifier(BighelpPickerSearchModifier(
-                isEnabled: uiV3Enabled,
+                isEnabled: uiV3Enabled && !BighelpPlatform.isMac,
                 text: $searchText,
                 isPresented: $isSearchPresented,
                 prompt: "Search providers and models"
             ))
+            #if targetEnvironment(macCatalyst)
+            .onAppear {
+                // Typing goes straight to search; focus only takes once the field is in its window.
+                Task { @MainActor in isSearchFocused = true }
+            }
+            #endif
         }
         .presentationDragIndicator(.visible)
         .onChange(of: [currentProviderID, currentModelID, currentReasoningValue], initial: true) { _, _ in
@@ -560,6 +607,20 @@ struct BighelpModelPickerSheet: View {
 
     private var isStagedFlow: Bool { onApply != nil }
 
+    /// A search field in the page: the original look, and always on the Mac,
+    /// where a navigation-bar search is easy to miss and hard to reach by keyboard.
+    private var showsInlineSearch: Bool {
+        (!uiV3Enabled || BighelpPlatform.isMac) && !isChoosingReasoning
+    }
+
+    private var canApply: Bool {
+        draft.hasChanges && canApplyDraft && modelConfirmation == nil && statusMessage == nil
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
+    }
+
     private var isChoosingReasoning: Bool {
         isStagedFlow && isReasoningPresented && !uiV3Enabled
     }
@@ -569,7 +630,7 @@ struct BighelpModelPickerSheet: View {
             isReasoningPresented = false
             draft.showModels()
         } else {
-            dismiss()
+            close()
         }
     }
 
@@ -604,11 +665,15 @@ struct BighelpModelPickerSheet: View {
     private var applyBar: some View {
         BighelpModelPickerApplyButton(
             title: applyTitle,
-            hasChanges: draft.hasChanges && canApplyDraft && modelConfirmation == nil && statusMessage == nil,
+            hasChanges: canApply,
             isApplying: isApplying
         ) {
             onApply?(draft)
         }
+        #if targetEnvironment(macCatalyst)
+        // Return in the search field is the field's own (`submitSearch`).
+        .keyboardShortcut(isSearchFocused ? nil : .defaultAction)
+        #endif
         .padding(.horizontal, BighelpTokens.space20)
         .padding(.vertical, BighelpTokens.space12)
         .background(colorScheme == .dark ? theme.canvas : theme.raisedSurface, ignoresSafeAreaEdges: [])
@@ -654,13 +719,43 @@ struct BighelpModelPickerSheet: View {
     }
 
     private var searchField: some View {
+        #if targetEnvironment(macCatalyst)
+        BighelpSearchField(
+            text: $searchText,
+            prompt: "Search providers and models",
+            accessibilityLabel: "Search providers and models",
+            accessibilityIdentifier: "model-picker.search",
+            onSubmit: submitSearch
+        )
+        .focused($isSearchFocused)
+        #else
         BighelpSearchField(
             text: $searchText,
             prompt: "Search providers and models",
             accessibilityLabel: "Search providers and models",
             accessibilityIdentifier: "model-picker.search"
         )
+        #endif
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Return picks the first match; with nothing typed it applies the choice.
+    private func submitSearch() {
+        defer {
+            // Return ends editing; stay in the field so a second Return applies.
+            Task { @MainActor in isSearchFocused = true }
+        }
+        guard !isApplying else { return }
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if isStagedFlow, canApply { onApply?(draft) }
+            return
+        }
+        guard modelUnavailableReason == nil,
+              let group = filteredProviders.first,
+              let modelID = group.models.first else { return }
+        chooseModel(providerID: group.provider.id, modelID: modelID)
+    }
+    #endif
 
     private func errorCard(_ message: String) -> some View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {

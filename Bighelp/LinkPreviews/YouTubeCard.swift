@@ -40,7 +40,7 @@ struct YouTubeCard: View {
                                 .clipped()
                                 .overlay {
                                     Image(systemName: "play.fill")
-                                        .font(.title2)
+                                        .font(.bighelp(.title2))
                                         .foregroundStyle(.white)
                                         .frame(width: 58, height: 58)
                                         .background(.black.opacity(0.55), in: .circle)
@@ -61,11 +61,11 @@ struct YouTubeCard: View {
                 HStack(spacing: BighelpTokens.space12) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(2)
                         Text([preview?.summary, "YouTube"].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(theme.tertiaryText)
                             .lineLimit(1)
                     }

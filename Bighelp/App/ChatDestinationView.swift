@@ -489,6 +489,7 @@ struct ChatDestinationView: View {
             if let sessionAppearance {
                 NavigationStack { SessionAppearanceView(store: sessionAppearance) }
                     .presentationDragIndicator(.visible)
+                    .bighelpSheetSize(.standard)
             }
         }
         .onChange(of: voicePresentation != nil) { _, isPresented in
@@ -587,6 +588,9 @@ struct ChatDestinationView: View {
             .presentationDetents([.fraction(0.72), .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(BighelpTokens.radius20)
+            // A sheet, not a popover, on the Mac too: its rows open pickers,
+            // file panels and pages of their own.
+            .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: $isHermesWorkspacePickerPresented) {
             HermesWorkspacePickerView(

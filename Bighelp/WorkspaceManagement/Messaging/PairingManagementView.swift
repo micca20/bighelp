@@ -221,8 +221,8 @@ struct PairingManagementView: View {
                     Section("Workspace") {
                         LabeledContent("Host", value: store.hostName)
                         LabeledContent("Profile", value: store.profileID)
-                        Text("Messaging pairing approves people who can contact Hermes. It does not register this phone for bighelp notifications.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        Text("Messaging pairing approves people who can contact Hermes. It does not register this \(BighelpPlatform.isMac ? "Mac" : "phone") for bighelp notifications.")
+                            .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                     }
                     status
                     if let catalog = store.catalog {
@@ -284,7 +284,7 @@ struct PairingManagementView: View {
         Section {
             ForEach(requests) { request in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(request.userName.isEmpty ? request.userID : request.userName).font(.headline)
+                    Text(request.userName.isEmpty ? request.userID : request.userName).font(.bighelp(.headline))
                     LabeledContent("Platform", value: request.platform)
                     LabeledContent("User ID", value: request.userID)
                     LabeledContent("Waiting", value: "\(request.ageMinutes) min")
@@ -294,7 +294,7 @@ struct PairingManagementView: View {
                             .frame(minHeight: BighelpTokens.hitTarget)
                     } else {
                         Text("This legacy request has no exact request ID and cannot be approved from bighelp.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -312,7 +312,7 @@ struct PairingManagementView: View {
         Section("People with access") {
             ForEach(users) { user in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(user.userName.isEmpty ? user.userID : user.userName).font(.headline)
+                    Text(user.userName.isEmpty ? user.userID : user.userName).font(.bighelp(.headline))
                     LabeledContent("Platform", value: user.platform)
                     LabeledContent("User ID", value: user.userID)
                     if let date = user.approvedAt { LabeledContent("Approved", value: date.formatted()) }

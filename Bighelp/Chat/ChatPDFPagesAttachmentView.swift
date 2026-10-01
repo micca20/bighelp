@@ -79,6 +79,7 @@ struct ChatPDFPagesAttachmentView: View {
                         cancelImport()
                         dismiss()
                     }
+                        .bighelpToolbarText()
                 }
             }
         }

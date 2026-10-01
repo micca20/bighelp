@@ -147,7 +147,7 @@ struct HostOperationsView<MoreLinks: View>: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Update available")
                             Text("\(Self.behindText(check.commitsBehind)). Update Hermes on your computer.")
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(.secondary)
                         }
                     } icon: {
@@ -161,7 +161,7 @@ struct HostOperationsView<MoreLinks: View>: View {
                 if check.updateAvailable, !check.commits.isEmpty {
                     DisclosureGroup("What's new") {
                         ForEach(check.commits.prefix(20)) { commit in
-                            Text(commit.summary).font(.subheadline)
+                            Text(commit.summary).font(.bighelp(.subheadline))
                         }
                     }
                     .accessibilityIdentifier("system.hermes.whats-new")
@@ -212,7 +212,7 @@ struct HostOperationsView<MoreLinks: View>: View {
                       ? "antenna.radiowaves.left.and.right" : "stop.circle")
                 Spacer()
                 Text(activityText(overview))
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -352,7 +352,7 @@ struct HostOperationsView<MoreLinks: View>: View {
                 ForEach(store.actionReceipts) { receipt in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack {
-                            Text(Self.actionTitle(receipt.action)).font(.headline)
+                            Text(Self.actionTitle(receipt.action)).font(.bighelp(.headline))
                             Spacer()
                             statusLabel(store.actionStatuses[receipt.id])
                         }
@@ -386,13 +386,13 @@ struct HostOperationsView<MoreLinks: View>: View {
     private func statusLabel(_ status: HermesHostActionStatus?) -> some View {
         switch status?.phase {
         case .running, nil:
-            Label("Pending", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            Label("Pending", systemImage: "clock").font(.bighelp(.caption)).foregroundStyle(.secondary)
         case .succeeded:
-            Label("Completed", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+            Label("Completed", systemImage: "checkmark.circle.fill").font(.bighelp(.caption)).foregroundStyle(.green)
         case .failed:
-            Label("Failed", systemImage: "xmark.circle.fill").font(.caption).foregroundStyle(.red)
+            Label("Failed", systemImage: "xmark.circle.fill").font(.bighelp(.caption)).foregroundStyle(.red)
         case .outcomeUnknown:
-            Label("Unknown", systemImage: "questionmark.circle").font(.caption).foregroundStyle(.orange)
+            Label("Unknown", systemImage: "questionmark.circle").font(.bighelp(.caption)).foregroundStyle(.orange)
         }
     }
 

@@ -107,16 +107,16 @@ struct BighelpCardCatalogView: View {
             NavigationLink(value: entry.id) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.name)
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                     Text(entry.summary)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
                     HStack(spacing: 8) {
                         Text(entry.author)
                         Text("Version \(entry.version)")
                     }
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)

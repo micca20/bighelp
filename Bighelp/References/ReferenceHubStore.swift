@@ -27,6 +27,8 @@ final class ReferenceHubStore {
     private(set) var isDismissed = false
     private(set) var isEditorActive = false
     private(set) var optionalProviderUnavailableReason: String?
+    /// Arrow-key browsing of the drawer on the Mac; observed on its own.
+    @ObservationIgnored let keyboard = ReferenceHubKeyboardNavigation()
 
     @ObservationIgnored private var providers: [ReferenceHubProvider]
     @ObservationIgnored private var recentResults: [ReferenceHubResult] = []

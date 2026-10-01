@@ -320,7 +320,7 @@ struct HermesWorkspaceCreateView: View {
                     }
                     TextField("Folder, like ~/projects/app", text: $folderPath,
                               prompt: Text("Folder, like ~/projects/app").bighelpFieldHint(theme))
-                        .font(.system(.body, design: .monospaced))
+                        .font(.bighelp(.body, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -374,6 +374,7 @@ struct HermesWorkspaceCreateView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
@@ -452,7 +453,7 @@ struct HermesWorkspaceCreateView: View {
                             .foregroundStyle(uiV2Enabled ? AnyShapeStyle(theme.primaryText) : AnyShapeStyle(.primary))
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
+                            .font(.bighelp(.footnote).weight(.semibold))
                             .foregroundStyle(secondaryStyle)
                     }
                     .contentShape(.rect)

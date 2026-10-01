@@ -77,13 +77,13 @@ struct AgentRuntimeDefaultsSection: View {
             .accessibilityIdentifier("agent.runtime.\(scope.rawValue).model")
             if let reason = model.support.modelUnavailableReasons[scope] {
                 Text(reason)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let reason = model.support.reasoningUnavailableReasons[scope] ?? model.support.reasoningNotes[scope] {
                 Text(reason)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("agent.runtime.\(scope.rawValue).reasoning-note")

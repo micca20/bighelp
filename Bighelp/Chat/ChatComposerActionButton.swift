@@ -19,7 +19,7 @@ enum MidSessionSendPresentation {
 enum AdaptiveComposerActionPresentation {
     static let tintOpacity = 0.82
     /// Painted circle inside the 44pt hit area, matching the attach control.
-    static let diameter: CGFloat = ComposerFieldMetrics.controlDiameter
+    static var diameter: CGFloat { ComposerFieldMetrics.controlDiameter }
     /// Touches this far outside the button still count: Send and Voice sit at
     /// the screen's edge, where fingers land a little off.
     static let hitSlop: CGFloat = 8
@@ -91,6 +91,10 @@ struct AdaptiveComposerActionButton: View {
                         }
                     )
                     .accessibilityAddTraits(.isButton)
+                    #if targetEnvironment(macCatalyst)
+                    // A mouse rarely finds press-and-hold; right-click offers the same choices.
+                    .contextMenu { midSessionChoicesMenu }
+                    #endif
                     .disabled(!isEnabled)
             }
         }
@@ -115,30 +119,23 @@ struct AdaptiveComposerActionButton: View {
                 .accessibilityHidden(true)
                 .accessibilityIdentifier("chat.send.unlock-progress")
         }
-        .sheet(isPresented: $isMidSessionOptionsPresented, onDismiss: {
-            holdThresholdReached = false
-            touchIsActive = false
-            unlockProgress = 0
-            optionsAppeared = false
-            touchActiveWhenOptionsAppeared = false
-            if optionsFromKeyboard { onKeyboardSendOptionsClosed?() }
-            optionsFromKeyboard = false
-        }) {
-            MidSessionSendOptionsSheet(
-                defaultBehavior: defaultMidSessionBehavior ?? .steer,
-                alternatives: midSessionAlternatives,
-                fromKeyboard: optionsFromKeyboard,
-                onSelect: onMidSessionSend
-            )
-            .presentationDetents([.height(optionsFromKeyboard ? 380 : 300)])
-            .modifier(FittedSheetSizing())
-            .presentationDragIndicator(.visible)
-            .onAppear {
-                guard holdObservationEnabled else { return }
-                optionsAppeared = true
-                touchActiveWhenOptionsAppeared = touchIsActive
-            }
+        #if targetEnvironment(macCatalyst)
+        // The Mac shows the choices in a popover on Send, like its other small choices.
+        .popover(isPresented: $isMidSessionOptionsPresented, arrowEdge: .top) {
+            midSessionOptions
+                .frame(width: 380)
+                .fixedSize(horizontal: false, vertical: true)
+                .presentationCompactAdaptation(.popover)
+                .onDisappear(perform: midSessionOptionsClosed)
         }
+        #else
+        .sheet(isPresented: $isMidSessionOptionsPresented, onDismiss: midSessionOptionsClosed) {
+            midSessionOptions
+                .presentationDetents([.height(optionsFromKeyboard ? 380 : 300)])
+                .modifier(FittedSheetSizing())
+                .presentationDragIndicator(.visible)
+        }
+        #endif
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
         .accessibilityHint(accessibilityHint)
@@ -164,6 +161,48 @@ struct AdaptiveComposerActionButton: View {
         // Confirms the mid-session hold unlocked before the options sheet rises.
         .sensoryFeedback(.impact(weight: .medium), trigger: holdThresholdReached) { _, reached in reached }
     }
+
+    private var midSessionOptions: some View {
+        MidSessionSendOptionsSheet(
+            defaultBehavior: defaultMidSessionBehavior ?? .steer,
+            alternatives: midSessionAlternatives,
+            fromKeyboard: optionsFromKeyboard,
+            onSelect: onMidSessionSend
+        )
+        .onAppear {
+            guard holdObservationEnabled else { return }
+            optionsAppeared = true
+            touchActiveWhenOptionsAppeared = touchIsActive
+        }
+    }
+
+    private func midSessionOptionsClosed() {
+        holdThresholdReached = false
+        touchIsActive = false
+        unlockProgress = 0
+        optionsAppeared = false
+        touchActiveWhenOptionsAppeared = false
+        if optionsFromKeyboard { onKeyboardSendOptionsClosed?() }
+        optionsFromKeyboard = false
+    }
+
+    #if targetEnvironment(macCatalyst)
+    /// Every way to send while the agent works, the usual one first.
+    @ViewBuilder
+    private var midSessionChoicesMenu: some View {
+        if let defaultMidSessionBehavior {
+            ForEach([defaultMidSessionBehavior] + midSessionAlternatives) { behavior in
+                Button {
+                    onMidSessionSend(behavior)
+                } label: {
+                    Text(behavior.title)
+                    Text(behavior.detail)
+                }
+                .accessibilityIdentifier("chat.send.menu.\(behavior.rawValue)")
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var actionContent: some View {
@@ -350,7 +389,7 @@ private struct MidSessionSendOptionsSheet: View {
                     .foregroundStyle(theme.primaryText)
                 Text(fromKeyboard
                      ? "Your agent is still working. Press 1–\(choices.count), or Return to \(defaultBehavior.title.lowercased())."
-                     : "Tap sends with \(defaultBehavior.title). Choose a one-time alternative below.")
+                     : "\(BighelpPlatform.isMac ? "Click" : "Tap") sends with \(defaultBehavior.title). Choose a one-time alternative below.")
                     .bighelpFont(.metadata)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -386,7 +425,7 @@ private struct MidSessionSendOptionsSheet: View {
         .background {
             if fromKeyboard {
                 // 1–3 pick a choice; Return picks the usual one, listed first.
-                KeyboardChoiceKeys(count: choices.count) { index in
+                KeyboardChoiceKeys(count: choices.count, onCancel: BighelpPlatform.isMac ? { dismiss() } : nil) { index in
                     guard choices.indices.contains(index) else { return }
                     dismiss()
                     onSelect(choices[index])

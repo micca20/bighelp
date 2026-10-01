@@ -193,6 +193,7 @@ struct RootShellView: View {
             syncHosts: { fleet?.syncHosts() }, cancelReads: { fleet?.cancelReads() },
             setKeepsConnected: setKeepsFleetHostsConnected))
         .environment(\.agentDeletion, agentDeletionAction)
+        .focusedSceneValue(\.bighelpShellActions, menuCommandActions)
         .bighelpThemePresentation(theme)
         .onChange(of: hostRegistry?.hosts.isEmpty, initial: true) { _, _ in
             reconcileRestoredHostOnboardingState()
@@ -216,11 +217,15 @@ struct RootShellView: View {
                       let current = currentWorkspaceOwner else { return }
                 openHostedGroup(roomID, owner: current, settings: false)
             }
+            .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: Binding(
             get: { groupSettingsModel != nil }, set: { if !$0 { groupSettingsModel = nil } }
         )) {
-            if let model = groupSettingsModel { PeopleAndChatView(model: model, agents: agents) }
+            if let model = groupSettingsModel {
+                PeopleAndChatView(model: model, agents: agents)
+                    .bighelpSheetSize(.standard)
+            }
         }
         .sheet(isPresented: Binding(get: { hostRegistry?.isSetupPresented == true },
                                    set: { if !$0 { hostRegistry?.finishSetup() } })) {
@@ -228,6 +233,7 @@ struct RootShellView: View {
                 NavigationStack {
                     HostSetupView(registry: hostRegistry, hostToAuthenticate: hostRegistry.hosts.first { $0.id == hostRegistry.setupHostID })
                 }
+                .bighelpSheetSize(.standard)
             }
         }
         .onChange(of: hostRegistry?.selectedHostID) { _, _ in
@@ -320,6 +326,7 @@ struct RootShellView: View {
             set: { if !$0 { permissionsOnboarding.notNow() } }
         )) {
             PermissionsOnboardingView(model: permissionsOnboarding)
+                .bighelpSheetSize(.standard)
         }
         .task(id: hostRuntimeScope) { await prepareHostRuntime() }
         .onChange(of: agents.errorMessage) { _, _ in
@@ -389,7 +396,7 @@ struct RootShellView: View {
         }
     }
 
-    private var presentsFirstRunOnboarding: Bool {
+    var presentsFirstRunOnboarding: Bool {
         guard let hostRegistry,
               hostRegistry.isWorkspaceReady,
               hostRegistry.storageIsReadable,
@@ -443,7 +450,7 @@ struct RootShellView: View {
         hasCompletedFirstRunOnboarding = true
     }
 
-    private var needsInitialHostSetup: Bool {
+    var needsInitialHostSetup: Bool {
         guard let hostRegistry, hostRegistry.isWorkspaceReady, hostRegistry.errorMessage == nil else { return false }
         #if DEBUG
         if !requiresLinkAccount && !ProcessInfo.processInfo.arguments.contains("-test-no-configured-hosts") { return false }
@@ -581,7 +588,7 @@ struct RootShellView: View {
                 // ☰ always opens chats, agents, tasks and settings, on iPad too.
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        isHomeDrawerPresented = true
+                        isHomeDrawerPresented.toggle()
                     } label: {
                         Image(systemName: "line.3.horizontal")
                     }
@@ -652,6 +659,7 @@ struct RootShellView: View {
                         }
                     }
             }
+            .bighelpSheetSize()
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $pairingSheetRequest) { request in
@@ -663,6 +671,7 @@ struct RootShellView: View {
                 )
                 .id(request.id)
             }
+            .bighelpSheetSize(.standard)
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $isLinkAccountPresented) {
@@ -681,6 +690,7 @@ struct RootShellView: View {
                     }
                 )
             }
+            .bighelpSheetSize(.standard)
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $isHermesWorkspacePresented) {
@@ -690,6 +700,7 @@ struct RootShellView: View {
             )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .bighelpSheetSize(.standard)
         }
         .onChange(of: appState.path) { previousPath, path in
             let bindsPendingCanvas: Bool = {
@@ -841,7 +852,8 @@ struct RootShellView: View {
     /// Every way into the menu (☰, edge swipes, inner pages) opens the same ☰ sheet.
     private func presentQuickWorkspace() {
         BighelpKeyboard.dismiss()
-        isHomeDrawerPresented = true
+        // ☰ toggles: the Mac and Vision Pro sidebar stays reachable while open.
+        isHomeDrawerPresented.toggle()
     }
 
     private func performWorkspaceAction(_ action: WorkspaceSwipeAction) {
@@ -1013,6 +1025,16 @@ struct RootShellView: View {
             }
     }
 
+    /// The menu bar's New Chat (⌘N), Settings (⌘,) and sidebar (⌃⌘S).
+    private var menuCommandActions: BighelpShellActions {
+        BighelpShellActions(
+            newChat: { startNewChat(explicitAgentID: nil) },
+            openSettings: { isUnifiedSettingsPresented = true },
+            isSidebarOpen: isHomeDrawerPresented,
+            toggleSidebar: { isHomeDrawerPresented.toggle() }
+        )
+    }
+
     func startNewChat(explicitAgentID: String?) {
         runNewChatStart(retry: { startNewChat(explicitAgentID: explicitAgentID) }) {
             _ = try await newChatCoordinator.start(explicitAgentID: explicitAgentID)
@@ -1175,6 +1197,7 @@ struct RootShellView: View {
                     }
                 }
                 .accessibilityIdentifier("host-runtime.screen")
+                .bighelpSheetSize(.standard)
                 .presentationDragIndicator(.visible)
             }
     }

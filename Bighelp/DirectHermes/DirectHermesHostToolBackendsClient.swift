@@ -110,7 +110,7 @@ enum HermesHostToolBackendsError: Error, Equatable, LocalizedError, Sendable {
         case .readbackFailed:
             "Hermes accepted the request, but the requested backend state was not confirmed by readback."
         case .hostInteractionRequired:
-            "Continue on the host Mac. macOS permission dialogs cannot be approved from this iPhone or iPad."
+            "Continue on the host Mac. macOS permission dialogs cannot be approved from \(BighelpPlatform.isMac ? "bighelp" : "this iPhone or iPad")."
         }
     }
 }

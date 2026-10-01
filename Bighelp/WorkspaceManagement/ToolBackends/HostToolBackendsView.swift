@@ -49,7 +49,7 @@ struct HostToolBackendsView: View {
             LabeledContent("Host", value: store.hostName)
             LabeledContent("Profile", value: store.profileID)
         } header: { Text("Workspace") } footer: {
-            Text("These controls configure execution on the selected Hermes host. They do not change iOS permissions or run a terminal on this device.")
+            Text("These controls configure execution on the selected Hermes host. They do not change \(BighelpPlatform.isMac ? "macOS" : "iOS") permissions or run a terminal on this device.")
         }
     }
 
@@ -79,9 +79,9 @@ struct HostToolBackendsView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                Text(backend.label).font(.headline)
+                                Text(backend.label).font(.bighelp(.headline))
                                 if !backend.summary.isEmpty {
-                                    Text(backend.summary).font(.footnote).foregroundStyle(.secondary)
+                                    Text(backend.summary).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                                 }
                             }
                             Spacer()
@@ -89,7 +89,7 @@ struct HostToolBackendsView: View {
                         }
                         if !backend.detail.isEmpty {
                             Text(backend.detail)
-                                .font(.caption)
+                                .font(.bighelp(.caption))
                                 .foregroundStyle(backend.status == .ready ? Color.secondary : Color.orange)
                         }
                         if !backend.isActive {
@@ -125,8 +125,8 @@ struct HostToolBackendsView: View {
                                   detail: "Allows CuaDriver on the host Mac to capture app windows.")
                     permissionRow("Screen capture check", value: status.canCaptureScreen,
                                   detail: "Runtime confirmation that host screen capture is usable.")
-                    Text("macOS grants attach to CuaDriver’s host identity, not to bighelp and not to this phone.")
-                        .font(.footnote)
+                    Text("macOS grants attach to CuaDriver’s host identity, not to bighelp\(BighelpPlatform.isMac ? "" : " and not to this phone").")
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(.secondary)
                 }
 
@@ -134,7 +134,7 @@ struct HostToolBackendsView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         LabeledContent(check.label, value: check.status.capitalized)
                         if !check.message.isEmpty {
-                            Text(check.message).font(.caption).foregroundStyle(.secondary)
+                            Text(check.message).font(.bighelp(.caption)).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -143,11 +143,11 @@ struct HostToolBackendsView: View {
                     LabeledContent("Permission source", value: attribution)
                 }
                 if let note = status.source?.note, !note.isEmpty {
-                    Text(note).font(.caption).foregroundStyle(.secondary)
+                    Text(note).font(.bighelp(.caption)).foregroundStyle(.secondary)
                 }
                 if let error = status.errorSummary, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.footnote).foregroundStyle(.orange)
+                        .font(.bighelp(.footnote)).foregroundStyle(.orange)
                 }
 
                 Button("Refresh Host Status", systemImage: "arrow.clockwise") {
@@ -165,7 +165,7 @@ struct HostToolBackendsView: View {
                 Text("Advanced · Computer Use")
             } footer: {
                 if status.hostPlatform == "darwin" {
-                    Text("Requesting permissions only launches the supported CuaDriver flow. You must interact with macOS on the host. bighelp never reports that iOS granted Mac Accessibility or Screen Recording.")
+                    Text("Requesting permissions only launches the supported CuaDriver flow. You must interact with macOS on the host. bighelp never reports that \(BighelpPlatform.isMac ? "it" : "iOS") granted Mac Accessibility or Screen Recording.")
                 } else {
                     Text("Windows and Linux do not use the macOS TCC grant flow. Hermes reports CuaDriver health instead; bighelp does not manufacture a permission toggle.")
                 }
@@ -183,7 +183,7 @@ struct HostToolBackendsView: View {
                     grantStatusLabel(store.grantStatus)
                 }
                 Text("Continue on the host Mac. Approve the macOS dialogs attributed to CuaDriver, then return here and refresh.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                 HStack {
                     Button("Refresh Process") { Task { await store.refreshGrantStatus() } }
@@ -194,7 +194,7 @@ struct HostToolBackendsView: View {
                         .buttonStyle(.bordered)
                 }
                 Text("Host process \(receipt.processID.formatted())\(receipt.wasAlreadyRunning ? " was already running." : " was started by Hermes.")")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Host interaction required")
@@ -208,15 +208,15 @@ struct HostToolBackendsView: View {
     private func terminalStatus(_ backend: HermesTerminalBackend) -> some View {
         if backend.isActive {
             Label("Selected", systemImage: "checkmark.circle.fill")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.bighelp(.caption)).foregroundStyle(.secondary)
         } else {
             switch backend.status {
             case .ready:
-                Label("Ready", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.green)
+                Label("Ready", systemImage: "checkmark.circle").font(.bighelp(.caption)).foregroundStyle(.green)
             case .needsSetup:
-                Label("Needs setup", systemImage: "wrench.and.screwdriver").font(.caption).foregroundStyle(.orange)
+                Label("Needs setup", systemImage: "wrench.and.screwdriver").font(.bighelp(.caption)).foregroundStyle(.orange)
             case .unavailable:
-                Label("Unavailable", systemImage: "nosign").font(.caption).foregroundStyle(.red)
+                Label("Unavailable", systemImage: "nosign").font(.bighelp(.caption)).foregroundStyle(.red)
             }
         }
     }
@@ -224,7 +224,7 @@ struct HostToolBackendsView: View {
     private func permissionRow(_ label: String, value: Bool?, detail: String) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
             LabeledContent(label, value: readinessLabel(value))
-            Text(detail).font(.caption).foregroundStyle(.secondary)
+            Text(detail).font(.bighelp(.caption)).foregroundStyle(.secondary)
         }
     }
 
@@ -232,12 +232,12 @@ struct HostToolBackendsView: View {
     private func grantStatusLabel(_ status: HermesComputerUseGrantStatus?) -> some View {
         switch status?.phase {
         case .waitingForHostInteraction, nil:
-            Label("Waiting on Mac", systemImage: "macwindow").font(.caption).foregroundStyle(.orange)
+            Label("Waiting on Mac", systemImage: "macwindow").font(.bighelp(.caption)).foregroundStyle(.orange)
         case .finished(let exitCode):
             Label(exitCode == 0 ? "Process finished" : "Process failed", systemImage: exitCode == 0 ? "checkmark.circle" : "xmark.circle")
-                .font(.caption).foregroundStyle(exitCode == 0 ? Color.secondary : Color.red)
+                .font(.bighelp(.caption)).foregroundStyle(exitCode == 0 ? Color.secondary : Color.red)
         case .outcomeUnknown:
-            Label("Unknown", systemImage: "questionmark.circle").font(.caption).foregroundStyle(.orange)
+            Label("Unknown", systemImage: "questionmark.circle").font(.bighelp(.caption)).foregroundStyle(.orange)
         }
     }
 

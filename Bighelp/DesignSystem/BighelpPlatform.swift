@@ -33,7 +33,29 @@ enum BighelpHaptics {
     }
 }
 
+extension View {
+    /// A text button in a toolbar's leading spot (Cancel, Done). The Mac squeezes
+    /// it into a round button ("C…"); its natural width keeps the label whole.
+    @ViewBuilder
+    func bighelpToolbarText() -> some View {
+        #if targetEnvironment(macCatalyst)
+        fixedSize()
+        #else
+        self
+        #endif
+    }
+}
+
 enum BighelpPlatform {
+    /// The Mac app (Mac Catalyst, "Optimize for Mac").
+    static var isMac: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
+    }
+
     /// Vision Pro puts the tabs in a strip beside the window instead of a
     /// bar along its bottom edge, next to the system's move and close controls.
     static var usesTabOrnament: Bool {

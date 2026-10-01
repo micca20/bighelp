@@ -558,7 +558,7 @@ final class LiveVoiceModel {
         case "setup_timeout", "startup_timeout", "session_not_started":
             "Codex took too long to start the call. Try again."
         case "invalid_sdp", "audio_only_required", "invalid_call_identity", "invalid_public_answer":
-            "Codex and this phone couldn't agree on audio settings. Try again."
+            "Codex and this \(BighelpPlatform.isMac ? "Mac" : "phone") couldn't agree on audio settings. Try again."
         case "unsupported_voice":
             "That voice isn't available for live voice. Pick another in Settings › Voice."
         case "explicit_api_key_mode_required":

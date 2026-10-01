@@ -42,9 +42,9 @@ struct HermesKanbanAdministrationView: View {
                         HermesKanbanProfileEditor(store: store, profile: profile)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.name).font(.headline)
+                            Text(profile.name).font(.bighelp(.headline))
                             Text(profile.summary.isEmpty ? "No routing description" : profile.summary)
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                .font(.bighelp(.caption)).foregroundStyle(.secondary).lineLimit(2)
                         }
                     }
                 }
@@ -57,8 +57,8 @@ struct HermesKanbanAdministrationView: View {
             Section("Projects") {
                 ForEach(store.projects) { project in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(project.name).font(.headline)
-                        Text(project.slug).font(.caption).foregroundStyle(.secondary)
+                        Text(project.name).font(.bighelp(.headline))
+                        Text(project.slug).font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                 }
                 if store.projects.isEmpty { Text("No live projects available for board scoping.").foregroundStyle(.secondary) }
@@ -66,7 +66,7 @@ struct HermesKanbanAdministrationView: View {
             Section("Advanced · Models") {
                 ForEach(store.modelProviders) { provider in
                     DisclosureGroup("\(provider.label) · \(provider.models.count)") {
-                        ForEach(provider.models, id: \.self) { Text($0).font(.caption) }
+                        ForEach(provider.models, id: \.self) { Text($0).font(.bighelp(.caption)) }
                     }
                 }
                 if store.modelProviders.isEmpty {
@@ -78,9 +78,9 @@ struct HermesKanbanAdministrationView: View {
                 ForEach(store.diagnostics) { diagnostic in
                     VStack(alignment: .leading, spacing: 6) {
                         Label(diagnostic.title, systemImage: diagnostic.severity == .critical ? "exclamationmark.octagon.fill" : "exclamationmark.triangle")
-                            .font(.headline)
-                        Text(diagnostic.taskTitle ?? diagnostic.taskID).font(.subheadline)
-                        Text(diagnostic.detail).font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.headline))
+                        Text(diagnostic.taskTitle ?? diagnostic.taskID).font(.bighelp(.subheadline))
+                        Text(diagnostic.detail).font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                 }
                 if store.diagnostics.isEmpty { Text("No active diagnostics.").foregroundStyle(.secondary) }
@@ -88,15 +88,15 @@ struct HermesKanbanAdministrationView: View {
             Section("Operations") {
                 ForEach(store.activeWorkers) { worker in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(worker.taskTitle).font(.headline)
-                        Text("Run \(worker.runID) · PID \(worker.processID)").font(.caption).foregroundStyle(.secondary)
+                        Text(worker.taskTitle).font(.bighelp(.headline))
+                        Text("Run \(worker.runID) · PID \(worker.processID)").font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                 }
                 if store.activeWorkers.isEmpty { Text("No active workers.").foregroundStyle(.secondary) }
             }
             Section {
                 Text("This mounted API has no template CRUD, workflow CRUD, or separate review-policy route. bighelp preserves workflow IDs/steps on tasks, filters board reads by those exact fields, and uses the typed task Review state for handoff.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             } header: { Text("Advanced · Host limits") }
         }
         .listStyle(.insetGrouped)
@@ -154,7 +154,7 @@ struct HermesKanbanBoardCreatorView: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Toggle("Make host-active board", isOn: $draft.switchAfterCreation)
             } header: { Text("Scope") } footer: {
-                Text("Paths name directories on the selected Hermes host, not on this iPhone.")
+                Text("Paths name directories on the selected Hermes host, not on this \(BighelpPlatform.isMac ? "Mac" : "iPhone").")
             }
         }
         .navigationTitle("New Board")
@@ -165,7 +165,7 @@ struct HermesKanbanBoardCreatorView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss) }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction).bighelpToolbarText() }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") {
                     Task {
@@ -194,13 +194,13 @@ struct HermesKanbanBoardImportView: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Toggle("Make host-active board", isOn: $request.switchAfterImport)
             } header: { Text("Host archive") } footer: {
-                Text("The mounted API accepts an existing .tar.gz path on the Hermes host. It does not accept iPhone file bytes; phone transfer remains a separate parent-owned transport feature.")
+                Text("The mounted API accepts an existing .tar.gz path on the Hermes host. It does not accept \(BighelpPlatform.isMac ? "Mac" : "iPhone") file bytes; \(BighelpPlatform.isMac ? "Mac" : "phone") transfer remains a separate parent-owned transport feature.")
             }
         }
         .navigationTitle("Import Board")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss) }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction).bighelpToolbarText() }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") {
                     Task {
@@ -279,7 +279,7 @@ struct HermesKanbanBoardManagementView: View {
                     LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(receipt.byteCount), countStyle: .file))
                 }
             } header: { Text("Advanced · Portable export") } footer: {
-                Text("The archive is created in the plugin-owned staging directory on the selected host. Downloading it to this phone requires the separate fixed binary transfer integration.")
+                Text("The archive is created in the plugin-owned staging directory on the selected host. Downloading it to this \(BighelpPlatform.isMac ? "Mac" : "phone") requires the separate fixed binary transfer integration.")
             }
             Section("Advanced · Bulk changes") {
                 NavigationLink("Select Tasks and Change") {
@@ -539,7 +539,7 @@ private struct HermesKanbanBulkEditor: View {
                             item.id,
                             systemImage: item.succeeded ? "checkmark.circle" : "xmark.circle"
                         )
-                        if let message = item.safeError { Text(message).font(.caption).foregroundStyle(.secondary) }
+                        if let message = item.safeError { Text(message).font(.bighelp(.caption)).foregroundStyle(.secondary) }
                     }
                 }
             }
@@ -570,6 +570,7 @@ private struct HermesKanbanBulkEditor: View {
                 }
             )
             .presentationDetents([.large])
+            .bighelpSheetSize(.standard)
         }
     }
 
@@ -635,7 +636,7 @@ struct HermesKanbanTaskAdministrationView: View {
                     if estimate.succeeded {
                         LabeledContent("Tokens", value: String(estimate.estimatedTokens ?? 0))
                         if let complexity = estimate.complexity { LabeledContent("Complexity", value: complexity.rawValue) }
-                        if let rationale = estimate.rationale { Text(rationale).font(.footnote).foregroundStyle(.secondary) }
+                        if let rationale = estimate.rationale { Text(rationale).font(.bighelp(.footnote)).foregroundStyle(.secondary) }
                     } else {
                         Text(estimate.reason ?? "No estimate returned.").foregroundStyle(.secondary)
                     }

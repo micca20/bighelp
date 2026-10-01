@@ -8,7 +8,7 @@ enum HostPluginFeature: String, Hashable, Sendable {
     var detail: String {
         self == .liveVoice
             ? "Codex Live Voice requires the bighelp plugin on your Hermes host, plus a Codex subscription signed in on that host."
-            : "Calendar, Reminders, and Health access require the bighelp plugin on your Hermes host. You choose each permission separately on this iPhone."
+            : "Calendar, Reminders, and Health access require the bighelp plugin on your Hermes host. You choose each permission separately on this \(BighelpPlatform.isMac ? "Mac" : "iPhone")."
     }
     var installIdentifier: String {
         self == .liveVoice ? CodexLiveVoiceSettingsPresentation.installAccessibilityIdentifier
@@ -74,7 +74,9 @@ struct HostPluginFeatureSection: View {
             Text(feature.title)
         } footer: {
             Text(feature == .deviceAccess
-                 ? "Installation leaves iOS permissions off. Keep bighelp open while your agent uses this iPhone."
+                 ? BighelpPlatform.isMac
+                    ? "Installation leaves macOS permissions off. Keep bighelp open while your agent uses this Mac."
+                    : "Installation leaves iOS permissions off. Keep bighelp open while your agent uses this iPhone."
                  : "Voice connects directly to Hermes. Notifications are optional and set up separately.")
         }
         .task(id: identity) { await check() }

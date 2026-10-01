@@ -39,7 +39,7 @@ struct BighelpCardView: View {
                 Text(statusText)
                 Spacer(minLength: 8)
             }
-            .font(.caption)
+            .font(.bighelp(.caption))
             .foregroundStyle(.secondary)
         }
         .padding()
@@ -106,10 +106,10 @@ struct BighelpCardRenderer: View {
         case "card":
             return AnyView(VStack(alignment: .leading, spacing: BighelpCardDesignTokens.spacing) {
                 if let title = text(props["title"], item: item, itemSourceID: itemSourceID) {
-                    Text(title).font(.headline)
+                    Text(title).font(.bighelp(.headline))
                 }
                 if let subtitle = text(props["subtitle"], item: item, itemSourceID: itemSourceID) {
-                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                    Text(subtitle).font(.bighelp(.subheadline)).foregroundStyle(.secondary)
                 }
                 renderChildren(children, item: item, itemSourceID: itemSourceID)
             })
@@ -140,9 +140,9 @@ struct BighelpCardRenderer: View {
             let label = text(props["label"], item: item, itemSourceID: itemSourceID) ?? "Value"
             let value = resolved(props["value"], item: item, itemSourceID: itemSourceID)
             return AnyView(VStack(alignment: .leading, spacing: 3) {
-                Text(label).font(.caption).foregroundStyle(.secondary)
+                Text(label).font(.bighelp(.caption)).foregroundStyle(.secondary)
                 Text(format(value, specification: props["format"]))
-                    .font(.title3.weight(.semibold))
+                    .font(.bighelp(.title3).weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(semanticColor(props["semantic"]?.string))
             }.frame(maxWidth: .infinity, alignment: .leading))
@@ -150,7 +150,7 @@ struct BighelpCardRenderer: View {
             let value = format(resolved(props["value"], item: item, itemSourceID: itemSourceID), specification: nil)
             let color = semanticColor(props["semantic"]?.string)
             return AnyView(Text(value)
-                .font(.caption.weight(.semibold))
+                .font(.bighelp(.caption).weight(.semibold))
                 .foregroundStyle(color)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -161,9 +161,9 @@ struct BighelpCardRenderer: View {
             let label = text(props["label"], item: item, itemSourceID: itemSourceID) ?? "Progress"
             return AnyView(VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(label).font(.caption).foregroundStyle(.secondary)
+                    Text(label).font(.bighelp(.caption)).foregroundStyle(.secondary)
                     Spacer()
-                    Text(format(.number(value), specification: props["format"])).font(.caption).monospacedDigit()
+                    Text(format(.number(value), specification: props["format"])).font(.bighelp(.caption)).monospacedDigit()
                 }
                 ProgressView(value: min(max(value, 0), maximum), total: maximum)
                     .tint(semanticColor(props["semantic"]?.string))
@@ -190,7 +190,7 @@ struct BighelpCardRenderer: View {
             let name = props["name"]?.string ?? "photo"
             let label = props["accessibility_label"]?.string ?? "Image"
             return AnyView(Image(systemName: name)
-                .font(.title2)
+                .font(.bighelp(.title2))
                 .foregroundStyle(semanticColor(props["semantic"]?.string))
                 .accessibilityLabel(label))
         default:
@@ -242,7 +242,7 @@ struct BighelpCardRenderer: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
                     Text(column.object?["label"]?.string ?? "Column")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -350,7 +350,7 @@ struct BighelpCardRenderer: View {
 
     private func unavailable(_ text: String) -> some View {
         Label(text, systemImage: "exclamationmark.triangle")
-            .font(.caption)
+            .font(.bighelp(.caption))
             .foregroundStyle(.secondary)
     }
 }

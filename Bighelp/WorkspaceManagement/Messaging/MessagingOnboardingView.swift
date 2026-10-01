@@ -127,11 +127,11 @@ struct MessagingOnboardingView: View {
                             Text(platform.name)
                             Spacer()
                             Text(platform.isEnabled ? "Enabled" : "Disabled")
-                                .font(.caption)
+                                .font(.bighelp(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         Text(platform.description)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -187,7 +187,7 @@ struct MessagingOnboardingView: View {
             }
             Section("About setup") {
                 Text("Messaging pairing is managed by Hermes. It is separate from bighelp notification registration.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
             }
         }
@@ -214,7 +214,7 @@ struct MessagingOnboardingView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("messaging.telegram.allowed-users")
             Text("Enter numeric user IDs separated by commas. The connected owner's ID is suggested when Hermes reports it.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.bighelp(.footnote)).foregroundStyle(.secondary)
         }
         if !value.expiresAt.isEmpty {
             LabeledContent("Expires", value: value.expiresAt)
@@ -318,7 +318,7 @@ private struct MessagingPlatformConfigurationView: View {
                             }
                             HStack {
                                 Text(field.isSet ? "Saved on Hermes" : field.isRequired ? "Required" : "Not set")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 Spacer()
                                 if field.isSet {
                                     Button(clears.contains(field.key) ? "Keep" : "Clear", role: clears.contains(field.key) ? nil : .destructive) {
@@ -327,8 +327,8 @@ private struct MessagingPlatformConfigurationView: View {
                                     }
                                 }
                             }
-                            if !field.description.isEmpty { Text(field.description).font(.footnote).foregroundStyle(.secondary) }
-                            if let URL = field.documentationURL { Link("Field documentation", destination: URL).font(.footnote) }
+                            if !field.description.isEmpty { Text(field.description).font(.bighelp(.footnote)).foregroundStyle(.secondary) }
+                            if let URL = field.documentationURL { Link("Field documentation", destination: URL).font(.bighelp(.footnote)) }
                         }
                     }
                     Button("Review Changes") { confirmsSave = true }

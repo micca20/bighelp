@@ -54,7 +54,7 @@ enum VoiceMode: String, CaseIterable, Identifiable, Sendable {
     var detail: String {
         switch self {
         case .pressToTalk:
-            "Speak naturally. bighelp sends your message when you pause, and waits longer the longer you talk. Tap Send now to send sooner."
+            "Speak naturally. bighelp sends your message when you pause, and waits longer the longer you talk. \(BighelpPlatform.isMac ? "Click" : "Tap") Send now to send sooner."
         case .walkieTalkie:
             "Hold Speak while talking, then release to send your turn."
         }

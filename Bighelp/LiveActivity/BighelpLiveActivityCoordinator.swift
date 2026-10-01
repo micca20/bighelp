@@ -1,4 +1,4 @@
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 @preconcurrency import ActivityKit
 #endif
 import CryptoKit
@@ -728,7 +728,7 @@ final class BighelpLiveActivityCoordinator {
     }
 }
 
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 /// ActivityKit deadlocks when push tokens are read from several threads while it delivers one
 /// (a 2.3.0 (22) watchdog kill). Token reads and token streams go through BuzzKit's serial lane,
 /// never the main thread; the current token comes from the last one that lane delivered.

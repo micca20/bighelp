@@ -152,11 +152,11 @@ struct NativeSessionControlsView: View {
                 Label {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Text("Chat refresh required")
-                            .font(.headline)
+                            .font(.bighelp(.headline))
                         Text(pending.confirmation == .acknowledged
                              ? "\(pending.kind.label) was acknowledged. The operation will not run again while canonical history still needs refresh."
                              : "The \(pending.kind.label.lowercased()) result is unknown. The operation will not run again while canonical history still needs refresh.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
@@ -228,7 +228,7 @@ struct NativeSessionControlsView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(toolset.name)
                                 Text("\(toolset.toolCount.formatted()) tools enabled")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         } icon: {
                             Image(systemName: "wrench.and.screwdriver.fill").foregroundStyle(.tint)
@@ -259,10 +259,10 @@ struct NativeSessionControlsView: View {
             if let status = model.status {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                     Text("Status")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(status.output)
-                        .font(.body.monospaced())
+                        .font(.bighelp(.body).monospaced())
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -278,12 +278,12 @@ struct NativeSessionControlsView: View {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text("Context")
                             Text("\(breakdown.contextUsed.formatted()) of \(breakdown.contextMax.formatted()) tokens · \(breakdown.contextPercent)%")
-                                .font(.caption)
+                                .font(.bighelp(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: BighelpTokens.space8)
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(.bighelp(.caption).weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(.rect)
@@ -340,7 +340,7 @@ struct NativeSessionControlsView: View {
         Section {
             DisclosureGroup(isExpanded: $showsAdvancedControls) {
                 Text("Skills, tools, maintenance, goal control, redirect, rollback, delegation, spawn trees, and verification.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                     .padding(.top, BighelpTokens.space4)
             } label: {
@@ -399,15 +399,15 @@ struct NativeSessionControlsView: View {
                     HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(toolset.name)
-                                .font(.body.monospaced())
+                                .font(.bighelp(.body).monospaced())
                             if !toolset.description.isEmpty {
                                 Text(toolset.description)
-                                    .font(.caption)
+                                    .font(.bighelp(.caption))
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Text("\(toolset.toolCount.formatted()) tools · \(toolset.enabled ? "Enabled" : "Disabled")")
-                                .font(.caption)
+                                .font(.bighelp(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: BighelpTokens.space8)
@@ -600,7 +600,7 @@ struct NativeSessionControlsView: View {
             if let result = model.lastRedirect {
                 LabeledContent("Last result", value: result.status.rawValue)
                 Text(result.text)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -753,7 +753,7 @@ struct NativeSessionControlsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.bighelp(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
             HStack(spacing: BighelpTokens.space8) {
                 ForEach(Array(actions.enumerated()), id: \.offset) { _, entry in

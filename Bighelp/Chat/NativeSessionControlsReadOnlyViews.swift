@@ -115,7 +115,7 @@ struct NativeSessionControlSnapshotView: View {
     private func component(_ title: String, _ component: DirectHermesSessionControlComponent?) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.bighelp(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
             if let component {
                 NativeSessionControlFieldsView(fields: component.fields)
@@ -199,17 +199,17 @@ struct NativeSessionRollbackCheckpointRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if !checkpoint.timestamp.isEmpty {
                     Text(checkpoint.timestamp)
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .foregroundStyle(.secondary)
                 }
                 Text(checkpoint.hash)
-                    .font(.caption.monospaced())
+                    .font(.bighelp(.caption).monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: BighelpTokens.space8)
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .font(.bighelp(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
@@ -256,7 +256,7 @@ struct NativeSessionRollbackRestoreResultView: View {
             DisclosureGroup("\(title) (\(values.count))") {
                 ForEach(Array(values.enumerated()), id: \.offset) { _, value in
                     Text(value)
-                        .font(.caption.monospaced())
+                        .font(.bighelp(.caption).monospaced())
                         .textSelection(.enabled)
                 }
             }
@@ -305,16 +305,16 @@ struct NativeSessionSpawnTreeRow: View {
                 Text(entry.label.isEmpty ? "Spawn tree" : entry.label)
                     .foregroundStyle(.primary)
                 Text("\(entry.count.formatted()) agents")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                 Text(entry.path)
-                    .font(.caption.monospaced())
+                    .font(.bighelp(.caption).monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: BighelpTokens.space8)
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .font(.bighelp(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
@@ -336,7 +336,7 @@ struct NativeSessionVerificationStatusView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         ForEach(Array(paths.enumerated()), id: \.offset) { _, path in
                             Text(path)
-                                .font(.caption.monospaced())
+                                .font(.bighelp(.caption).monospaced())
                                 .textSelection(.enabled)
                         }
                     }

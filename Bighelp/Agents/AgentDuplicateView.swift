@@ -20,7 +20,7 @@ struct AgentDuplicateView: View {
                         copyScope("Avatar", included: plan.includesAvatar)
                         copyScope("Chat history", included: plan.includesHistory)
                         Text("Creates a separate profile with the source configuration and instructions. Scheduled tasks and local pins stay behind.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                     } header: {
                         AgentStudioCaption("What gets copied")
@@ -94,7 +94,11 @@ struct AgentDuplicateView: View {
                     Button(model.result == nil ? "Cancel" : "Done", action: onDone)
                         .foregroundStyle(theme.action)
                         .disabled(model.isSubmitting)
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                        .bighelpToolbarText()
                 }
             }
         }

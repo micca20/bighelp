@@ -10,6 +10,10 @@ struct ReferenceHubDrawer: View {
     var reservesResultsSpace = false
     @State private var inspectedCommand: SlashCommandDescriptor?
     @State private var inspectedSkill: HermesSkillSummary?
+    #if targetEnvironment(macCatalyst)
+    @State private var macResultsContentHeight: CGFloat = 0
+    @State private var macRoomAbove: CGFloat = 0
+    #endif
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @BighelpThemeReader private var theme
@@ -43,9 +47,15 @@ struct ReferenceHubDrawer: View {
         VStack(alignment: .leading, spacing: 0) {
             if verticalSizeClass != .compact {
                 HStack(spacing: BighelpTokens.space8) {
-                    Text("Skills & commands").font(.headline)
+                    Text("Skills & commands").font(.bighelp(.headline))
                     if hub.isLoading || hub.isResolving || commands?.isLoading == true { ProgressView().accessibilityLabel("Loading skills and commands") }
                     Spacer(minLength: 0)
+                    #if targetEnvironment(macCatalyst)
+                    Text("↑ ↓ to move, Return to choose, Esc to close")
+                        .font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
+                        .accessibilityHidden(true)
+                    #endif
                     Button("Dismiss references", systemImage: "xmark") { hub.dismiss() }
                         .labelStyle(.iconOnly)
                         .frame(width: 44, height: 44)
@@ -66,7 +76,7 @@ struct ReferenceHubDrawer: View {
                             inspectedSkill = nil
                             hub.selectCategory(category)
                         }
-                        .font(.subheadline.weight(hub.category == category ? .semibold : .regular))
+                        .font(.bighelp(.subheadline).weight(hub.category == category ? .semibold : .regular))
                         .padding(.horizontal, BighelpTokens.space12)
                         .frame(minHeight: 44)
                         .background(hub.category == category ? theme.raisedSurface : theme.surface, in: .capsule)
@@ -77,31 +87,44 @@ struct ReferenceHubDrawer: View {
             }
             .scrollIndicators(.hidden)
             Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                    if let preview = hub.preview {
-                        providerPreview(preview)
-                    } else if let command = inspectedCommand {
-                        commandPreview(command)
-                    } else if let skill = inspectedSkill {
-                        Text(skill.name).font(.headline)
-                        Text(skill.description).font(.body)
-                        Text(skill.isEnabled ? "Installed skill" : "Disabled skill").font(.caption)
-                        Text("This skill has no discoverable slash invocation. Browsing it does not run or enable it.")
-                            .font(.caption).foregroundStyle(theme.secondaryText)
-                        Button("Back to results") { inspectedSkill = nil }.frame(minHeight: 44)
-                    } else {
-                        resultRows
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                        if let preview = hub.preview {
+                            providerPreview(preview)
+                        } else if let command = inspectedCommand {
+                            commandPreview(command)
+                        } else if let skill = inspectedSkill {
+                            Text(skill.name).font(.bighelp(.headline))
+                            Text(skill.description).font(.bighelp(.body))
+                            Text(skill.isEnabled ? "Installed skill" : "Disabled skill").font(.bighelp(.caption))
+                            Text("This skill has no discoverable slash invocation. Browsing it does not run or enable it.")
+                                .font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
+                            Button("Back to results") { inspectedSkill = nil }.frame(minHeight: 44)
+                        } else {
+                            resultRows
+                        }
                     }
+                    .padding(.vertical, BighelpTokens.space8)
+                    #if targetEnvironment(macCatalyst)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { macResultsContentHeight = $0 }
+                    #endif
                 }
-                .padding(.vertical, BighelpTokens.space8)
+                .dismissesKeyboardOnScroll(false)
+                .onChange(of: hub.keyboard.highlightedID) { _, id in
+                    guard let id else { return }
+                    proxy.scrollTo(id)
+                }
             }
-            .dismissesKeyboardOnScroll(false)
+            #if targetEnvironment(macCatalyst)
+            .frame(minHeight: min(macResultsHeight, 120), maxHeight: macResultsHeight)
+            #else
             .frame(
                 minHeight: reservesResultsSpace ? (verticalSizeClass == .compact ? 60 : 120) : nil,
                 maxHeight: reservesResultsSpace ? (verticalSizeClass == .compact ? 60 : 120)
                     : (verticalSizeClass == .compact ? 60 : 240)
             )
+            #endif
         }
         .padding(.horizontal, BighelpTokens.space12)
         .foregroundStyle(theme.primaryText)
@@ -127,6 +150,61 @@ struct ReferenceHubDrawer: View {
             inspectedCommand = nil
             inspectedSkill = nil
         }
+        #if targetEnvironment(macCatalyst)
+        // The drawer's bottom edge sits on the message box, so its height in
+        // the window is the room left above the message box.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { macRoomAbove = $0 }
+        .onChange(of: keyboardRows, initial: true) { _, rows in
+            hub.keyboard.publish(rows: rows.ids, isInspecting: rows.isInspecting)
+        }
+        .onChange(of: hub.keyboard.request) { _, request in
+            guard let request else { return }
+            switch request.kind {
+            case .pick: pickHighlightedRow()
+            case .back:
+                inspectedCommand = nil
+                inspectedSkill = nil
+                hub.closePreview()
+            }
+        }
+        .onDisappear { hub.keyboard.reset() }
+        #endif
+    }
+
+    #if targetEnvironment(macCatalyst)
+    /// Results get about half the room above the message box (at most 440 pt,
+    /// enough for eight or nine rows) and shrink to fit a short list.
+    private var macResultsHeight: CGFloat {
+        let cap = min(max(macRoomAbove * 0.5, 200), 440)
+        return min(max(macResultsContentHeight, 60), cap)
+    }
+    #endif
+
+    /// The rows ↑ and ↓ move through, top to bottom; none while a preview shows.
+    private var keyboardRows: ReferenceHubKeyboardRows {
+        let isInspecting = hub.preview != nil || inspectedCommand != nil || inspectedSkill != nil
+        guard !isInspecting else { return ReferenceHubKeyboardRows(ids: [], isInspecting: true) }
+        return ReferenceHubKeyboardRows(
+            ids: hub.results.map(Self.keyboardID) + matchingCommands.map(Self.keyboardID)
+                + matchingSkills.map(Self.keyboardID),
+            isInspecting: false)
+    }
+
+    private static func keyboardID(_ result: ReferenceHubResult) -> String { "result.\(result.id)" }
+    private static func keyboardID(_ command: SlashCommandDescriptor) -> String { "command.\(command.name)" }
+    private static func keyboardID(_ skill: HermesSkillSummary) -> String { "skill.\(skill.id)" }
+
+    /// Return on a highlighted row does what clicking it does.
+    private func pickHighlightedRow() {
+        guard let id = hub.keyboard.highlightedID else { return }
+        if let result = hub.results.first(where: { Self.keyboardID($0) == id }) {
+            hub.select(result)
+        } else if let command = matchingCommands.first(where: { Self.keyboardID($0) == id }) {
+            hub.insertCatalogToken(name: command.name)
+        } else if let skill = matchingSkills.first(where: { Self.keyboardID($0) == id }) {
+            hub.beginLocalInspection()
+            inspectedSkill = skill
+        }
     }
 
     @ViewBuilder private var resultRows: some View {
@@ -134,10 +212,10 @@ struct ReferenceHubDrawer: View {
             HStack(spacing: 8) {
                 Button { hub.select(result) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(result.title).font(.body.weight(.medium))
+                        Text(result.title).font(.bighelp(.body).weight(.medium))
                         Text([result.category.label, result.subtitle, result.state, result.isCached ? "Cached" : nil]
                             .compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(theme.secondaryText)
+                            .font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
                     }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -148,13 +226,14 @@ struct ReferenceHubDrawer: View {
                     .accessibilityHint("Review content and choose what to include")
                     .accessibilityIdentifier("reference-hub.inspect.\(result.id)")
             }
+            .modifier(ReferenceHubRowChrome(id: Self.keyboardID(result), highlightedID: hub.keyboard.highlightedID))
         }
         ForEach(matchingCommands) { command in
             HStack(spacing: 8) {
                 Button { hub.insertCatalogToken(name: command.name) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("/\(command.name)").font(.body.weight(.medium))
-                        Text(command.description).font(.caption).foregroundStyle(theme.secondaryText)
+                        Text("/\(command.name)").font(.bighelp(.body).weight(.medium))
+                        Text(command.description).font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
                     }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -167,6 +246,7 @@ struct ReferenceHubDrawer: View {
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
                     .accessibilityIdentifier("reference-hub.inspect-command.\(command.name)")
             }
+            .modifier(ReferenceHubRowChrome(id: Self.keyboardID(command), highlightedID: hub.keyboard.highlightedID))
         }
         ForEach(matchingSkills) { skill in
             Button {
@@ -174,16 +254,17 @@ struct ReferenceHubDrawer: View {
                 inspectedSkill = skill
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(skill.name).font(.body)
-                    Text(skill.description).font(.caption).foregroundStyle(theme.secondaryText)
+                    Text(skill.name).font(.bighelp(.body))
+                    Text(skill.description).font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }.buttonStyle(.plain)
+            .modifier(ReferenceHubRowChrome(id: Self.keyboardID(skill), highlightedID: hub.keyboard.highlightedID))
         }
         if hub.results.isEmpty && matchingCommands.isEmpty && matchingSkills.isEmpty {
             Text(term.isEmpty ? "Choose a category or type to search available sources." : "No matching references or commands.")
-                .font(.subheadline).foregroundStyle(theme.secondaryText)
+                .font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
             if [.repos, .issues, .prs, .wiki].contains(hub.category), !hub.isCategoryConfigured {
-                Text("This optional source is not connected.").font(.caption).foregroundStyle(theme.secondaryText)
+                Text("This optional source is not connected.").font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
                 if hub.canConnectCategory {
                     Button("Connect source") { hub.connectCategory() }.frame(minHeight: 44)
                         .accessibilityIdentifier("reference-hub.connect")
@@ -191,15 +272,15 @@ struct ReferenceHubDrawer: View {
             }
         }
         ForEach(hub.providerNotices.keys.sorted(), id: \.self) { key in
-            Text(hub.providerNotices[key] ?? "").font(.caption).foregroundStyle(theme.secondaryText)
+            Text(hub.providerNotices[key] ?? "").font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
         }
         ForEach(hub.providerErrors.keys.sorted(), id: \.self) { key in
-            Text(hub.providerErrors[key] ?? "").font(.caption).foregroundStyle(theme.secondaryText)
+            Text(hub.providerErrors[key] ?? "").font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
             Button("Retry source search") { hub.refreshSearch() }.frame(minHeight: 44)
         }
         if hub.category == .all || hub.category == .commands || hub.category == .skills {
             if let error = commands?.errorMessage {
-                Text(error).font(.caption).foregroundStyle(theme.secondaryText)
+                Text(error).font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
                 Button("Retry commands") { Task { await commands?.retry() } }.frame(minHeight: 44)
             }
         }
@@ -207,11 +288,11 @@ struct ReferenceHubDrawer: View {
 
     private func commandPreview(_ command: SlashCommandDescriptor) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("/\(command.name)").font(.headline)
-            Text(command.description).font(.body)
-            if !command.argsHint.isEmpty { Text(command.argsHint).font(.caption.monospaced()) }
+            Text("/\(command.name)").font(.bighelp(.headline))
+            Text(command.description).font(.bighelp(.body))
+            if !command.argsHint.isEmpty { Text(command.argsHint).font(.bighelp(.caption).monospaced()) }
             Text("Inserts text only. A leading slash command runs only when you explicitly Send; inside prose it remains text.")
-                .font(.caption).foregroundStyle(theme.secondaryText)
+                .font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
             Button("Insert /\(command.name)") {
                 if hub.insertCatalogToken(name: command.name) { inspectedCommand = nil }
             }
@@ -223,13 +304,13 @@ struct ReferenceHubDrawer: View {
 
     private func providerPreview(_ preview: ReferenceHubPreview) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(preview.result.title).font(.headline)
-            Text(preview.sourceKindLabel).font(.caption)
+            Text(preview.result.title).font(.bighelp(.headline))
+            Text(preview.sourceKindLabel).font(.bighelp(.caption))
             Text("Selected content is shared with this conversation, its model provider and paired account key holders. Credentials are never included.")
-                .font(.caption).foregroundStyle(theme.secondaryText)
+                .font(.bighelp(.caption)).foregroundStyle(theme.secondaryText)
             ForEach(preview.options) { option in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(option.label).font(.subheadline.weight(.semibold))
+                    Text(option.label).font(.bighelp(.subheadline).weight(.semibold))
                     ReferenceSnapshotSource(snapshot: option.snapshot)
                     Button("Insert \(option.label)") { hub.insert(option) }
                         .frame(minHeight: 44)
@@ -239,6 +320,94 @@ struct ReferenceHubDrawer: View {
             }
             Button("Back to results") { hub.closePreview() }.frame(minHeight: 44)
         }
+    }
+}
+
+struct ReferenceHubKeyboardRows: Equatable {
+    let ids: [String]
+    let isInspecting: Bool
+}
+
+/// ↑ ↓ Return and Esc in Skills & commands on the Mac. The message box keeps
+/// the keyboard: its container passes ↑ ↓ Esc here (`ReferenceComposerContainer`),
+/// the composer's Return asks to pick, and the drawer acts on the request.
+@MainActor @Observable
+final class ReferenceHubKeyboardNavigation {
+    struct Request: Equatable {
+        enum Kind: Equatable { case pick, back }
+        let kind: Kind
+        let serial: Int
+    }
+
+    private(set) var highlightedID: String?
+    private(set) var request: Request?
+    @ObservationIgnored private var rowIDs: [String] = []
+    @ObservationIgnored private var isInspecting = false
+    @ObservationIgnored private var serial = 0
+
+    var hasRows: Bool { !rowIDs.isEmpty }
+
+    func publish(rows: [String], isInspecting: Bool) {
+        rowIDs = rows
+        self.isInspecting = isInspecting
+        if let highlightedID, !rows.contains(highlightedID) { self.highlightedID = nil }
+    }
+
+    /// The first ↓ (or ↑) enters the list from the top (or bottom); the ends stop.
+    func move(by step: Int) {
+        guard !rowIDs.isEmpty else { return }
+        guard let current = highlightedID.flatMap({ rowIDs.firstIndex(of: $0) }) else {
+            highlightedID = step > 0 ? rowIDs.first : rowIDs.last
+            return
+        }
+        highlightedID = rowIDs[min(max(current + step, 0), rowIDs.count - 1)]
+    }
+
+    /// Return: true when a row is highlighted and will be picked instead of
+    /// sending. Without an arrow-key choice, Return keeps its usual meaning.
+    func pickHighlighted() -> Bool {
+        guard highlightedID != nil, !rowIDs.isEmpty else { return false }
+        submit(.pick)
+        return true
+    }
+
+    /// Esc: back from a preview to the list. False means close the drawer.
+    func back() -> Bool {
+        guard isInspecting else { return false }
+        submit(.back)
+        return true
+    }
+
+    func reset() {
+        rowIDs = []
+        isInspecting = false
+        if highlightedID != nil { highlightedID = nil }
+    }
+
+    private func submit(_ kind: Request.Kind) {
+        serial &+= 1
+        request = Request(kind: kind, serial: serial)
+    }
+}
+
+/// Mac rows get a little side room and show the ↑ ↓ highlight. iPhone and iPad rows are unchanged.
+private struct ReferenceHubRowChrome: ViewModifier {
+    let id: String
+    let highlightedID: String?
+    @BighelpThemeReader private var theme
+
+    func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        let isHighlighted = id == highlightedID
+        content
+            .padding(.horizontal, BighelpTokens.space8)
+            .background(isHighlighted ? theme.action.opacity(0.16) : .clear,
+                        in: .rect(cornerRadius: BighelpTokens.radius8))
+            .accessibilityAddTraits(isHighlighted ? .isSelected : [])
+            .id(id)
+        #else
+        content
+        #endif
     }
 }
 
@@ -262,12 +431,12 @@ struct ReferenceSnapshotSource: View {
     let snapshot: ReferenceSnapshot
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(snapshot.qualifiedLocation).font(.subheadline)
-            Text(snapshot.title).font(.body)
+            Text(snapshot.qualifiedLocation).font(.bighelp(.subheadline))
+            Text(snapshot.title).font(.bighelp(.body))
             Text(snapshot.selectedContent.isEmpty ? "Metadata only. Description not included." : snapshot.selectedContent)
-                .font(.body.monospaced()).textSelection(.enabled)
-            Text("Revision: \(snapshot.sourceRevision)").font(.caption.monospaced())
-            if snapshot.isTruncated { Text("This selected snapshot is truncated.").font(.caption.weight(.semibold)) }
+                .font(.bighelp(.body).monospaced()).textSelection(.enabled)
+            Text("Revision: \(snapshot.sourceRevision)").font(.bighelp(.caption).monospaced())
+            if snapshot.isTruncated { Text("This selected snapshot is truncated.").font(.bighelp(.caption).weight(.semibold)) }
         }
         .accessibilityElement(children: .contain)
     }
@@ -288,7 +457,7 @@ struct ReferenceDraftStrip: View {
                                 inspectedID = inspectedID == value.id ? nil : value.id
                             } label: {
                                 Label(value.snapshot.displayLabel, systemImage: "link")
-                                    .font(.subheadline).lineLimit(1).padding(.horizontal, 8).frame(minHeight: 44)
+                                    .font(.bighelp(.subheadline)).lineLimit(1).padding(.horizontal, 8).frame(minHeight: 44)
                             }.accessibilityLabel("Inspect reference \(value.snapshot.displayLabel)")
                             Button("Remove reference", systemImage: "xmark") { hub.remove(value) }
                                 .labelStyle(.iconOnly).frame(width: 44, height: 44)
@@ -301,7 +470,7 @@ struct ReferenceDraftStrip: View {
             if let value = hub.selected.first(where: { $0.id == inspectedID }) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(value.sourceKindLabel).font(.caption)
+                        Text(value.sourceKindLabel).font(.bighelp(.caption))
                         ReferenceSnapshotSource(snapshot: value.snapshot)
                     }
                 }
@@ -310,11 +479,11 @@ struct ReferenceDraftStrip: View {
             if !hub.pendingChanges.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("References changed. Review before sending.").font(.headline)
+                        Text("References changed. Review before sending.").font(.bighelp(.headline))
                         ForEach(hub.pendingChanges) { change in
-                            Text("Previously selected").font(.subheadline.weight(.semibold))
+                            Text("Previously selected").font(.bighelp(.subheadline).weight(.semibold))
                             ReferenceSnapshotSource(snapshot: change.original.snapshot)
-                            Text("Current source").font(.subheadline.weight(.semibold))
+                            Text("Current source").font(.bighelp(.subheadline).weight(.semibold))
                             ReferenceSnapshotSource(snapshot: change.current)
                         }
                         Button("Use reviewed updates — send separately") { hub.acceptRevalidationChanges() }
@@ -325,7 +494,7 @@ struct ReferenceDraftStrip: View {
             }
             if let message = hub.message {
                 HStack {
-                    Text(message).font(.caption)
+                    Text(message).font(.bighelp(.caption))
                     Button("Dismiss message", systemImage: "xmark") { hub.clearMessage() }
                         .labelStyle(.iconOnly).frame(width: 44, height: 44)
                 }

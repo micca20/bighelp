@@ -30,14 +30,14 @@ struct SkillsHubManagementView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                        Text(skill.name).font(.headline)
+                                        Text(skill.name).font(.bighelp(.headline))
                                         Text([skill.category, skill.provenance].filter { !$0.isEmpty }.joined(separator: " • "))
-                                            .font(.caption).foregroundStyle(.secondary)
+                                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    Text(skill.isEnabled ? "Enabled" : "Disabled").font(.caption)
+                                    Text(skill.isEnabled ? "Enabled" : "Disabled").font(.bighelp(.caption))
                                 }
-                                if !skill.summary.isEmpty { Text(skill.summary).font(.subheadline) }
+                                if !skill.summary.isEmpty { Text(skill.summary).font(.bighelp(.subheadline)) }
                                 Button(skill.isEnabled ? "Disable this skill" : "Enable this skill") {
                                     toggleCandidate = skill
                                 }
@@ -120,6 +120,7 @@ struct SkillsHubManagementView: View {
                 install: { Task { await model.installReviewed() } },
                 cancel: { model.dismissReview() }
             )
+            .bighelpSheetSize(.standard)
         }
         .confirmationDialog(
             "Change this skill’s enabled state?",
@@ -161,14 +162,14 @@ struct SkillsHubManagementView: View {
                 VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                     HStack {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                            Text(item.name).font(.headline)
+                            Text(item.name).font(.bighelp(.headline))
                             Text([item.category, item.source, item.trustLevel].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • "))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         }
                         Spacer()
                         if item.isInstalled { Image(systemName: "checkmark.circle.fill").accessibilityLabel("Installed") }
                     }
-                    if !item.summary.isEmpty { Text(item.summary).font(.subheadline) }
+                    if !item.summary.isEmpty { Text(item.summary).font(.bighelp(.subheadline)) }
                     HStack {
                         Button(item.isInstalled ? "Review" : "Preview & scan") {
                             Task { await model.inspect(item) }
@@ -209,15 +210,15 @@ private struct SkillHubInstallReviewView: View {
                     LabeledContent("Verdict", value: review.scan.verdict)
                     Text(review.scan.summary)
                     if !review.scan.policyReason.isEmpty {
-                        Text(review.scan.policyReason).font(.footnote).foregroundStyle(.secondary)
+                        Text(review.scan.policyReason).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                     }
                     ForEach(review.scan.findings.prefix(100)) { finding in
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                            Text("\(finding.severity.capitalized) • \(finding.category)").font(.headline)
+                            Text("\(finding.severity.capitalized) • \(finding.category)").font(.bighelp(.headline))
                             Text(finding.detail)
                             if !finding.file.isEmpty {
                                 Text(finding.line.map { "\(finding.file):\($0)" } ?? finding.file)
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -228,7 +229,7 @@ private struct SkillHubInstallReviewView: View {
                         Text("This source did not provide a text preview.").foregroundStyle(.secondary)
                     } else {
                         Text(String(review.preview.skillMarkdown.prefix(20_000)))
-                            .font(.footnote.monospaced())
+                            .font(.bighelp(.footnote).monospaced())
                             .textSelection(.enabled)
                     }
                 }
@@ -245,7 +246,7 @@ private struct SkillHubInstallReviewView: View {
             .navigationTitle("Review installation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).bighelpToolbarText() }
             }
         }
     }

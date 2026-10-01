@@ -49,6 +49,7 @@ struct ScheduledTaskDetailView: View {
                         NavigationStack {
                             ScheduledTaskEditorView(store: store, agent: agent, task: task, directory: agents)
                         }
+                        .bighelpSheetSize(.standard)
                     }
                 }
                 .sheet(isPresented: $isDuplicatePickerPresented) {
@@ -63,6 +64,7 @@ struct ScheduledTaskDetailView: View {
                             Task { await duplicate(task, for: destination) }
                         }
                     }
+                    .bighelpSheetSize(.compact)
                 }
                 .confirmationDialog(presentation(for: task).deleteConfirmationTitle, isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
                     Button("Delete", role: .destructive) { Task { await delete(task) } }
@@ -435,7 +437,7 @@ private struct ScheduledTaskActionTileLabel: View {
     var body: some View {
         VStack(spacing: BighelpTokens.space4) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .accessibilityHidden(true)
             Text(title)
                 .bighelpFont(.metadata, weight: .semibold)

@@ -49,7 +49,7 @@ enum ChatMessageInteractionPolicy {
 enum ChatMessageActionMetrics {
     static let symbolSize: CGFloat = 16
     static let spacing: CGFloat = 0
-    static let hitTarget: CGFloat = BighelpTokens.hitTarget
+    static var hitTarget: CGFloat { BighelpTokens.hitTarget }
 }
 
 enum ChatBubbleLayoutMetrics {

@@ -127,9 +127,9 @@ struct HostBackupView: View {
                     DisclosureGroup("Per-session review") {
                         ForEach(checkpoints.sessions) { session in
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                                Text(session.id).font(.subheadline.monospaced()).textSelection(.enabled)
+                                Text(session.id).font(.bighelp(.subheadline).monospaced()).textSelection(.enabled)
                                 Text("\(session.fileCount.formatted()) files • \(bytes(session.bytes))")
-                                    .font(.caption)
+                                    .font(.bighelp(.caption))
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, BighelpTokens.space4)

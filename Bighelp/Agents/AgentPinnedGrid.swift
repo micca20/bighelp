@@ -40,7 +40,8 @@ struct AgentPinnedGrid: View {
 /// actions (when it has any).
 ///
 /// Long-press menus can't be used here: the grid is one List row, and a List
-/// row shows the first menu in it whichever tile was pressed.
+/// row shows the first menu in it whichever tile was pressed. On the Mac each
+/// tile has its own right-click menu instead (`MacTileMenu`).
 struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View where Item.ID == String {
     let items: [Item]
     let columns: [GridItem]
@@ -90,6 +91,9 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
     private func cell(_ item: Item) -> some View {
         let lifted = lift?.id == item.id
         return tile(item, lifted)
+            #if targetEnvironment(macCatalyst)
+            .overlay { MacTileMenu(items: { macMenu(for: item) }).accessibilityHidden(true) }
+            #endif
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: { frames[item.id] = $0 }
             .offset(lifted ? offset(for: item) : .zero)
             .zIndex(lifted ? 1 : 0)
@@ -111,12 +115,37 @@ struct PinnedArrangeGrid<Item: Identifiable, Tile: View, Trailing: View>: View w
     }
 
     private var hint: String {
+        #if targetEnvironment(macCatalyst)
+        switch (canReorder, manage != nil) {
+        case (true, true): "Opens this agent's chat. Click and hold to move it; right-click for more actions."
+        case (true, false): "Opens this agent's chat. Click and hold to move it."
+        case (false, _): "Opens this agent's chat. Right-click for more actions."
+        }
+        #else
         switch (canReorder, manage != nil) {
         case (true, true): "Opens this agent's chat. Touch and hold to move it or for more actions."
         case (true, false): "Opens this agent's chat. Touch and hold to move it."
         case (false, _): "Opens this agent's chat. Touch and hold for more actions."
         }
+        #endif
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// The same choices as holding a tile on iPhone, plus moving it without a drag.
+    private func macMenu(for item: Item) -> [MacTileMenu.Item] {
+        var entries = [MacTileMenu.Item(title: "Open chat", systemImage: "bubble.left") { open(item) }]
+        if let manage {
+            entries.append(MacTileMenu.Item(title: "Manage agent", systemImage: "slider.horizontal.3") { manage(item) })
+        }
+        if canReorder, let index = items.firstIndex(where: { $0.id == item.id }) {
+            entries.append(MacTileMenu.Item(title: "Move earlier", systemImage: "arrow.left",
+                                            isEnabled: index > 0, startsGroup: true) { move(item, by: -1) })
+            entries.append(MacTileMenu.Item(title: "Move later", systemImage: "arrow.right",
+                                            isEnabled: index < items.count - 1) { move(item, by: 1) })
+        }
+        return entries
+    }
+    #endif
 
     /// iOS 17's hold-then-drag. SwiftUI's drag holds back the list's scroll
     /// even beside it, so iOS 18 and later use UIKit's long press instead.
@@ -247,6 +276,91 @@ private struct HoldToDrag: UIGestureRecognizerRepresentable {
         case .changed: moved(point)
         case .ended, .cancelled, .failed: ended()
         default: break
+        }
+    }
+}
+#endif
+
+#if targetEnvironment(macCatalyst)
+/// A right-click menu for one tile of a grid that sits in a single List row
+/// (pinned agents, pinned chats). SwiftUI's `.contextMenu` can't be used there:
+/// the row shows its first tile's menu for every tile. Only right- and
+/// Control-clicks land on this view; other clicks, hovers and scrolls pass
+/// through to the tile.
+struct MacTileMenu: UIViewRepresentable {
+    struct Item {
+        let title: String
+        let systemImage: String
+        var isDestructive = false
+        var isEnabled = true
+        /// Draws a separator above this item.
+        var startsGroup = false
+        let perform: () -> Void
+    }
+
+    /// Read when the menu opens, so it shows the tile's current choices.
+    let items: () -> [Item]
+
+    func makeCoordinator() -> Coordinator { Coordinator(items: items) }
+
+    func makeUIView(context: Context) -> SecondaryClickView {
+        let view = SecondaryClickView()
+        view.backgroundColor = .clear
+        view.addInteraction(UIContextMenuInteraction(delegate: context.coordinator))
+        return view
+    }
+
+    func updateUIView(_ view: SecondaryClickView, context: Context) {
+        context.coordinator.items = items
+    }
+
+    final class SecondaryClickView: UIView {
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            guard let event, event.buttonMask.contains(.secondary) || event.modifierFlags.contains(.control) else {
+                return nil
+            }
+            return super.hitTest(point, with: event)
+        }
+    }
+
+    final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
+        var items: () -> [Item]
+        /// What the open menu shows; its actions run these.
+        private var shown: [Item] = []
+
+        init(items: @escaping () -> [Item]) {
+            self.items = items
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configurationForMenuAtLocation location: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            shown = items()
+            guard !shown.isEmpty else { return nil }
+            var groups: [[UIMenuElement]] = [[]]
+            for (index, item) in shown.enumerated() {
+                if item.startsGroup, !(groups.last?.isEmpty ?? true) { groups.append([]) }
+                var attributes: UIMenuElement.Attributes = []
+                if item.isDestructive { attributes.insert(.destructive) }
+                if !item.isEnabled { attributes.insert(.disabled) }
+                groups[groups.count - 1].append(UIAction(
+                    title: item.title, image: UIImage(systemName: item.systemImage), attributes: attributes
+                ) { [weak self] _ in
+                    self?.perform(index)
+                })
+            }
+            let children: [UIMenuElement] = groups.count == 1
+                ? groups[0]
+                : groups.map { UIMenu(options: .displayInline, children: $0) }
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                UIMenu(children: children)
+            }
+        }
+
+        private func perform(_ index: Int) {
+            guard shown.indices.contains(index) else { return }
+            shown[index].perform()
         }
     }
 }

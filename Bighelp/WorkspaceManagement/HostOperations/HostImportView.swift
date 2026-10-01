@@ -43,6 +43,7 @@ struct HostImportView: View {
             HostImportReviewView(store: store, review: review) {
                 if case .hostPath = review.source { hostArchivePath = "" }
             }
+            .bighelpSheetSize(.standard)
         }
     }
 
@@ -115,7 +116,7 @@ struct HostImportView: View {
             TextField("Path to ZIP on the Hermes host", text: $hostArchivePath, axis: .vertical)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .font(.body.monospaced())
+                .font(.bighelp(.body).monospaced())
                 .privacySensitive()
             Button("Review Host Archive", systemImage: "doc.text.magnifyingglass") {
                 store.reviewHostImport(path: hostArchivePath)
@@ -153,7 +154,7 @@ struct HostImportView: View {
                 Text(receipt.admission == .actionSlotOnly
                      ? "This is the host’s named import action slot, not proof of which invocation occupied it."
                      : "The host acknowledged this import with a process/action receipt.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                 Button("Refresh Import Status") { Task { await store.pollAction(receipt) } }
                     .disabled(!store.ownsScope)
@@ -234,7 +235,7 @@ private struct HostImportReviewView: View {
                     switch review.source {
                     case .hostPath(let path):
                         LabeledContent("Host archive") {
-                            Text(path).font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                            Text(path).font(.bighelp(.caption).monospaced()).multilineTextAlignment(.trailing)
                         }
                     case .uploadedFile(let name, let byteCount):
                         LabeledContent("Private file", value: name)
@@ -259,7 +260,9 @@ private struct HostImportReviewView: View {
                         store.cancelImportReview()
                         dismiss()
                     }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(store.isMutating)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Import Reviewed Backup", role: .destructive) {

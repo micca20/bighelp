@@ -158,7 +158,7 @@ extension ChatView {
             )
         case .botActivityNotice(let message):
             Text(message)
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(theme.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("bot-mode.activity-notice")
@@ -357,7 +357,7 @@ extension ChatView {
                         .accessibilityHidden(true)
                 } else {
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
+                        .font(.bighelp(.caption).weight(.bold))
                         .foregroundStyle(theme.tertiaryText)
                         .accessibilityHidden(true)
                 }

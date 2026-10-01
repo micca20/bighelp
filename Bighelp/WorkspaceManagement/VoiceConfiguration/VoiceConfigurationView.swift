@@ -176,11 +176,11 @@ struct VoiceConfigurationView: View {
             }
             if case .direct(let resolved) = configuration {
                 Text("\(resolved.providerID) · \(resolved.wire.rawValue)")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
             } else if case .relay(let reason) = configuration, let reason, !reason.isEmpty {
                 Text(reason)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
             }
         }
@@ -385,7 +385,7 @@ struct VoiceConfigurationView: View {
                 LabeledContent("Voice", value: status.voiceID)
                 if let reason = status.reason, !reason.isEmpty {
                     Text(reason)
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .foregroundStyle(.secondary)
                 }
             } else {

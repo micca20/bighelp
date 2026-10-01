@@ -61,7 +61,11 @@ struct CredentialVaultView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
                         .accessibilityIdentifier("vault.done")
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { isAdding = true } label: { Image(systemName: "plus") }
@@ -72,9 +76,11 @@ struct CredentialVaultView: View {
             }
             .refreshable { await model.load() }
             .task { await model.load() }
-            .sheet(isPresented: $isAdding) { CredentialVaultAddView(model: model) }
-            .sheet(item: $unlocking) { source in CredentialVaultUnlockView(model: model, source: source) }
-            .sheet(item: $found) { CredentialVaultImportView(model: model, file: $0.file) }
+            .sheet(isPresented: $isAdding) { CredentialVaultAddView(model: model).bighelpSheetSize(.standard) }
+            .sheet(item: $unlocking) { source in
+                CredentialVaultUnlockView(model: model, source: source).bighelpSheetSize(.compact)
+            }
+            .sheet(item: $found) { CredentialVaultImportView(model: model, file: $0.file).bighelpSheetSize(.standard) }
             .fileImporter(isPresented: $isPickingFile,
                           allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { result in
                 if case .success(let url) = result { read(url) }
@@ -94,7 +100,7 @@ struct CredentialVaultView: View {
     private var savedSection: some View {
         Section {
             if model.items.isEmpty {
-                Text("Nothing saved for \(model.agentName) yet. Tap + to add a login, card or address.")
+                Text("Nothing saved for \(model.agentName) yet. \(BighelpPlatform.isMac ? "Click" : "Tap") + to add a login, card or address.")
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("vault.empty")
             }
@@ -266,6 +272,10 @@ private struct CredentialVaultAddView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { clear(); dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
@@ -407,6 +417,10 @@ private struct CredentialVaultUnlockView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { password = ""; dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Unlock", action: unlock)
@@ -433,7 +447,7 @@ struct CredentialVaultSheet: ViewModifier {
     @Binding var model: CredentialVaultModel?
 
     func body(content: Content) -> some View {
-        content.sheet(item: $model) { CredentialVaultView(model: $0) }
+        content.sheet(item: $model) { CredentialVaultView(model: $0).bighelpSheetSize(.standard) }
     }
 }
 
@@ -520,12 +534,20 @@ private struct CredentialVaultImportView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if result == nil {
-                        Button("Cancel") { dismiss() }.disabled(model.isWorking)
+                        Button("Cancel") { dismiss() }
+                            .disabled(model.isWorking)
+                            #if targetEnvironment(macCatalyst)
+                            .keyboardShortcut(.cancelAction)
+                            #endif
+                            .bighelpToolbarText()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if result != nil {
                         Button("Done") { dismiss() }
+                            #if targetEnvironment(macCatalyst)
+                            .keyboardShortcut(.cancelAction)
+                            #endif
                             .accessibilityIdentifier("vault.import-close")
                     } else {
                         Button(pending.logins.count == 1 ? "Import 1" : "Import \(pending.logins.count)") {

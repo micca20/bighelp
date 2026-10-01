@@ -272,16 +272,16 @@ struct SessionsGettingStartedView: View {
         VStack(alignment: .leading, spacing: BighelpTokens.space24) {
             VStack(alignment: .leading, spacing: BighelpTokens.space12) {
                 Text("Your first chat")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.action)
                 Text("Ask for anything.\nYour agent takes it from there.")
-                    .font(.title2.bold())
+                    .font(.bighelp(.title2).bold())
                     .foregroundStyle(theme.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if let onStart {
                     Button(action: onStart) {
                         Label("New chat", systemImage: "square.and.pencil")
-                            .font(.body.weight(.semibold))
+                            .font(.bighelp(.body).weight(.semibold))
                             .padding(.horizontal, BighelpTokens.space8)
                             .frame(minHeight: BighelpTokens.hitTarget)
                     }
@@ -301,22 +301,22 @@ struct SessionsGettingStartedView: View {
 
             VStack(alignment: .leading, spacing: BighelpTokens.space12) {
                 Text("How it works")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     HStack(spacing: BighelpTokens.space12) {
                         Text("\(index + 1)")
-                            .font(.headline)
+                            .font(.bighelp(.headline))
                             .foregroundStyle(theme.action)
                             .frame(width: 40, height: 40)
                             .background(theme.incomingMessageBackground, in: .circle)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(step.title)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.bighelp(.subheadline).weight(.semibold))
                                 .foregroundStyle(theme.primaryText)
                             Text(step.detail)
-                                .font(.subheadline)
+                                .font(.bighelp(.subheadline))
                                 .foregroundStyle(theme.secondaryText)
                         }
                         .fixedSize(horizontal: false, vertical: true)

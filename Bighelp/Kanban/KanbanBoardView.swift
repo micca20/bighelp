@@ -30,9 +30,11 @@ struct KanbanScreen: View {
                         prompt: "Find a card")
             .sheet(item: $openTask) { ref in
                 KanbanTaskSheet(model: model, taskID: ref.id, isNerdMode: isNerdMode)
+                    .bighelpSheetSize(.large)
             }
             .sheet(item: $newTaskLane) { lane in
                 KanbanNewTaskSheet(model: model, lane: lane)
+                    .bighelpSheetSize(.standard)
             }
             .alert("New board", isPresented: $isNamingBoard) {
                 TextField("Board name", text: $boardName)
@@ -166,7 +168,7 @@ struct KanbanScreen: View {
     private var idleBanner: some View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {
             Image(systemName: "moon.zzz.fill")
-                .font(.title3)
+                .font(.bighelp(.title3))
                 .foregroundStyle(KanbanLane.ready.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Nobody's picking up work")
@@ -190,7 +192,7 @@ struct KanbanScreen: View {
     @ViewBuilder private var toast: some View {
         if let notice = model.notice {
             Label(notice.text, systemImage: notice.isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                .font(.subheadline.weight(.medium))
+                .font(.bighelp(.subheadline).weight(.medium))
                 .foregroundStyle(theme.primaryText)
                 .padding(.horizontal, BighelpTokens.space16)
                 .padding(.vertical, BighelpTokens.space12)
@@ -297,11 +299,11 @@ struct KanbanBoardSwitcher: View {
                     .fill(model.board?.color.map { Color(hex: $0.replacingOccurrences(of: "#", with: "")) } ?? theme.action)
                     .frame(width: 8, height: 8)
                 Text(model.board?.name ?? "Kanban")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
+                    .font(.bighelp(.caption).weight(.bold))
                     .foregroundStyle(theme.secondaryText)
                 if model.isLive {
                     Circle().fill(KanbanLane.done.tint).frame(width: 6, height: 6)
@@ -312,12 +314,33 @@ struct KanbanBoardSwitcher: View {
             .padding(.vertical, 6)
             .contentShape(.capsule)
         }
+        .kanbanMacMenu(.asDrawn)
         .accessibilityLabel("Board: \(model.board?.name ?? "none")")
         .accessibilityHint("Switch boards or make a new one.")
         .accessibilityIdentifier("kanban.board-switcher")
     }
 
     @BighelpThemeReader private var theme
+}
+
+// MARK: - Mac menus
+
+enum KanbanMacMenuLook { case bordered, asDrawn }
+
+extension View {
+    /// The Mac turns a labeled menu into a bare pull-down without its arrow
+    /// (the app hides the arrow for icon menus). These show what they choose
+    /// instead: as a button, or with their own label and chevron as drawn.
+    @ViewBuilder func kanbanMacMenu(_ look: KanbanMacMenuLook) -> some View {
+        #if targetEnvironment(macCatalyst)
+        switch look {
+        case .bordered: menuStyle(.button).buttonStyle(.bordered)
+        case .asDrawn: menuStyle(.button).buttonStyle(.plain)
+        }
+        #else
+        self
+        #endif
+    }
 }
 
 // MARK: - Agent filter
@@ -329,7 +352,7 @@ struct KanbanAgentFilterBar: View {
         ScrollView(.horizontal) {
             HStack(spacing: BighelpTokens.space8) {
                 chip(.everyone) {
-                    Image(systemName: "person.2.fill").font(.caption)
+                    Image(systemName: "person.2.fill").font(.bighelp(.caption))
                     Text("Everyone")
                 }
                 ForEach(model.assignableAgents) { agent in
@@ -339,7 +362,7 @@ struct KanbanAgentFilterBar: View {
                     }
                 }
                 chip(.unassigned) {
-                    Image(systemName: "person.crop.circle.badge.questionmark").font(.caption)
+                    Image(systemName: "person.crop.circle.badge.questionmark").font(.bighelp(.caption))
                     Text("Anyone")
                 }
             }
@@ -358,7 +381,7 @@ struct KanbanAgentFilterBar: View {
             withAnimation(.snappy) { model.agentFilter = selected && filter != .everyone ? .everyone : filter }
         } label: {
             HStack(spacing: 6) { label() }
-                .font(.subheadline.weight(.medium))
+                .font(.bighelp(.subheadline).weight(.medium))
                 .foregroundStyle(selected ? theme.actionForeground : theme.primaryText)
                 .padding(.leading, 8)
                 .padding(.trailing, 12)
@@ -413,10 +436,10 @@ struct KanbanLaneTabs: View {
         return Button { withAnimation(.snappy) { selection = lane } } label: {
             VStack(spacing: 1) {
                 Text("\(count)")
-                    .font(.headline.weight(.bold).monospacedDigit())
+                    .font(.bighelp(.headline).weight(.bold).monospacedDigit())
                     .foregroundStyle(count > 0 || selected ? lane.tint : theme.tertiaryText)
                 Text(lane.title)
-                    .font(.caption2.weight(selected ? .bold : .semibold))
+                    .font(.bighelp(.caption2).weight(selected ? .bold : .semibold))
                     .foregroundStyle(selected ? theme.primaryText : theme.secondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -587,23 +610,23 @@ struct KanbanLaneColumn: View {
     private func header(count: Int) -> some View {
         HStack(spacing: BighelpTokens.space8) {
             Image(systemName: lane.symbol)
-                .font(.body.weight(.semibold))
+                .font(.bighelp(.body).weight(.semibold))
                 .foregroundStyle(lane.tint)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     Text(lane.title).bighelpFont(.body, weight: .semibold)
                     Text("\(count)")
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .font(.bighelp(.subheadline).weight(.semibold).monospacedDigit())
                         .foregroundStyle(theme.secondaryText)
                 }
                 Text(lane.subtitle)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             if lane == .later || lane == .ready {
-                Button { add(lane) } label: { Image(systemName: "plus").font(.body.weight(.semibold)) }
+                Button { add(lane) } label: { Image(systemName: "plus").font(.bighelp(.body).weight(.semibold)) }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("New card in \(lane.title)")
             }
@@ -716,10 +739,10 @@ struct KanbanEmptyLane: View {
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: lane == .needsYou ? "checkmark.seal" : lane.symbol)
-                .font(.title3)
+                .font(.bighelp(.title3))
                 .foregroundStyle(lane.tint.opacity(0.8))
             Text(text)
-                .font(.footnote)
+                .font(.bighelp(.footnote))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -762,7 +785,7 @@ struct KanbanQuickAdd: View {
                     .submitLabel(.done)
                     .onSubmit(save)
                     .accessibilityIdentifier("kanban.quick-add.\(lane.rawValue).field")
-                Button("More", action: more).font(.footnote.weight(.semibold))
+                Button("More", action: more).font(.bighelp(.footnote).weight(.semibold))
             }
             .padding(BighelpTokens.space12)
             .background(theme.surface, in: .rect(cornerRadius: BighelpTokens.radius16, style: .continuous))
@@ -770,7 +793,7 @@ struct KanbanQuickAdd: View {
         } else {
             Button { isEditing = true } label: {
                 Label("Add a card", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.bighelp(.subheadline).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                     .padding(.horizontal, BighelpTokens.space12)

@@ -123,7 +123,7 @@ struct AgentActivityIsland: View {
     private func topRow(_ activity: AgentIslandActivity) -> some View {
         HStack(spacing: 0) {
             Text(activity.name)
-                .font(.subheadline.weight(.semibold))
+                .font(.bighelp(.subheadline).weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,7 +136,7 @@ struct AgentActivityIsland: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
-            .font(.footnote.weight(.semibold))
+            .font(.bighelp(.footnote).weight(.semibold))
             .foregroundStyle(activity.kind.pose.tint)
             // A new kind of work slides in rather than cross-fading over the old.
             .id(activity.kind)

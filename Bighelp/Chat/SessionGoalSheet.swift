@@ -47,10 +47,10 @@ struct SessionGoalSheet: View {
                     state.lifecycle == .paused ? "Goal paused" : "Goal active",
                     systemImage: state.lifecycle == .paused ? "pause.circle.fill" : "target"
                 )
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(state.lifecycle == .paused ? theme.warning : theme.success)
                 Text("Keep this session focused. Updates and completion apply to this goal only.")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -61,11 +61,11 @@ struct SessionGoalSheet: View {
 
             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                 Text("Current goal")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .accessibilityAddTraits(.isHeader)
                 TextField("Goal", text: $editedGoal, axis: .vertical)
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(5...10)
                     .padding(BighelpTokens.space12)
@@ -86,7 +86,7 @@ struct SessionGoalSheet: View {
 
             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                 Text("Goal status")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .accessibilityAddTraits(.isHeader)
 
@@ -113,7 +113,7 @@ struct SessionGoalSheet: View {
                 .accessibilityIdentifier("goal.clear")
 
                 Text("Clear is Hermes’ supported delete-equivalent for a goal. There is no separate goal delete operation.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }

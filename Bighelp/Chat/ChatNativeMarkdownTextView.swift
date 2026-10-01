@@ -126,9 +126,10 @@ struct NativeInlineSelectableMarkdownTextView: UIViewRepresentable {
         view.accessibilityCustomActions = (onReact.map { action in
             [UIAccessibilityCustomAction(name: "React") { _ in action(); return true }]
         } ?? []) + [
-            UIAccessibilityCustomAction(name: copyActionLabel) { _ in onCopy(); return true },
+            UIAccessibilityCustomAction(name: copyActionLabel) { _ in onCopy(); return true }
+        ] + (BighelpPlatform.isMac ? [] : [  // Mac text is selectable with the pointer.
             UIAccessibilityCustomAction(name: "Select text") { _ in onSelect(); return true }
-        ] + (onFork.map { action in [UIAccessibilityCustomAction(name: "Fork from here") { _ in action(); return true }] } ?? [])
+        ]) + (onFork.map { action in [UIAccessibilityCustomAction(name: "Fork from here") { _ in action(); return true }] } ?? [])
         let accentColor = UIColor(accent)
         view.linkTextAttributes = [
             .foregroundColor: accentColor,
@@ -233,12 +234,15 @@ struct NativeInlineSelectableMarkdownTextView: UIViewRepresentable {
                 ) { [weak self] _ in
                     self?.onCopy()
                 })
-                actions.append(UIAction(
-                    title: "Select text",
-                    image: UIImage(systemName: "selection.pin.in.out")
-                ) { [weak self] _ in
-                    self?.onSelect()
-                })
+                // On the Mac, text is selected with the pointer; no separate sheet.
+                if !BighelpPlatform.isMac {
+                    actions.append(UIAction(
+                        title: "Select text",
+                        image: UIImage(systemName: "selection.pin.in.out")
+                    ) { [weak self] _ in
+                        self?.onSelect()
+                    })
+                }
                 if onFork != nil {
                     actions.append(UIAction(
                         title: "Fork from here",

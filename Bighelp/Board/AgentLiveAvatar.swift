@@ -221,13 +221,13 @@ struct AgentHeroHeader: View {
                 VStack(spacing: 1) {
                     if showsName {
                         Text(displayName)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
                     }
                     if let line = statusLine {
                         Text(line)
-                            .font(.caption2.weight(.medium))
+                            .font(.bighelp(.caption2).weight(.medium))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
                             .transition(.opacity)

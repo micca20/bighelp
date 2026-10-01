@@ -30,6 +30,7 @@ struct WorkspaceManagementView: View {
         .task(id: destination) { await store.load(destination) }
         .sheet(item: $store.review) { mutation in
             WorkspaceMutationReviewView(store: store, mutation: mutation)
+                .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: Binding(
             get: { store.filePreview != nil },
@@ -40,10 +41,11 @@ struct WorkspaceManagementView: View {
                     WorkspaceTextReader(title: preview.name, text: preview.text)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { store.closePreview() }
+                                Button("Done") { store.closePreview() }.keyboardShortcut(.cancelAction)
                             }
                         }
                 }
+                .bighelpSheetSize(.large)
             }
         }
         .accessibilityIdentifier("workspace.management.\(destination.rawValue)")
@@ -58,7 +60,7 @@ struct WorkspaceManagementView: View {
                 LabeledContent("Host", value: store.hostName)
                 if isHostWide {
                     Text("Host-wide information, not restricted to one agent profile.")
-                        .font(.footnote).foregroundStyle(theme.secondaryText)
+                        .font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText)
                 } else {
                     LabeledContent("Profile", value: store.profileName)
                 }
@@ -107,7 +109,7 @@ struct WorkspaceManagementView: View {
         case .fileRoots(let roots):
             Section("Host-granted folders") {
                 Text("A host operator grants these folders. Signing in alone does not grant filesystem access.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 ForEach(roots.filter { store.matches($0.label) }) { root in
                     Button {
                         Task { await store.load(.files, path: "", root: root.id) }
@@ -128,17 +130,17 @@ struct WorkspaceManagementView: View {
             Section("Status") {
                 LabeledContent("Webhook platform", value: enabled ? "Enabled" : "Disabled")
                 Text("These are the serving profile's existing webhooks. Global enablement, secrets, scripts and delivery configuration remain on Hermes.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
             let rows = webhooks.filter { store.matches($0.id, $0.description) }
             Section("Webhooks") {
                 ForEach(Array(rows.prefix(store.visibleLimit))) { webhook in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                        Text(webhook.id).font(.headline)
+                        Text(webhook.id).font(.bighelp(.headline))
                         Text(webhook.description).foregroundStyle(.secondary)
                         LabeledContent("Incoming events", value: webhook.isEnabled ? "Enabled" : "Disabled")
                         LabeledContent("Secret", value: webhook.hasSecret ? "Configured" : "Not set")
-                        Text(webhook.events.joined(separator: ", ")).font(.footnote)
+                        Text(webhook.events.joined(separator: ", ")).font(.bighelp(.footnote))
                         if store.canEdit {
                             Button(webhook.isEnabled ? "Disable" : "Enable") {
                                 store.review = .setWebhookEnabled(name: webhook.id, enabled: !webhook.isEnabled)
@@ -157,7 +159,7 @@ struct WorkspaceManagementView: View {
         case .logs(let lines):
             Section("Recent log severity") {
                 Text("Only severity is shown. Log messages are withheld because they may contain prompts, file paths or credentials. Inspect detailed logs on the host.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 let counts = Dictionary(grouping: lines) { String($0.prefix(while: { $0 != " " })) }
                 ForEach(["CRITICAL", "ERROR", "WARNING", "WARN", "INFO", "DEBUG", "LOG"], id: \.self) { level in
                     if let entries = counts[level], store.matches(level) {
@@ -168,7 +170,7 @@ struct WorkspaceManagementView: View {
                     Text("No recent log lines were reported.").foregroundStyle(.secondary)
                 }
                 Text("\(lines.count) lines returned by the host. This is a bounded tail, not a complete log history.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
     }
@@ -182,7 +184,7 @@ struct WorkspaceManagementView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Text(item.title)
-                        Text(item.status ?? item.summary).font(.caption).foregroundStyle(.secondary)
+                        Text(item.status ?? item.summary).font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -256,7 +258,7 @@ struct WorkspaceManagementStatusSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if store.content != nil {
                     Text("Showing the last successful read. Changes are disabled until refreshed.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
                 Button("Retry") { Task { await store.refresh() } }
                     .frame(minHeight: BighelpTokens.hitTarget)
@@ -290,7 +292,7 @@ struct WorkspaceTextReader: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
-                    Text(chunk).font(.body.monospaced()).textSelection(.enabled)
+                    Text(chunk).font(.bighelp(.body).monospaced()).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

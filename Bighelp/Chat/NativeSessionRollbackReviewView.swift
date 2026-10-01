@@ -54,24 +54,24 @@ struct NativeSessionRollbackReviewView: View {
                     if !diff.stat.isEmpty {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text("Summary")
-                                .font(.caption.weight(.semibold))
+                                .font(.bighelp(.caption).weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Text(diff.stat)
-                                .font(.body.monospaced())
+                                .font(.bighelp(.body).monospaced())
                                 .textSelection(.enabled)
                         }
                     }
                     if let rendered = diff.rendered, !rendered.isEmpty, rendered != diff.diff {
                         DisclosureGroup("Host-rendered review") {
                             Text(rendered)
-                                .font(.body.monospaced())
+                                .font(.bighelp(.body).monospaced())
                                 .textSelection(.enabled)
                                 .padding(.top, BighelpTokens.space4)
                         }
                     }
                     DisclosureGroup("Exact diff", isExpanded: $showsExactDiff) {
                         Text(diff.diff.isEmpty ? "No textual diff." : diff.diff)
-                            .font(.body.monospaced())
+                            .font(.bighelp(.body).monospaced())
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, BighelpTokens.space4)
@@ -118,6 +118,7 @@ struct NativeSessionRollbackReviewView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
+                    .bighelpToolbarText()
             }
         }
         .confirmationDialog(
@@ -174,7 +175,7 @@ struct NativeSessionRollbackReviewView: View {
             DisclosureGroup("\(title) (\(values.count))") {
                 ForEach(Array(values.enumerated()), id: \.offset) { _, value in
                     Text(value)
-                        .font(.caption.monospaced())
+                        .font(.bighelp(.caption).monospaced())
                         .textSelection(.enabled)
                 }
             }

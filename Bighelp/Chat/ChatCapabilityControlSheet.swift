@@ -25,7 +25,7 @@ struct CapabilityControlSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: BighelpTokens.space16) {
                     Text(selection.kind.title).bighelpFont(.metadata).foregroundStyle(theme.secondaryText)
-                    Text(selection.itemID).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text(selection.itemID).font(.bighelp(.body, design: .monospaced)).textSelection(.enabled)
                     Text("Hermes profile: \(selection.agentID)").bighelpFont(.metadata)
                     if store.isLoadingControl {
                         ProgressView("Reading host settings…").tint(theme.action)

@@ -60,21 +60,32 @@ enum BighelpTokens {
     static let menuRowCornerRadius = radius12
     static let generatedContentInsetCornerRadius = radius12
 
+    // Control sizes follow Settings › Appearance › Button size
+    // (`BighelpInterfaceSize`); reading one redraws the view when it changes.
     #if os(visionOS)
     /// Eyes need bigger targets than fingers: visionOS asks for 60pt around
     /// each control. 56 keeps rows compact while staying easy to look at.
-    static let hitTarget: CGFloat = 56
-    static let controlHeight: CGFloat = 56
+    static var hitTarget: CGFloat { scaled(56) }
+    static var controlHeight: CGFloat { scaled(56) }
     #else
-    static let hitTarget: CGFloat = 44
-    static let controlHeight: CGFloat = 48
+    static var hitTarget: CGFloat { scaled(44) }
+    static var controlHeight: CGFloat { scaled(48) }
     #endif
-    static let composerHeight: CGFloat = 52
-    static let primaryActionSize: CGFloat = 56
+    static var composerHeight: CGFloat { scaled(52) }
+    static var primaryActionSize: CGFloat { scaled(56) }
 
-    static let minimumControlSize = hitTarget
-    static let composerMinimumHeight = composerHeight
-    static let searchMinimumHeight = controlHeight
+    static var minimumControlSize: CGFloat { hitTarget }
+    static var composerMinimumHeight: CGFloat { composerHeight }
+    static var searchMinimumHeight: CGFloat { controlHeight }
+
+    /// A toolbar button's touch height. Mac toolbars size their own buttons; a
+    /// forced height there squeezes the label into a circle ("C…").
+    static var toolbarHitTarget: CGFloat? { BighelpPlatform.isMac ? nil : hitTarget }
+
+    /// A control dimension (icon, avatar, button) at the chosen button size.
+    static func scaled(_ points: CGFloat) -> CGFloat {
+        (points * BighelpInterfaceSize.shared.buttonScale).rounded()
+    }
 
     static let pressDuration: TimeInterval = 0.12
     static let stateDuration: TimeInterval = 0.18

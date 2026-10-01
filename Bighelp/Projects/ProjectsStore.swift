@@ -42,13 +42,18 @@ final class ProjectsStore {
         self.profileID = profileID
     }
 
+    /// A Mac list can't be pulled down; it has a Refresh button instead.
+    static var tryAgain: String {
+        BighelpPlatform.isMac ? "Click Refresh to try again." : "Pull down to try again."
+    }
+
     func refresh() async {
         do {
             details = try await source.details(profileID: profileID)
             errorMessage = nil
         } catch is CancellationError {
         } catch {
-            errorMessage = "Projects couldn't load from your computer. Pull down to try again."
+            errorMessage = "Projects couldn't load from your computer. \(Self.tryAgain)"
         }
     }
 
@@ -65,7 +70,7 @@ final class ProjectsStore {
             errorMessage = nil
         } catch is CancellationError {
         } catch {
-            errorMessage = "This project's chats couldn't load. Pull down to try again."
+            errorMessage = "This project's chats couldn't load. \(Self.tryAgain)"
         }
     }
 }

@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 /// Settings › Appearance: pick a bubble color and a page color for light and
-/// dark mode, with a live preview of both. Anything else about the look (chat
-/// layout, and on Vision Pro transparency) follows below.
+/// dark mode, with a live preview of both, and the text and button size.
+/// Anything else about the look (chat layout, and on Vision Pro transparency)
+/// follows below.
 @MainActor
 struct AppearanceStudioView<Extras: View>: View {
     @Bindable var settings: SettingsStore
@@ -53,6 +54,7 @@ struct AppearanceStudioView<Extras: View>: View {
                     .bighelpSegmentedPicker()
                     .accessibilityIdentifier("appearance.mode")
                 }
+                section("Text and buttons", caption: nil) { AppearanceSizeControls() }
                 VStack(spacing: BighelpTokens.space12) { extras }
             }
             .padding(.horizontal, BighelpTokens.space20)
@@ -100,13 +102,13 @@ struct AppearanceStudioView<Extras: View>: View {
                 .background(theme.canvas, in: .rect(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(theme.border.opacity(0.8), lineWidth: 1))
                 HStack(spacing: 4) {
-                    Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(currentTheme.primaryText)
+                    Text(name).font(.bighelp(.subheadline).weight(.semibold)).foregroundStyle(currentTheme.primaryText)
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(currentTheme.action)
                     }
                 }
                 Text(detail)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(currentTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -136,7 +138,7 @@ struct AppearanceStudioView<Extras: View>: View {
                     .accessibilityAddTraits(.isHeader)
                 if let caption {
                     Spacer()
-                    Text(caption).font(.caption).foregroundStyle(currentTheme.tertiaryText)
+                    Text(caption).font(.bighelp(.caption)).foregroundStyle(currentTheme.tertiaryText)
                 }
             }
             content()
@@ -166,7 +168,7 @@ private struct AppearancePreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.caption2.weight(.bold))
+                .font(.bighelp(.caption2).weight(.bold))
                 .foregroundStyle(theme.secondaryText)
             bubble("Morning! Want today's plan?", fill: theme.incomingMessageBackground,
                    text: theme.primaryText, alignment: .leading)
@@ -231,14 +233,14 @@ struct AppearanceBubbleGrid: View {
                             .overlay {
                                 if isSelected {
                                     Image(systemName: "checkmark")
-                                        .font(.subheadline.weight(.bold))
+                                        .font(.bighelp(.subheadline).weight(.bold))
                                         .foregroundStyle(.white)
                                 }
                             }
                             .padding(3)
                             .overlay(Circle().strokeBorder(isSelected ? currentTheme.primaryText : .clear, lineWidth: 2))
                         Text(color.name)
-                            .font(.caption.weight(isSelected ? .semibold : .regular))
+                            .font(.bighelp(.caption).weight(isSelected ? .semibold : .regular))
                             .foregroundStyle(currentTheme.primaryText)
                             .lineLimit(1)
                     }
@@ -270,7 +272,7 @@ struct AppearanceBubbleGrid: View {
                     if let custom {
                         Circle().fill(Color(hex: custom)).padding(5)
                         Image(systemName: "checkmark")
-                            .font(.subheadline.weight(.bold))
+                            .font(.bighelp(.subheadline).weight(.bold))
                             .foregroundStyle(.white)
                     }
                 }
@@ -278,7 +280,7 @@ struct AppearanceBubbleGrid: View {
                 .padding(3)
                 .overlay(Circle().strokeBorder(custom != nil ? currentTheme.primaryText : .clear, lineWidth: 2))
                 Text("Custom")
-                    .font(.caption.weight(custom != nil ? .semibold : .regular))
+                    .font(.bighelp(.caption).weight(custom != nil ? .semibold : .regular))
                     .foregroundStyle(currentTheme.primaryText)
                     .lineLimit(1)
             }
@@ -308,12 +310,12 @@ struct AppearanceStudioRow: View {
                 Text(title)
                     .foregroundStyle(currentTheme.primaryText)
                 Text(detail)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(currentTheme.secondaryText)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .font(.bighelp(.footnote).weight(.semibold))
                 .foregroundStyle(currentTheme.tertiaryText)
         }
         .padding(BighelpTokens.space16)

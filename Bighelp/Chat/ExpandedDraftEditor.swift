@@ -40,6 +40,11 @@ struct ExpandedDraftEditor: View {
                 .accessibilityLabel("Collapse message editor")
                 .accessibilityIdentifier("chat.composer.expanded.collapse")
                 .disabled(model.richDraftRecovery.hasUnexportedChanges)
+                #if targetEnvironment(macCatalyst)
+                // Esc closes the editor like any Mac sheet; an open Skills &
+                // commands list takes Esc first (`ReferenceComposerContainer`).
+                .keyboardShortcut(.cancelAction)
+                #endif
 
                 Text("Message \(agentName)")
                     .bighelpFont(.sectionTitle, weight: .semibold)
@@ -53,7 +58,7 @@ struct ExpandedDraftEditor: View {
                         isEditorFocused = true
                         isReferenceEditorFocused = true
                     }
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .frame(minHeight: 44)
                     .accessibilityIdentifier("reference-hub.editor-mode")
                     .disabled(model.richDraftRecovery.hasUnexportedChanges)
@@ -308,6 +313,11 @@ struct ExpandedDraftEditor: View {
 
     /// A hardware keyboard's Return, the same as in the message box. True means handled.
     private func handleReturnKey(_ key: ComposerReturnKey) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        // Return picks the Skills & commands row chosen with ↑ ↓.
+        if key == .plain, isReferenceSourceMode, let referenceHub, referenceHub.isPresented,
+           referenceHub.keyboard.pickHighlighted() { return true }
+        #endif
         switch ComposerReturnKeyAction.resolve(key, returnSends: returnSends, canSend: model.canSend,
                                                isTurnLive: model.isMidSessionTurnLive) {
         case .newLine: return false

@@ -84,15 +84,15 @@ final class LocalModelsStore {
             case .downloadBrowsed(let repository, let group):
                 return "Hermes will download \(group.label) from \(repository) to the selected host (\(LocalModelsStore.byteLabel(group.totalBytes))). This is an uncurated Hugging Face selection."
             case .sideload(let path):
-                return "Hermes will register the existing .gguf at \(path) on the host. This is a host filesystem path, not an iPhone upload; Hermes may link or copy it into managed storage."
+                return "Hermes will register the existing .gguf at \(path) on the host. This is a host filesystem path, not an \(BighelpPlatform.isMac ? "upload from this Mac" : "iPhone upload"); Hermes may link or copy it into managed storage."
             case .activate(let model):
-                return "Hermes will start the host server if needed and make \(model.id) the default for new chats. The model loads into memory on first inference, not from this tap alone."
+                return "Hermes will start the host server if needed and make \(model.id) the default for new chats. The model loads into memory on first inference, not from this \(BighelpPlatform.isMac ? "click" : "tap") alone."
             case .eject(let model):
                 return "Hermes will unload \(model.id) from host GPU/system memory. The managed model file remains available and demand may load it again."
             case .delete(let model):
                 return "Hermes will permanently remove its managed files for \(model.id) and clear related growth state. The original of a sideloaded link remains outside managed storage."
             case .server(.start):
-                return "Hermes will enable and start its local model server on the selected host. No server is started on this iPhone or iPad."
+                return "Hermes will enable and start its local model server on the selected host. \(BighelpPlatform.isMac ? "bighelp itself starts no server." : "No server is started on this iPhone or iPad.")"
             case .server(.stop):
                 return "Hermes will stop the selected host’s local model server, unload all resident models, and disable automatic start until it is turned on again."
             }

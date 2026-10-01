@@ -197,7 +197,7 @@ private struct VoicePreferenceSections: View {
         } header: {
             Text("Voice mode")
         } footer: {
-            Text("Used when you tap the microphone in a chat.")
+            Text("Used when you \(BighelpPlatform.isMac ? "click" : "tap") the microphone in a chat.")
         }
 
         if settings.voiceConversationMode == .codexLive {
@@ -293,7 +293,7 @@ private struct VoiceSettingsEditor: View {
                 HStack {
                     LabeledContent("Provider", value: selected?.title ?? store.providerID)
                     Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
+                        .font(.bighelp(.footnote).weight(.semibold))
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }

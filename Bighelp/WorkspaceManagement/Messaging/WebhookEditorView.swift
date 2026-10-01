@@ -225,7 +225,7 @@ struct WebhookEditorView: View {
                     Section("Workspace") {
                         LabeledContent("Host", value: store.hostName)
                         Text("Webhooks are host-wide. Signing secrets remain on Hermes and are never included in this list.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                     }
                     status
                     if let catalog = store.catalog {
@@ -253,6 +253,7 @@ struct WebhookEditorView: View {
                     store.review = .create(draft)
                 }
             }
+            .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: Binding(
             get: { store.creationReceipt != nil },
@@ -263,6 +264,7 @@ struct WebhookEditorView: View {
                     WebhookSecretReceiptView(receipt: receipt) { store.discardCreationSecret() }
                 }
                 .interactiveDismissDisabled()
+                .bighelpSheetSize(.standard)
             }
         }
         .confirmationDialog(
@@ -329,10 +331,10 @@ struct WebhookEditorView: View {
             ForEach(shown) { webhook in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text(webhook.name).font(.headline)
+                        Text(webhook.name).font(.bighelp(.headline))
                         Spacer()
                         Text(webhook.isEnabled ? "Enabled" : "Disabled")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     if !webhook.description.isEmpty { Text(webhook.description).foregroundStyle(.secondary) }
                     LabeledContent("Delivery", value: webhook.delivery.replacingOccurrences(of: "_", with: " ").capitalized)
@@ -383,7 +385,7 @@ private struct WebhookCreateForm: View {
                     .autocorrectionDisabled()
                 TextField("Description", text: $description, axis: .vertical)
                 Text("Use lowercase letters, numbers, hyphens, or underscores. Existing names cannot be overwritten from bighelp.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
             Section("Events") {
                 TextField("Events, comma separated", text: $events)
@@ -395,7 +397,7 @@ private struct WebhookCreateForm: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Text("This native editor does not accept scripts or arbitrary API routes.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
             Section("Advanced · Delivery") {
                 Picker("Destination", selection: $delivery) {
@@ -413,7 +415,7 @@ private struct WebhookCreateForm: View {
         .navigationTitle("New Webhook")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") { submit() }
                     .disabled(!validName || (deliversWithoutAgent && delivery == .log))
@@ -465,12 +467,12 @@ private struct WebhookSecretReceiptView: View {
             }
             Section("One-time signing secret") {
                 Text(receipt.secret)
-                    .font(.body.monospaced())
+                    .font(.bighelp(.body).monospaced())
                     .textSelection(.enabled)
                     .privacySensitive()
                     .accessibilityLabel("Webhook signing secret")
                 Text("Save this secret directly in the service that will send events. bighelp discards it when you close this sheet and cannot retrieve it again.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Save Signing Secret")

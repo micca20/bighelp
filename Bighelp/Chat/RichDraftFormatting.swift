@@ -92,7 +92,7 @@ enum RichDraftFormatting {
         case .codeBlock: .callout
         case .codeLanguage: .caption1
         }
-        let preferred = UIFont.preferredFont(forTextStyle: textStyle)
+        let preferred = UIFont.bighelp(textStyle)
         let role: BighelpFontRole = value.role == .body ? .body : .sectionTitle
         var descriptor = theme.uiFont(role).fontDescriptor.withSize(preferred.pointSize)
         if value.style.contains(.code) || value.role == .codeBlock || value.role == .codeLanguage {

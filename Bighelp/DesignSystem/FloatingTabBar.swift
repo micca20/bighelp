@@ -99,7 +99,7 @@ struct FloatingTabBar: View {
             .bighelpNavigationGlass(in: Capsule())
             .sensoryFeedback(.selection, trigger: tabChanges)
         }
-        .frame(maxWidth: 620)
+        .frame(maxWidth: BighelpTokens.scaled(620))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Primary navigation")
         .accessibilityIdentifier("primary-navigation")
@@ -161,12 +161,12 @@ struct FloatingTabBar: View {
                 .resizable()
                 .scaledToFit()
                 .fontWeight(.semibold)
-                .frame(width: min(iconSize, 28), height: min(iconSize, 28))
+                .frame(width: BighelpTokens.scaled(min(iconSize, 28)), height: BighelpTokens.scaled(min(iconSize, 28)))
                 .contentTransition(.symbolEffect(.replace))
                 .accessibilityIdentifier(identifier + ".icon")
             if showsCaption {
                 Text(title)
-                    .font(.caption2.weight(.semibold))
+                    .font(.bighelp(.caption2).weight(.semibold))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: true)
                     .frame(height: captionHeight)
@@ -176,7 +176,7 @@ struct FloatingTabBar: View {
         .foregroundStyle(selected ? (increasedContrast ? Color.primary : theme.action) : Color.secondary)
         .padding(.horizontal, 4)
         .padding(.vertical, isVerticallyCompact ? 4 : 10)
-        .frame(minWidth: 44, maxWidth: .infinity, minHeight: 44)
+        .frame(minWidth: BighelpTokens.hitTarget, maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
         .background {
             if selected {
                 Self.selectionShape
@@ -329,7 +329,7 @@ struct VisionTabOrnament: View {
                     selection = tab
                 } label: {
                     Image(systemName: tab.systemImage(selected: isSelected))
-                        .font(.title2.weight(.semibold))
+                        .font(.bighelp(.title2).weight(.semibold))
                         .frame(width: 60, height: 60)
                         .background {
                             if isSelected { Circle().fill(.white.opacity(0.22)) }
@@ -354,7 +354,7 @@ struct VisionTabOrnament: View {
                 Divider().frame(width: 36)
                 Button(action: onNewChat) {
                     Image(systemName: "square.and.pencil")
-                        .font(.title2.weight(.semibold))
+                        .font(.bighelp(.title2).weight(.semibold))
                         .frame(width: 60, height: 60)
                 }
                 .buttonStyle(.plain)

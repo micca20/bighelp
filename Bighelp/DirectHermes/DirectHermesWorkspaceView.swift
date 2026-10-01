@@ -88,7 +88,7 @@ struct DirectHermesWorkspaceView: View {
         .bighelpFormSurface()
         .navigationTitle(showsProfiles ? "Agents" : "Chats")
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showsSupport) { DirectHermesSupportView() }
+        .sheet(isPresented: $showsSupport) { DirectHermesSupportView().bighelpSheetSize(.standard) }
         .onChange(of: store.selectedProfile) { _, _ in Task { await store.loadSessions() } }
         .refreshable { if store.isConnected { await store.loadSessions() } else { await store.reconnect() } }
         .accessibilityElement(children: .contain)
@@ -125,7 +125,7 @@ struct DirectHermesSupportView: View {
                 }
                 Section("History & recovery") {
                     Text("Saved history can have tool summaries without live IDs or results and may be less detailed than the live stream. Local text and uncertain submissions stay bound to the exact account, host, and profile.")
-                    Text("Reopening reattaches without resending prompts. If the runtime is gone, choose a saved session. iOS can suspend sockets; notifications require separate verified enrollment.")
+                    Text("Reopening reattaches without resending prompts. If the runtime is gone, choose a saved session. \(BighelpPlatform.isMac ? "macOS" : "iOS") can suspend sockets; notifications require separate verified enrollment.")
                 }
             }
             .navigationTitle("Host support")

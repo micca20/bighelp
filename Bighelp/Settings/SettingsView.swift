@@ -157,7 +157,7 @@ struct SettingsView: View {
             BighelpDeferredSection { SpatialAvatarSettingsSection(settings: settings) }
             #endif
             BighelpDeferredSection {
-                settingsMenuGroup(sections: [.connectivityAndNotifications, .permissions, .watch]
+                settingsMenuGroup(sections: [.connectivityAndNotifications, .permissions] + Self.watchSection
                                   + (companionStore == nil ? [] : [.companion]) + [.help])
             }
             BighelpDeferredSection { nerdModeToggle }
@@ -176,6 +176,7 @@ struct SettingsView: View {
             NavigationStack {
                 PersonalitiesView(store: personalities)
             }
+            .bighelpSheetSize(.standard)
             .presentationDragIndicator(.visible)
         }
         .accessibilityIdentifier("settings.screen")
@@ -226,7 +227,7 @@ struct SettingsView: View {
                     Label("Agents", systemImage: "person.2")
                     Label("Tasks", systemImage: "calendar.badge.clock")
                     Label("Workspace", systemImage: "square.grid.2x2")
-                    Text("On iPhone, the bottom menu shows on these four screens and hides while you chat or type.").font(.footnote).foregroundStyle(.secondary)
+                    Text(Self.bottomMenuNote).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
                 edgeGestures
             case .caching:
@@ -250,7 +251,7 @@ struct SettingsView: View {
                 LabeledContent("Address", value: saved.endpoint.identity)
                 LabeledContent("Sign-in", value: authenticationTitle(saved.authentication))
                 Text(workspace.status)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings.connection.status")
             } else { Text("No host is connected.").foregroundStyle(.secondary) }
@@ -434,6 +435,23 @@ struct SettingsView: View {
         case .connectivityAndNotifications:
             hostsPage
         }
+    }
+
+    private static var bottomMenuNote: String {
+        #if targetEnvironment(macCatalyst)
+        "The bottom menu shows on these four screens and hides while you chat."
+        #else
+        "On iPhone, the bottom menu shows on these four screens and hides while you chat or type."
+        #endif
+    }
+
+    /// A Mac pairs with no Apple Watch.
+    private static var watchSection: [SettingsMenuSection] {
+        #if targetEnvironment(macCatalyst)
+        []
+        #else
+        [.watch]
+        #endif
     }
 
     func settingsPage<Content: View>(

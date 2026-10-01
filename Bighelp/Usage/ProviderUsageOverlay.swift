@@ -10,19 +10,31 @@ struct ProviderUsageHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.providerUsage, store)
+            #if targetEnvironment(macCatalyst)
+            // A Mac sheet: a panel over the window, not a dimmed full-screen layer.
+            .sheet(isPresented: $store.isPresented) {
+                ProviderUsageOverlay(store: store, hostName: hostName, onOpenSettings: onOpenSettings)
+            }
+            #else
             .fullScreenCover(isPresented: $store.isPresented) {
                 ProviderUsageOverlay(store: store, hostName: hostName, onOpenSettings: onOpenSettings)
                     .presentationBackground(.clear)
             }
+            #endif
     }
 }
 
 extension ProviderUsageStore {
     /// Shows the overlay without the full-screen slide; the panel fades in itself.
+    /// A Mac sheet keeps its own animation.
     func show(agentID: String) {
+        #if targetEnvironment(macCatalyst)
+        present(agentID: agentID)
+        #else
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { present(agentID: agentID) }
+        #endif
     }
 }
 
@@ -35,6 +47,10 @@ struct ProviderUsageOverlay: View {
 
     @AppStorage(ProviderUsagePreferences.hiddenKey) private var hiddenRaw = ""
     @State private var appeared = false
+    #if targetEnvironment(macCatalyst)
+    /// The cards' height, so the Mac sheet opens as tall as they are.
+    @State private var cardsHeight: CGFloat = 0
+    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @BighelpThemeReader private var theme
@@ -44,6 +60,14 @@ struct ProviderUsageOverlay: View {
     }
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        macPanel
+        #else
+        floatingPanel
+        #endif
+    }
+
+    private var floatingPanel: some View {
         ZStack {
             Color.black.opacity(appeared ? 0.2 : 0)
                 .ignoresSafeArea()
@@ -85,6 +109,36 @@ struct ProviderUsageOverlay: View {
         }
     }
 
+    #if targetEnvironment(macCatalyst)
+    /// The Mac sheet: the same header and cards, 480 pt wide. Mac sheets open at
+    /// their content's smallest size, so the cards' measured height sets it, up
+    /// to what fits on screen; longer lists scroll.
+    private var macPanel: some View {
+        VStack(spacing: 0) {
+            header
+            ScrollView {
+                VStack(spacing: BighelpTokens.space12) { content }
+                    .padding(.horizontal, BighelpTokens.space16)
+                    .padding(.bottom, BighelpTokens.space20)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardsHeight = $0 }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(max(cardsHeight, 300), macCardsMaximumHeight))
+        }
+        .frame(width: 480)
+        .background(theme.canvas.ignoresSafeArea())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("provider-usage")
+    }
+
+    /// Room for the cards under the header, clear of the menu bar and Dock.
+    private var macCardsMaximumHeight: CGFloat {
+        let screen = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.screen.bounds.height }.first ?? 900
+        return max(300, min(620, screen - 320))
+    }
+    #endif
+
     private func panelChrome<Body: View>(@ViewBuilder _ body: () -> Body) -> some View {
         VStack(spacing: 0) {
             header
@@ -121,7 +175,7 @@ struct ProviderUsageOverlay: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: BighelpTokens.space4) {
                 Text("Provider Usage")
-                    .font(.title2.weight(.bold))
+                    .font(.bighelp(.title2).weight(.bold))
                     .foregroundStyle(theme.primaryText)
                     .accessibilityAddTraits(.isHeader)
                 Text("Current provider limits")
@@ -144,6 +198,9 @@ struct ProviderUsageOverlay: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(store.isRefreshing)
+                    #if targetEnvironment(macCatalyst)
+                    .keyboardShortcut("r")
+                    #endif
                     .accessibilityLabel("\(updated). Refresh")
                     .accessibilityIdentifier("provider-usage.refresh")
                 }
@@ -159,6 +216,9 @@ struct ProviderUsageOverlay: View {
                     .overlay(Circle().strokeBorder(.white.opacity(0.4), lineWidth: 1))
             }
             .buttonStyle(.plain)
+            #if targetEnvironment(macCatalyst)
+            .keyboardShortcut(.cancelAction)
+            #endif
             .accessibilityLabel("Close")
             .accessibilityIdentifier("provider-usage.close")
         }
@@ -228,12 +288,16 @@ struct ProviderUsageOverlay: View {
     private func openSettings() {
         close()
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
+            // A Mac sheet slides away first; Settings can't open over it.
+            try? await Task.sleep(for: .milliseconds(BighelpPlatform.isMac ? 450 : 250))
             onOpenSettings()
         }
     }
 
     private func close() {
+        #if targetEnvironment(macCatalyst)
+        store.isPresented = false
+        #else
         withAnimation(.easeOut(duration: 0.18)) { appeared = false }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 60 : 180))
@@ -241,6 +305,7 @@ struct ProviderUsageOverlay: View {
             transaction.disablesAnimations = true
             withTransaction(transaction) { store.isPresented = false }
         }
+        #endif
     }
 }
 
@@ -299,7 +364,7 @@ struct ProviderUsageCard: View {
     private var titleRow: some View {
         HStack(spacing: BighelpTokens.space8) {
             Text(provider.name)
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(theme.primaryText)
                 .lineLimit(1)
             if let plan = provider.plan { badge(plan, color: theme.secondaryText) }
@@ -309,7 +374,7 @@ struct ProviderUsageCard: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
+            .font(.bighelp(.caption2).weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
@@ -340,7 +405,7 @@ struct ProviderUsageCard: View {
                         .foregroundStyle(color)
                         .monospacedDigit()
                     if let reset {
-                        Text(reset).font(.caption).foregroundStyle(theme.tertiaryText)
+                        Text(reset).font(.bighelp(.caption)).foregroundStyle(theme.tertiaryText)
                     }
                 }
                 ProviderUsageBar(fraction: window.leftPercent / 100, color: color, height: index == 0 ? 8 : 5)
@@ -369,7 +434,7 @@ struct ProviderUsageCard: View {
         let via = provider.detectedVia.contains("cli") ? "On this computer" : provider.detectedVia.contains("hermes") ? "In Hermes" : nil
         if via != nil || provider.manageURL != nil {
             HStack {
-                if let via { Text(via).font(.caption2).foregroundStyle(theme.tertiaryText) }
+                if let via { Text(via).font(.bighelp(.caption2)).foregroundStyle(theme.tertiaryText) }
                 Spacer(minLength: 0)
                 if let url = provider.manageURL {
                     Button {
@@ -377,7 +442,7 @@ struct ProviderUsageCard: View {
                     } label: {
                         Label("Manage", systemImage: "arrow.up.right")
                             .labelStyle(.titleAndIcon)
-                            .font(.caption.weight(.semibold))
+                            .font(.bighelp(.caption).weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.action)

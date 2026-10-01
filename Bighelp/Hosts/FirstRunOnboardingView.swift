@@ -201,7 +201,7 @@ struct FirstRunOnboardingView: View {
                     move(to: .appearance)
                 } label: {
                     Text("Appearance options")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
                         .contentShape(.rect)
                 }

@@ -62,13 +62,16 @@ struct SkillsAndToolsCatalogView: View {
         .sheet(isPresented: $isPresentingEditor, onDismiss: store.clearDocument) {
             if let document = store.document {
                 SkillEditorSheet(store: store, agentID: agentID, document: document)
+                    .bighelpSheetSize(.standard)
             }
         }
         .sheet(isPresented: $isPresentingWizard) {
             SkillCreationWizard(store: store, agentID: agentID)
+                .bighelpSheetSize(.standard)
         }
         .sheet(item: $selectedCapability, onDismiss: store.clearControl) { selection in
             CapabilityControlSheet(store: store, selection: selection)
+                .bighelpSheetSize(.standard)
         }
         .onChange(of: store.catalog?.agentID) { _, selectedAgent in
             if selectedAgent != agentID {

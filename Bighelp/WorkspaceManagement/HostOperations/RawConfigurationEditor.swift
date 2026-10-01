@@ -88,7 +88,9 @@ struct RawConfigurationExpandedEditor: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
                             .accessibilityIdentifier("host.raw-config.expanded-done")
+                            .bighelpToolbarText()
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
                         Menu {
@@ -123,7 +125,7 @@ struct RawConfigurationExpandedEditor: View {
                 Text("\(store.draft.utf8.count.formatted()) bytes")
             }
         }
-        .font(.caption)
+        .font(.bighelp(.caption))
         .foregroundStyle(.secondary)
         .padding(.horizontal, BighelpTokens.space16)
         .padding(.vertical, BighelpTokens.space8)

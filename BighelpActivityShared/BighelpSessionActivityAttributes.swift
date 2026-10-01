@@ -1,4 +1,4 @@
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import Foundation
@@ -352,7 +352,7 @@ struct BighelpActivityAgentMark: View {
     }
 }
 
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 // Vision Pro has no Live Activities; the same work state still drives the app there.
 extension LoopdySessionActivityAttributes: ActivityAttributes {}
 #endif

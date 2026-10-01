@@ -41,7 +41,7 @@ struct HostDiagnosticsView: View {
             if let egress = store.egress {
                 Section("Egress") {
                     Text(egress.text)
-                        .font(.footnote.monospaced())
+                        .font(.bighelp(.footnote).monospaced())
                         .textSelection(.enabled)
                 }
             }

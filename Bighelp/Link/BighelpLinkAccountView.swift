@@ -172,7 +172,9 @@ struct BighelpLinkAccountView: View {
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Done") { isDirectHermesPresented = false }
+                                    .keyboardShortcut(.cancelAction)
                                     .accessibilityIdentifier("direct-hermes.done")
+                                    .bighelpToolbarText()
                             }
                         }
                 }
@@ -249,7 +251,7 @@ struct BighelpLinkAccountView: View {
             }
         } label: {
             Image(systemName: "person.crop.circle")
-                .font(.title3.weight(.semibold))
+                .font(.bighelp(.title3).weight(.semibold))
                 .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                 .contentShape(.rect)
         }
@@ -264,7 +266,7 @@ struct BighelpLinkAccountView: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space24) {
                 HStack(spacing: BighelpTokens.space12) {
                     Image(systemName: "person.crop.circle.fill")
-                        .font(.largeTitle)
+                        .font(.bighelp(.largeTitle))
                         .foregroundStyle(theme.action)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
@@ -412,7 +414,7 @@ struct BighelpLinkAccountView: View {
         VStack(spacing: BighelpTokens.space24) {
             if !uiV3Enabled { BighelpLogo(height: 32) }
             Image(systemName: "person.badge.key.fill")
-                .font(.largeTitle)
+                .font(.bighelp(.largeTitle))
                 .foregroundStyle(theme.action)
                 .frame(width: 72, height: 72)
                 .bighelpSurface(.card)

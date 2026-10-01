@@ -45,6 +45,34 @@ final class ReferenceComposerContainer: UIView {
             }
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// While Skills & commands is open, ↑ ↓ move through it and Esc closes it,
+    /// and the message box keeps the keyboard. The text view is first
+    /// responder and this container is next in line, so these reach here.
+    override var keyCommands: [UIKeyCommand]? {
+        guard let coordinator, coordinator.host === self, coordinator.isSurfaceActive,
+              coordinator.view?.markedTextRange == nil, coordinator.parent.hub.isPresented else {
+            return super.keyCommands
+        }
+        var commands = [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(closeReferenceDrawer))]
+        if coordinator.parent.hub.keyboard.hasRows {
+            commands += [
+                UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(highlightPreviousReference)),
+                UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(highlightNextReference)),
+            ]
+        }
+        for command in commands { command.wantsPriorityOverSystemBehavior = true }
+        return (super.keyCommands ?? []) + commands
+    }
+
+    @objc private func highlightPreviousReference() { coordinator?.parent.hub.keyboard.move(by: -1) }
+    @objc private func highlightNextReference() { coordinator?.parent.hub.keyboard.move(by: 1) }
+    @objc private func closeReferenceDrawer() {
+        guard let hub = coordinator?.parent.hub, !hub.keyboard.back() else { return }
+        hub.dismiss()
+    }
+    #endif
 }
 
 /// UIKit owns live source and caret. Only explicit native transactions or a new
@@ -82,7 +110,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
         let view = ClipboardPasteTextView()
         view.backgroundColor = .clear
         view.clipsToBounds = true
-        view.font = UIFont.preferredFont(forTextStyle: .body)
+        view.font = UIFont.bighelp(.body)
         view.adjustsFontForContentSizeCategory = true
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
@@ -121,7 +149,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
         guard let uiView = session.textView, let width = proposal.width, width > 0 else { return nil }
         if expanded, let height = proposal.height { return CGSize(width: width, height: height) }
         let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-        let lineHeight = uiView.font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
+        let lineHeight = uiView.font?.lineHeight ?? UIFont.bighelp(.body).lineHeight
         let overflowing = DraftFieldSizing.shouldOfferExpandedEditor(hasText: !uiView.text.isEmpty,
             measuredHeight: measured.height, lineHeight: lineHeight)
         if isSurfaceActive { context.coordinator.reportOverflow(overflowing) }
@@ -579,7 +607,7 @@ struct ReferenceComposerTextView: UIViewRepresentable {
         /// which UIKit draws black and which the next typed letters inherit.
         static func styled(_ text: String, in view: UITextView) -> NSAttributedString {
             NSAttributedString(string: text, attributes: [
-                .font: view.font ?? UIFont.preferredFont(forTextStyle: .body),
+                .font: view.font ?? UIFont.bighelp(.body),
                 .foregroundColor: view.textColor ?? .label,
             ])
         }

@@ -32,7 +32,7 @@ struct ToolsetManagementView: View {
                                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                         Text(toolset.label)
                                         Text("\(toolset.platformLabel) • \(toolset.isEnabled ? "Enabled" : "Disabled")")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                     }
                                     Spacer()
                                     if toolset.isConfigured { Image(systemName: "checkmark.seal").accessibilityLabel("Configured") }
@@ -87,7 +87,7 @@ private struct ToolsetDetailView: View {
                     modelSection(detail, toolset: toolset)
                     Section("Advanced · Included tools") {
                         if toolset.tools.isEmpty { Text("No concrete tools were reported.").foregroundStyle(.secondary) }
-                        ForEach(toolset.tools.prefix(200), id: \.self) { Text($0).font(.footnote.monospaced()) }
+                        ForEach(toolset.tools.prefix(200), id: \.self) { Text($0).font(.bighelp(.footnote).monospaced()) }
                     }
                 }
             } else {
@@ -103,6 +103,7 @@ private struct ToolsetDetailView: View {
                     credentialProvider = nil
                     Task { await model.saveEnvironment(values, toolset: toolset) }
                 }
+                .bighelpSheetSize(.standard)
             }
         }
         .confirmationDialog("Change this toolset?", isPresented: $confirmsToggle, titleVisibility: .visible) {
@@ -127,17 +128,17 @@ private struct ToolsetDetailView: View {
                 ForEach(detail.configuration.providers) { provider in
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         HStack {
-                            Text(provider.name).font(.headline)
+                            Text(provider.name).font(.bighelp(.headline))
                             Spacer()
                             if provider.isActive { Image(systemName: "checkmark").accessibilityLabel("Active provider") }
                         }
                         if !provider.badge.isEmpty || !provider.tag.isEmpty {
                             Text([provider.badge, provider.tag].filter { !$0.isEmpty }.joined(separator: " • "))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         }
                         LabeledContent("Readiness", value: provider.status.replacingOccurrences(of: "_", with: " ").capitalized)
                         if provider.requiresNousAuthentication {
-                            Text("Requires Nous Portal authentication.").font(.footnote).foregroundStyle(.secondary)
+                            Text("Requires Nous Portal authentication.").font(.bighelp(.footnote)).foregroundStyle(.secondary)
                         }
                         providerButtons(provider, toolset: toolset)
                     }
@@ -190,7 +191,7 @@ private struct ToolsetDetailView: View {
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(modelOption.displayName)
                                 Text([modelOption.speed, modelOption.strengths, modelOption.price].filter { !$0.isEmpty }.joined(separator: " • "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if detail.models.current == modelOption.id { Image(systemName: "checkmark") }
@@ -221,11 +222,11 @@ private struct ToolsetCredentialForm: View {
                         ))
                         .textContentType(.password)
                         HStack {
-                            Text(field.key).font(.caption).foregroundStyle(.secondary)
+                            Text(field.key).font(.bighelp(.caption)).foregroundStyle(.secondary)
                             Spacer()
-                            if field.isSet { Label("Already set", systemImage: "checkmark.circle").font(.caption) }
+                            if field.isSet { Label("Already set", systemImage: "checkmark.circle").font(.bighelp(.caption)) }
                         }
-                        if let url = field.helpURL { Link("Provider help", destination: url).font(.footnote) }
+                        if let url = field.helpURL { Link("Provider help", destination: url).font(.bighelp(.footnote)) }
                     }
                 }
                 Section {
@@ -239,7 +240,7 @@ private struct ToolsetCredentialForm: View {
             }
             .navigationTitle(provider.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 }

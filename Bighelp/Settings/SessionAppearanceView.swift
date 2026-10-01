@@ -105,6 +105,7 @@ struct SessionAppearanceView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
                     .disabled(isApplying)
+                    .bighelpToolbarText()
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(isApplying ? "Applying…" : "Apply") { apply() }
@@ -141,11 +142,11 @@ struct SessionAppearanceView: View {
                 }
                 VStack(spacing: BighelpTokens.space12) {
                     Text("Conversation preview")
-                        .font(.caption.weight(.semibold))
+                        .font(.bighelp(.caption).weight(.semibold))
                         .foregroundStyle(.white.opacity(0.86))
                     HStack {
                         Text("Incoming message")
-                            .font(.callout)
+                            .font(.bighelp(.callout))
                             .foregroundStyle(colorScheme == .dark ? Color.white : Color.primary)
                             .padding(.horizontal, BighelpTokens.space12)
                             .padding(.vertical, BighelpTokens.space8)
@@ -155,7 +156,7 @@ struct SessionAppearanceView: View {
                     HStack {
                         Spacer(minLength: BighelpTokens.space24)
                         Text("Outgoing message")
-                            .font(.callout)
+                            .font(.bighelp(.callout))
                             .foregroundStyle(.white)
                             .padding(.horizontal, BighelpTokens.space12)
                             .padding(.vertical, BighelpTokens.space8)
@@ -217,7 +218,7 @@ struct SessionAppearanceView: View {
             }
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -246,7 +247,7 @@ struct SessionAppearanceView: View {
                     .accessibilityLabel("More dimming")
             }
             Text("Dimming: \(Int((dimming * 100).rounded()))%")
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(.secondary)
         } header: {
             Text("Readability")
@@ -273,7 +274,7 @@ struct SessionAppearanceView: View {
                     .fill(tileBackground(option))
                     .frame(width: 58, height: 58)
                 Image(systemName: option.systemImage)
-                    .font(.title3.weight(.semibold))
+                    .font(.bighelp(.title3).weight(.semibold))
                     .foregroundStyle(option == .inherit ? Color.accentColor : (option == .photo ? Color.primary : .white))
                 if choice == option {
                     Circle()
@@ -286,7 +287,7 @@ struct SessionAppearanceView: View {
                 }
             }
             Text(option.title)
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }

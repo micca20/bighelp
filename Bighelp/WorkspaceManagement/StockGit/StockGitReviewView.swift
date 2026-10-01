@@ -32,13 +32,14 @@ struct StockGitReviewView: View {
                 .accessibilityLabel("Manage branches and worktrees")
             }
         }
-        .sheet(isPresented: $showsCommit) { commitSheet }
+        .sheet(isPresented: $showsCommit) { commitSheet.bighelpSheetSize(.standard) }
         .sheet(item: Binding(
             get: { store.diff.map { IdentifiedStockGitDiff(value: $0) } },
             set: { if $0 == nil { store.closeDiff() } }
         )) { identified in
             StockGitDiffView(diff: identified.value)
                 .presentationDetents([.medium, .large])
+                .bighelpSheetSize(.large)
         }
         .confirmationDialog(
             "Choose a diff",
@@ -119,7 +120,7 @@ struct StockGitReviewView: View {
                     }
                 } else {
                     Text("Select files below to stage, unstage, or revert only those changes.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -155,7 +156,7 @@ struct StockGitReviewView: View {
                             store.toggle(file.path)
                         } label: {
                             Image(systemName: store.selectedPaths.contains(file.path) ? "checkmark.circle.fill" : "circle")
-                                .font(.title3)
+                                .font(.bighelp(.title3))
                                 .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                         }
                         .buttonStyle(.plain)
@@ -165,9 +166,9 @@ struct StockGitReviewView: View {
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                             Text(file.path).lineLimit(2)
                             HStack {
-                                Text(file.status).font(.caption).foregroundStyle(.secondary)
-                                if file.isStaged { Text("Staged").font(.caption).foregroundStyle(.secondary) }
-                                Text("+\(file.added) −\(file.removed)").font(.caption).foregroundStyle(.secondary)
+                                Text(file.status).font(.bighelp(.caption)).foregroundStyle(.secondary)
+                                if file.isStaged { Text("Staged").font(.bighelp(.caption)).foregroundStyle(.secondary) }
+                                Text("+\(file.added) −\(file.removed)").font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,7 +227,7 @@ struct StockGitReviewView: View {
                 if let scope = verification.scope { LabeledContent("Scope", value: scope.capitalized) }
                 if verification.command != nil {
                     Text("Hermes has recorded verification evidence for this repository. This screen does not run commands.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -241,11 +242,11 @@ struct StockGitReviewView: View {
                 }
                 Section("Before you commit") {
                     Text("Only changes already staged in the repository will be committed. Pushing remains a separate confirmed action.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                     if let subjects = store.snapshot?.commitContext.recentSubjects, !subjects.isEmpty {
                         DisclosureGroup("Recent commit subjects") {
                             ForEach(subjects, id: \.self) { subject in
-                                Text(subject).font(.caption).foregroundStyle(.secondary)
+                                Text(subject).font(.bighelp(.caption)).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -255,7 +256,8 @@ struct StockGitReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showsCommit = false }
+                    Button("Cancel") { showsCommit = false }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Review") {
@@ -295,7 +297,7 @@ private struct StockGitDiffView: View {
         NavigationStack {
             ScrollView([.horizontal, .vertical]) {
                 Text(diff.text.isEmpty ? "No diff content was returned for this selection." : diff.text)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.bighelp(.caption, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(BighelpTokens.space16)
                     .frame(maxWidth: .infinity, alignment: .leading)

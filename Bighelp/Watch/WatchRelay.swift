@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst) // A Mac pairs with no Watch.
 import CryptoKit
 import Foundation
 import UIKit

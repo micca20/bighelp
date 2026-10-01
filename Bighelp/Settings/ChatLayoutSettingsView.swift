@@ -34,13 +34,15 @@ enum ChatAvatarSize: String, CaseIterable, Identifiable, Sendable {
 
     /// Auto keeps the large avatar on the tallest phones and uses Medium on the
     /// rest, where the header and bottom bar otherwise crowd the messages.
+    /// At the chosen button size (Settings › Appearance).
     func points(screenHeight: CGFloat) -> CGFloat {
-        switch self {
+        let points: CGFloat = switch self {
         case .small: 44
         case .medium: 60
         case .large: 76
         case .automatic: screenHeight >= ChatLayoutPreferences.tallPhoneHeight ? 76 : 60
         }
+        return BighelpTokens.scaled(points)
     }
 }
 
@@ -127,7 +129,7 @@ struct ChatLayoutSettingsView: View {
             } header: {
                 Text("Chat header")
             } footer: {
-                Text("Auto keeps the large avatar on the biggest iPhones and uses Medium on the rest. With the name hidden, tap the avatar for the agent's profile, or touch and hold it to switch agents.")
+                Text(Self.headerNote)
             }
             .listRowBackground(theme.surface)
 
@@ -152,9 +154,7 @@ struct ChatLayoutSettingsView: View {
             } header: {
                 Text("Messages")
             } footer: {
-                Text("Text size: \(textSize.title). It adds to your iPhone's own text size setting. Link previews "
-                    + "show a web link's picture, title and summary in chats and the Feed. To make one, your "
-                    + "iPhone opens that page, without cookies.")
+                Text("Text size: \(textSize.title). " + Self.messagesNote)
             }
             .listRowBackground(theme.surface)
 
@@ -185,6 +185,27 @@ struct ChatLayoutSettingsView: View {
 
     @State private var previewScreenHeight: CGFloat = 0
 
+    private static var headerNote: String {
+        #if targetEnvironment(macCatalyst)
+        "Auto uses the large avatar in tall windows and Medium in shorter ones. With the name hidden, click the "
+            + "avatar for the agent's profile, or click and hold it to switch agents."
+        #else
+        "Auto keeps the large avatar on the biggest iPhones and uses Medium on the rest. With the name hidden, "
+            + "tap the avatar for the agent's profile, or touch and hold it to switch agents."
+        #endif
+    }
+
+    private static var messagesNote: String {
+        #if targetEnvironment(macCatalyst)
+        // Appearance has the app-wide text size; this one is for messages only.
+        "It sizes message text, on top of the text size in Appearance. Link previews show a web link's picture, "
+            + "title and summary in chats and the Feed. To make one, your Mac opens that page, without cookies."
+        #else
+        "It adds to your iPhone's own text size setting. Link previews show a web link's picture, title and "
+            + "summary in chats and the Feed. To make one, your iPhone opens that page, without cookies."
+        #endif
+    }
+
     private var textSizeValue: Binding<Double> {
         Binding(get: { Double(textSize.rawValue) },
                 set: { textSize = ChatTextSize(rawValue: Int($0.rounded())) ?? .standard })
@@ -208,7 +229,7 @@ private struct ChatLayoutPreview: View {
                     .frame(width: avatarSize, height: avatarSize)
                 if showsAgentName {
                     Text("Your agent")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .padding(.horizontal, BighelpTokens.space16)
                         .padding(.vertical, 6)
                         .background(theme.surface, in: Capsule())

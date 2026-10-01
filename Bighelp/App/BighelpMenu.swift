@@ -147,7 +147,7 @@ struct BighelpMenu<Recent: View>: View {
             if let onNewGroup = destinations.onNewGroup {
                 Button { choose(onNewGroup) } label: {
                     Label("Group", systemImage: "person.3")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .padding(.horizontal, BighelpTokens.space12)
                         .frame(minHeight: 34)
                         .background(theme.action.opacity(0.12), in: .capsule)
@@ -183,9 +183,9 @@ struct BighelpMenu<Recent: View>: View {
                 Text(hostTitle)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.semibold))
+                    .font(.bighelp(.caption2).weight(.semibold))
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.bighelp(.subheadline).weight(.semibold))
             .foregroundStyle(theme.primaryText)
             .padding(.horizontal, BighelpTokens.space12)
             .frame(minHeight: 34)
@@ -207,7 +207,7 @@ struct BighelpMenu<Recent: View>: View {
     private func allHostsToggle(_ allHosts: BighelpMenuHosts.AllHosts) -> some View {
         Button { choose(allHosts.toggle) } label: {
             Image(systemName: allHosts.isOn ? "square.stack.3d.up.fill" : "square.stack.3d.up")
-                .font(.subheadline.weight(.semibold))
+                .font(.bighelp(.subheadline).weight(.semibold))
                 .foregroundStyle(allHosts.isOn ? theme.actionForeground : theme.primaryText)
                 .frame(width: 34, height: 34)
                 .background(allHosts.isOn ? theme.action : theme.surface, in: .circle)
@@ -238,7 +238,7 @@ struct BighelpMenu<Recent: View>: View {
                 Text("Recent chats")
                 Spacer()
                 Button("See all") { choose(destinations.onAllChats) }
-                    .font(.subheadline.weight(.semibold))
+                    .font(.bighelp(.subheadline).weight(.semibold))
                     .textCase(nil)
                     .accessibilityLabel("See all chats")
                     .accessibilityIdentifier("menu.chats")
@@ -329,12 +329,12 @@ struct BighelpMenuRowLabel: View {
             switch trailing {
             case .chevron:
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityHidden(true)
             case .selected:
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
+                    .font(.bighelp(.title3))
                     .foregroundStyle(theme.action)
                     .accessibilityHidden(true)
             case .none:
@@ -361,7 +361,7 @@ struct BighelpMenuChatRow: View {
                 AvatarView(stableID: id, displayName: lead.name, imageURL: lead.imageURL, size: 30)
             } else {
                 Image(systemName: "person.3.fill")
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.action)
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(theme.action.opacity(0.14)))
@@ -382,7 +382,7 @@ struct BighelpMenuChatRow: View {
                     .accessibilityLabel("Working")
             }
             Text(chat.updatedAt, format: .relative(presentation: .named, unitsStyle: .narrow))
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(theme.secondaryText)
         }
         .frame(minHeight: 44)
@@ -393,7 +393,8 @@ struct BighelpMenuChatRow: View {
     @BighelpThemeReader private var theme
 }
 
-/// The bighelp lockup in the top bar. Touch and hold it to switch hosts.
+/// The bighelp lockup in the top bar. Touch and hold it to switch hosts; on
+/// the Mac, click it.
 struct EmberHostSwitcherLockup: View {
     var linkDevices: BighelpLinkDeviceStore?
     @Environment(\.bighelpHostRegistry) private var registry
@@ -401,27 +402,38 @@ struct EmberHostSwitcherLockup: View {
     var body: some View {
         let hosts = BighelpMenuHosts.current(registry: registry, linkDevices: linkDevices)
         if hosts.hosts.count + (hosts.add == nil ? 0 : 1) > 0 {
-            Menu {
-                Section("Switch host") {
-                    ForEach(hosts.hosts) { host in
-                        Button { hosts.select(host.id) } label: {
-                            if host.isSelected { Label(host.name, systemImage: "checkmark") } else { Text(host.name) }
-                        }
-                        .accessibilityIdentifier("brand.host.\(host.id)")
-                    }
-                }
-                if let add = hosts.add {
-                    Button(action: add) { Label("Add host", systemImage: "plus") }
-                        .accessibilityIdentifier("brand.host.add")
-                }
-            } label: {
+            #if targetEnvironment(macCatalyst)
+            // A click that does nothing reads as broken on a Mac, where holding is rare.
+            Menu { hostItems(hosts) } label: { EmberLockup(markSize: 28) }
+                .accessibilityLabel(EmberBrand.appName)
+                .accessibilityHint("Switch hosts.")
+                .accessibilityIdentifier("brand.host-switcher")
+            #else
+            Menu { hostItems(hosts) } label: {
                 EmberLockup(markSize: 28)
             } primaryAction: {}
             .accessibilityLabel(EmberBrand.appName)
             .accessibilityHint("Touch and hold to switch hosts.")
             .accessibilityIdentifier("brand.host-switcher")
+            #endif
         } else {
             EmberLockup(markSize: 28)
+        }
+    }
+
+    @ViewBuilder
+    private func hostItems(_ hosts: BighelpMenuHosts) -> some View {
+        Section("Switch host") {
+            ForEach(hosts.hosts) { host in
+                Button { hosts.select(host.id) } label: {
+                    if host.isSelected { Label(host.name, systemImage: "checkmark") } else { Text(host.name) }
+                }
+                .accessibilityIdentifier("brand.host.\(host.id)")
+            }
+        }
+        if let add = hosts.add {
+            Button(action: add) { Label("Add host", systemImage: "plus") }
+                .accessibilityIdentifier("brand.host.add")
         }
     }
 }

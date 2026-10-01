@@ -77,9 +77,10 @@ mechanics, not authorization decisions or a generic endpoint dispatcher.
 The XcodeGen manifest defines these application products:
 
 - **bighelp**: the iOS, iPadOS and visionOS SwiftUI application. On Vision Pro it runs natively and adds the
-  agent-in-the-room volume (`Bighelp/Spatial/`).
-- **BighelpMac**: a native macOS application with a dedicated app entry point and
-  adaptive desktop shell.
+  agent-in-the-room volume (`Bighelp/Spatial/`). On the Mac it runs through Mac Catalyst ("Optimize for Mac", scheme `BighelpCatalyst`)
+  with a sidebar, shipped as a Developer ID DMG rather than through App Store Connect.
+- **BighelpMac**: a fixture-only native macOS prototype with a dedicated app entry point and
+  adaptive desktop shell. It is not the shipping Mac app.
 - **BighelpWatch**: the watchOS companion application.
 - **CarPlay**: a voice scene inside the iOS app (`Bighelp/CarPlay/`), not a separate product.
 - **Notification service extension**: decrypts and validates alert content

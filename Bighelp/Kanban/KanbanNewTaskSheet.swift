@@ -24,12 +24,12 @@ struct KanbanNewTaskSheet: View {
                 VStack(alignment: .leading, spacing: BighelpTokens.space24) {
                     VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                         TextField("What needs doing?", text: $title, axis: .vertical)
-                            .font(.title3.weight(.semibold))
+                            .font(.bighelp(.title3).weight(.semibold))
                             .lineLimit(1...4)
                             .focused($titleFocused)
                             .accessibilityIdentifier("kanban.new.title")
                         TextField("Add details for the agent (optional)", text: $details, axis: .vertical)
-                            .font(.body)
+                            .font(.bighelp(.body))
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1...8)
                             .accessibilityIdentifier("kanban.new.details")
@@ -50,7 +50,7 @@ struct KanbanNewTaskSheet: View {
                              : model.autoPlan == true
                                 ? "Goes to Later. Auto plan is on, so Hermes may split it into smaller tasks."
                                 : "Goes to Later. Nothing runs until you move it to Ready.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                     }
                     field("Priority") {
@@ -66,7 +66,10 @@ struct KanbanNewTaskSheet: View {
             .navigationTitle("New card")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { Task { await save() } }
                         .fontWeight(.semibold)
@@ -107,7 +110,7 @@ struct KanbanNewTaskSheet: View {
                     .padding(3)
                     .overlay { Circle().strokeBorder(selected ? theme.action : .clear, lineWidth: 2.5) }
                 Text(name.split(separator: " ").first.map(String.init) ?? name)
-                    .font(.caption.weight(selected ? .semibold : .regular))
+                    .font(.bighelp(.caption).weight(selected ? .semibold : .regular))
                     .foregroundStyle(selected ? theme.primaryText : theme.secondaryText)
                     .lineLimit(1)
             }
@@ -123,7 +126,7 @@ struct KanbanNewTaskSheet: View {
     private func field<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text(title.uppercased())
-                .font(.caption.weight(.bold))
+                .font(.bighelp(.caption).weight(.bold))
                 .tracking(0.6)
                 .foregroundStyle(theme.secondaryText)
             content()

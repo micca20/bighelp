@@ -31,7 +31,9 @@ struct PermissionsSettingsView: View {
             } header: {
                 Text("On this device")
             } footer: {
-                Text("bighelp asks iOS only after you choose Allow. Denied access must be changed in iOS Settings.")
+                Text(BighelpPlatform.isMac
+                     ? "bighelp asks macOS only after you choose Allow. Denied access must be changed in System Settings."
+                     : "bighelp asks iOS only after you choose Allow. Denied access must be changed in iOS Settings.")
                     .bighelpFont(.metadata)
             }
             .listRowBackground(theme.surface)
@@ -104,9 +106,9 @@ private struct DeviceToolPermissionRow: View {
             .accessibilityIdentifier("permissions.device-tools.\(kind.rawValue)")
 
             if permissions.requestInFlight == kind {
-                ProgressView("Waiting for iOS…").bighelpFont(.metadata)
+                ProgressView(BighelpPlatform.isMac ? "Waiting for macOS…" : "Waiting for iOS…").bighelpFont(.metadata)
             } else if permissions.status(for: kind) == .denied {
-                Button("Allow access in iOS Settings") {
+                Button(BighelpPlatform.isMac ? "Allow access in System Settings" : "Allow access in iOS Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                 }
                 .accessibilityIdentifier("permissions.device-tools.\(kind.rawValue).settings")
@@ -236,7 +238,7 @@ struct PermissionsOnboardingView: View {
                             .accessibilityAddTraits(.isHeader)
                     } icon: {
                         Image(systemName: currentKind.systemImage)
-                            .font(.title2.weight(.semibold))
+                            .font(.bighelp(.title2).weight(.semibold))
                             .foregroundStyle(theme.action)
                     }
 
@@ -261,7 +263,7 @@ struct PermissionsOnboardingView: View {
                     .disabled(model.center.requestInFlight != nil)
                     .accessibilityIdentifier("permissions.onboarding.allow")
                 } footer: {
-                    Text("bighelp opens the iOS permission prompt only after you choose Allow. You can continue without granting access.")
+                    Text("bighelp opens the \(BighelpPlatform.isMac ? "macOS" : "iOS") permission prompt only after you choose Allow. You can continue without granting access.")
                         .bighelpFont(.metadata)
                 }
             }
@@ -274,12 +276,15 @@ struct PermissionsOnboardingView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Not Now") { model.notNow() }
+                        .keyboardShortcut(.cancelAction)
                         .accessibilityIdentifier("permissions.onboarding.not-now")
+                        .bighelpToolbarText()
                 }
             }
             .interactiveDismissDisabled()
             .accessibilityIdentifier("permissions.onboarding")
         }
+        .bighelpSheetSize(.compact)
     }
 
     private var currentKind: PermissionKind {
@@ -287,10 +292,15 @@ struct PermissionsOnboardingView: View {
     }
 
     private var title: String {
-        model.step == .notification ? "Notifications and Live Activities" : "Local weather, when you choose"
+        guard model.step == .notification else { return "Local weather, when you choose" }
+        // A Mac has no Live Activities.
+        return BighelpPlatform.isMac ? "Notifications" : "Notifications and Live Activities"
     }
 
     private var detail: String {
+        if model.step == .notification, BighelpPlatform.isMac {
+            return "bighelp can show system alerts for replies and important status updates from the paired Hermes host you choose. Chat remains available if you choose Not Now. bighelp asks macOS only after you click below."
+        }
         if model.step == .notification {
             return "bighelp can show system alerts for replies and important status updates from the paired Hermes host you choose. During supported active runs, Live Activities can show progress on the Lock Screen and Dynamic Island. Chat remains available if you choose Not Now. bighelp asks iOS only after you tap below."
         }

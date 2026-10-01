@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// ☰: bighelp's one menu (hosts, chats, and everywhere else). A sheet on
-/// iPhone, a panel from the leading edge on iPad (see HomeMenuPresentation).
+/// iPhone, a panel from the leading edge on iPad, a sidebar on Mac and Vision
+/// Pro (see HomeMenuPresentation).
 struct AgentHomeDrawer: View {
     let chats: [SessionSummary]
     let agent: (String) -> (name: String, imageURL: URL?)?
@@ -20,10 +21,15 @@ struct AgentHomeDrawer: View {
             }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.inline)
+            // A Mac sidebar has no title bar of its own.
+            .toolbar(BighelpPlatform.isMac ? .hidden : .automatic, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: close)
-                        .accessibilityIdentifier("menu.done")
+                // The Mac's sidebar stays; ☰ and View › Hide Sidebar put it away.
+                if !BighelpPlatform.isMac {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: close)
+                            .accessibilityIdentifier("menu.done")
+                    }
                 }
             }
         }
@@ -88,7 +94,7 @@ struct HomeMenuPresentation<Menu: View>: ViewModifier {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.visionSideMenu) private var sideMenu
+    @Environment(\.bighelpSideMenu) private var sideMenu
     @State private var isCoverPresented = false
     @State private var isPanelVisible = false
 
@@ -96,10 +102,14 @@ struct HomeMenuPresentation<Menu: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if let sideMenu {
-            // Vision Pro: a column beside the app, which narrows to make room.
+            // Vision Pro and Mac: a column beside the app, which narrows to make
+            // room. The Mac's stays open while you pick chats and pages.
             content.onChange(of: isPresented, initial: true) { _, presented in
                 if presented {
-                    sideMenu.show(AnyView(menu().environment(\.homeMenuClose, { isPresented = false }))) {
+                    let panel = BighelpPlatform.isMac
+                        ? AnyView(menu().environment(\.homeMenuClose, {}))
+                        : AnyView(menu().environment(\.homeMenuClose, { isPresented = false }))
+                    sideMenu.show(panel) {
                         isPresented = false
                         onDismiss()
                     }

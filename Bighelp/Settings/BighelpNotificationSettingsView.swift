@@ -1,4 +1,4 @@
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 import SwiftUI
@@ -86,8 +86,8 @@ struct BighelpNotificationSettingsView: View {
         Form {
             notificationEnrollmentSection
             notificationAuthorizationSection
-            #if !os(visionOS)
-            liveActivitiesSection // Vision Pro has no Live Activities.
+            #if !os(visionOS) && !targetEnvironment(macCatalyst)
+            liveActivitiesSection // Vision Pro and the Mac have no Live Activities.
             #endif
             if let sendTest {
                 Section("Test") {
@@ -111,7 +111,7 @@ struct BighelpNotificationSettingsView: View {
                     }
                     .disabled(isTesting || !isCurrent())
                     .accessibilityIdentifier("settings.notifications.send-test")
-                    if let testMessage { Text(testMessage).font(.footnote) }
+                    if let testMessage { Text(testMessage).font(.bighelp(.footnote)) }
                 }
             }
             topicsSection
@@ -178,7 +178,7 @@ struct BighelpNotificationSettingsView: View {
     }
 
     private var notificationAuthorizationSection: some View {
-        Section("iOS notifications") {
+        Section(Self.systemNotificationsTitle) {
             PermissionRow(center: permissionCenter, kind: .notification)
             if permissionCenter.status(for: .notification).authorization != .notDetermined {
                 Button("Open Notification Settings") {
@@ -190,8 +190,16 @@ struct BighelpNotificationSettingsView: View {
         .listRowBackground(theme.surface)
     }
 
+    private static var systemNotificationsTitle: String {
+        #if targetEnvironment(macCatalyst)
+        "Mac notifications"
+        #else
+        "iOS notifications"
+        #endif
+    }
+
     private static var liveActivitiesAllowed: Bool {
-        #if canImport(ActivityKit)
+        #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
         ActivityAuthorizationInfo().areActivitiesEnabled
         #else
         false

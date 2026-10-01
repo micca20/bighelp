@@ -1031,7 +1031,7 @@ struct BighelpInlineNotice: View {
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
+                        .font(.bighelp(.footnote).weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                         .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                         .contentShape(.rect)

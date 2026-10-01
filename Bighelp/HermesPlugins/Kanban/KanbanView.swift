@@ -23,7 +23,7 @@ struct HermesKanbanView: View {
                     Section("Workspace") {
                         LabeledContent("Host", value: store.hostName)
                         Text("bighelp reads the mounted Hermes Kanban board directly. Bot Mode rooms are not used as task data.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     feedback
@@ -35,16 +35,16 @@ struct HermesKanbanView: View {
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack {
-                                            Text(board.name).font(.headline)
+                                            Text(board.name).font(.bighelp(.headline))
                                             if board.isCurrent {
-                                                Text("Current").font(.caption).foregroundStyle(.secondary)
+                                                Text("Current").font(.bighelp(.caption)).foregroundStyle(.secondary)
                                             }
                                         }
                                         if !board.summary.isEmpty {
-                                            Text(board.summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                                            Text(board.summary).font(.bighelp(.subheadline)).foregroundStyle(.secondary).lineLimit(2)
                                         }
                                         Text("\(board.total) active task\(board.total == 1 ? "" : "s")")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                     }
                                 }
                                 .accessibilityIdentifier("kanban.board.\(board.slug)")
@@ -83,9 +83,11 @@ struct HermesKanbanView: View {
         }
         .sheet(isPresented: $showsBoardCreator) {
             NavigationStack { HermesKanbanBoardCreatorView(store: store) { showsBoardCreator = false } }
+                .bighelpSheetSize(.standard)
         }
         .sheet(isPresented: $showsBoardImporter) {
             NavigationStack { HermesKanbanBoardImportView(store: store) { showsBoardImporter = false } }
+                .bighelpSheetSize(.standard)
         }
         .task { if store.mount == .unknown { await store.load() } }
         .modifier(HermesKanbanReviewModifier(store: store))
@@ -142,7 +144,7 @@ private struct HermesKanbanBoardView: View {
                     if let live = store.liveStatusMessage {
                         Section {
                             Label(live, systemImage: store.usesPollingFallback ? "arrow.clockwise" : "bolt.horizontal.circle")
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -220,6 +222,7 @@ private struct HermesKanbanBoardView: View {
                             showsCreate = false
                         }
                     }
+                    .bighelpSheetSize(.standard)
                 }
             } else if store.isLoading {
                 ProgressView("Loading board")
@@ -240,16 +243,16 @@ private struct HermesKanbanTaskRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(task.title).font(.headline)
+            Text(task.title).font(.bighelp(.headline))
             HStack(spacing: 8) {
                 Text(task.assignee ?? "Unassigned")
                 Text("Priority \(task.priority)")
                 if task.currentRunID != nil { Label("Running", systemImage: "bolt.fill") }
             }
-            .font(.caption)
+            .font(.bighelp(.caption))
             .foregroundStyle(.secondary)
             if let summary = task.latestSummary, !summary.isEmpty {
-                Text(summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text(summary).font(.bighelp(.subheadline)).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .padding(.vertical, 4)
@@ -322,14 +325,14 @@ private struct HermesKanbanTaskView: View {
                         ForEach(detail.runs.reversed()) { run in
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
-                                    Text("Run \(run.id)").font(.headline)
+                                    Text("Run \(run.id)").font(.bighelp(.headline))
                                     Spacer()
                                     Text(run.isActive ? "Active" : (run.outcome ?? run.status)).foregroundStyle(.secondary)
                                 }
                                 if let profile = run.profile { LabeledContent("Profile", value: profile) }
                                 LabeledContent("Started", value: run.startedAt.formatted())
                                 if let ended = run.endedAt { LabeledContent("Ended", value: ended.formatted()) }
-                                if let summary = run.summary, !summary.isEmpty { Text(summary).font(.footnote) }
+                                if let summary = run.summary, !summary.isEmpty { Text(summary).font(.bighelp(.footnote)) }
                                 if run.isActive {
                                     Button("Terminate Run", role: .destructive) {
                                         Task { await store.reviewRunTermination(runID: run.id, board: boardSlug) }
@@ -344,9 +347,9 @@ private struct HermesKanbanTaskView: View {
                     Section("Attachments") {
                         ForEach(detail.attachments) { attachment in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(attachment.filename).font(.headline)
+                                Text(attachment.filename).font(.bighelp(.headline))
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(attachment.byteCount), countStyle: .file))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 Button("Remove", role: .destructive) {
                                     Task {
                                         await store.reviewAttachmentRemoval(
@@ -360,15 +363,15 @@ private struct HermesKanbanTaskView: View {
                         if detail.attachments.isEmpty { Text("No attachments.").foregroundStyle(.secondary) }
                         if !store.supportsAttachmentTransfer {
                             Text("Upload and download stay hidden until the fixed authenticated multipart/binary transport is wired. Listing and reviewed removal remain available.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                         }
                     }
                     Section("Comments") {
                         ForEach(detail.comments) { comment in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(comment.author).font(.caption).foregroundStyle(.secondary)
+                                Text(comment.author).font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 Text(comment.body).textSelection(.enabled)
-                                Text(comment.createdAt.formatted()).font(.caption2).foregroundStyle(.tertiary)
+                                Text(comment.createdAt.formatted()).font(.bighelp(.caption2)).foregroundStyle(.tertiary)
                             }
                         }
                         TextField("Add a comment", text: $comment, axis: .vertical)
@@ -403,6 +406,7 @@ private struct HermesKanbanTaskView: View {
                             showsEditor = false
                         }
                     }
+                    .bighelpSheetSize(.standard)
                 }
             } else if store.isLoading {
                 ProgressView("Loading task")
@@ -478,7 +482,7 @@ private struct HermesKanbanTaskEditor: View {
         .navigationTitle("Edit Task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss) }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction).bighelpToolbarText() }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") {
                     var patch = HermesKanbanTaskPatch()
@@ -544,7 +548,7 @@ private struct HermesKanbanTaskCreator: View {
                             LabeledContent("Complexity", value: complexity.rawValue)
                         }
                         if let rationale = estimate.rationale {
-                            Text(rationale).font(.footnote).foregroundStyle(.secondary)
+                            Text(rationale).font(.bighelp(.footnote)).foregroundStyle(.secondary)
                         }
                     } else {
                         Text(estimate.reason ?? "No estimate returned.").foregroundStyle(.secondary)
@@ -555,7 +559,7 @@ private struct HermesKanbanTaskCreator: View {
         .navigationTitle("New Task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss) }
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction).bighelpToolbarText() }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Review") {
                     var draft = HermesKanbanTaskDraft(title: title)

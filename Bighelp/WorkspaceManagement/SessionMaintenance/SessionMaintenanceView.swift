@@ -75,22 +75,22 @@ struct SessionMaintenanceView: View {
         .task { if store.statistics == nil { await store.load() } }
         .onDisappear { if !store.ownsScope { store.retire() } }
         .sheet(isPresented: reviewBinding(\.bulkReview, clear: store.clearBulkReview)) {
-            if let review = store.bulkReview { bulkReviewSheet(review) }
+            if let review = store.bulkReview { bulkReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.ownerBackfillReview, clear: store.clearOwnerBackfillReview)) {
-            if let review = store.ownerBackfillReview { ownerBackfillReviewSheet(review) }
+            if let review = store.ownerBackfillReview { ownerBackfillReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.emptyReview, clear: store.clearEmptyReview)) {
-            if let review = store.emptyReview { emptyReviewSheet(review) }
+            if let review = store.emptyReview { emptyReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.pruneReview, clear: store.clearPruneReview)) {
-            if let review = store.pruneReview { pruneReviewSheet(review) }
+            if let review = store.pruneReview { pruneReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.importReview, clear: store.clearImportReview)) {
-            if let review = store.importReview { importReviewSheet(review) }
+            if let review = store.importReview { importReviewSheet(review).bighelpSheetSize(.standard) }
         }
         .sheet(isPresented: reviewBinding(\.foreignPreview, clear: store.clearForeignPreview)) {
-            if let preview = store.foreignPreview { foreignPreviewSheet(preview) }
+            if let preview = store.foreignPreview { foreignPreviewSheet(preview).bighelpSheetSize(.large) }
         }
         .fileImporter(
             isPresented: $showsImporter, allowedContentTypes: [.json], allowsMultipleSelection: false
@@ -120,7 +120,7 @@ struct SessionMaintenanceView: View {
         ) { result in
             exportDocument = nil
             store.clearExport()
-            if case .failure = result { callbackError = "The session package was prepared, but iOS did not save it." }
+            if case .failure = result { callbackError = "The session package was prepared, but \(BighelpPlatform.isMac ? "macOS" : "iOS") did not save it." }
         }
         .confirmationDialog(
             "Close live runtime?",
@@ -208,12 +208,12 @@ struct SessionMaintenanceView: View {
             if let lookup = store.mostRecentLookup {
                 if let recent = lookup.session {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text(recent.title).font(.body)
+                        Text(recent.title).font(.bighelp(.body))
                         Text(recent.storedSessionID)
-                            .font(.caption.monospaced())
+                            .font(.bighelp(.caption).monospaced())
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
-                        Text(recent.source).font(.caption).foregroundStyle(.secondary)
+                        Text(recent.source).font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     Button("Open Most Recent in Sessions", systemImage: "arrow.up.forward.app") {
                         adoptable = .init(
@@ -390,11 +390,11 @@ struct SessionMaintenanceView: View {
             ForEach(store.foreignSessions) { item in
                 Button { Task { await store.previewForeign(item) } } label: {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text(item.title).font(.body)
+                        Text(item.title).font(.bighelp(.body))
                         Text("\(item.sourceLabel) • \(item.turnCount) turns")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         if !item.excerpt.isEmpty {
-                            Text(item.excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(item.excerpt).font(.bighelp(.caption)).foregroundStyle(.secondary).lineLimit(2)
                         }
                     }
                 }
@@ -423,7 +423,7 @@ struct SessionMaintenanceView: View {
                 if lineage.path.count > 1 {
                     DisclosureGroup("Compression lineage (\(lineage.path.count))") {
                         ForEach(Array(lineage.path.enumerated()), id: \.offset) { _, id in
-                            Text(id).font(.caption.monospaced()).textSelection(.enabled)
+                            Text(id).font(.bighelp(.caption).monospaced()).textSelection(.enabled)
                         }
                     }
                 }
@@ -442,7 +442,7 @@ struct SessionMaintenanceView: View {
     private var adoptionSection: some View {
         if let request = adoptable {
             Section("Ready to open") {
-                Text(request.storedSessionID).font(.caption.monospaced()).textSelection(.enabled)
+                Text(request.storedSessionID).font(.bighelp(.caption).monospaced()).textSelection(.enabled)
                 Button("Adopt in Sessions", systemImage: "arrow.up.forward.app") {
                     Task {
                         do {
@@ -480,7 +480,8 @@ struct SessionMaintenanceView: View {
             .navigationTitle("Review Legacy Ownership")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { store.clearOwnerBackfillReview() }
+                    Button("Cancel") { store.clearOwnerBackfillReview() }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
             }
         }
@@ -506,7 +507,7 @@ struct SessionMaintenanceView: View {
                 }
             }
             .navigationTitle("Review Selected Sessions")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearBulkReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearBulkReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -529,7 +530,7 @@ struct SessionMaintenanceView: View {
                 }
             }
             .navigationTitle("Review Empty Sessions")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearEmptyReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearEmptyReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -561,7 +562,7 @@ struct SessionMaintenanceView: View {
                 }
             }
             .navigationTitle("Review Prune")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearPruneReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearPruneReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -575,7 +576,7 @@ struct SessionMaintenanceView: View {
                 }
                 Section("Session IDs") {
                     ForEach(review.sessionIDs, id: \.self) { id in
-                        Text(id).font(.caption.monospaced()).textSelection(.enabled)
+                        Text(id).font(.bighelp(.caption).monospaced()).textSelection(.enabled)
                     }
                 }
                 Section {
@@ -596,7 +597,7 @@ struct SessionMaintenanceView: View {
                 }
             }
             .navigationTitle("Review Import")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearImportReview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearImportReview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -604,7 +605,7 @@ struct SessionMaintenanceView: View {
         NavigationStack {
             List {
                 Section {
-                    Text(preview.title).font(.headline)
+                    Text(preview.title).font(.bighelp(.headline))
                     LabeledContent("Source", value: preview.source)
                     LabeledContent("Messages", value: preview.totalMessages.formatted())
                     if preview.isTruncated { Label("Preview is bounded; import includes the complete parsed history.", systemImage: "ellipsis.circle") }
@@ -615,7 +616,7 @@ struct SessionMaintenanceView: View {
                 Section("Bounded preview") {
                     ForEach(preview.messages) { message in
                         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                            Text(message.role.capitalized).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(message.role.capitalized).font(.bighelp(.caption).weight(.semibold)).foregroundStyle(.secondary)
                             Text(message.content).textSelection(.enabled)
                         }
                     }
@@ -647,16 +648,16 @@ struct SessionMaintenanceView: View {
                 }
             }
             .navigationTitle("Review Foreign History")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearForeignPreview() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { store.clearForeignPreview() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
     private func sessionLabel(_ session: HermesSessionMaintenanceItem) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-            Text(session.title).font(.body)
-            Text(session.id).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            Text(session.title).font(.bighelp(.body))
+            Text(session.id).font(.bighelp(.caption).monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             Text("\(session.source) • \(session.messageCount) messages\(session.archived ? " • Archived" : "")\(session.hidden ? " • Hidden" : "")\(session.active ? " • Active" : "")")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.bighelp(.caption)).foregroundStyle(.secondary)
         }
         .padding(.vertical, BighelpTokens.space4)
     }

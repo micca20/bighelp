@@ -32,6 +32,7 @@ struct BighelpLinkDeviceDetailView: View {
                     initialName: presentation.name
                 )
             }
+            .bighelpSheetSize(.compact)
         }
         .confirmationDialog(
             unpairTitle,

@@ -123,12 +123,12 @@ struct SessionStatusRailView: View {
         Button { onSelect(item.kind) } label: {
             compactStatusLayout {
                 Text(statusTitle(item.kind))
-                    .font(.caption2)
+                    .font(.bighelp(.caption2))
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: dynamicTypeSize.isAccessibilitySize, vertical: true)
                 if dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
                 Text(statusDetail(item.kind))
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .monospacedDigit()
             }
@@ -165,14 +165,14 @@ struct SessionStatusRailView: View {
         Button { onSelect(item.kind) } label: {
             HStack(spacing: BighelpTokens.space8) {
                 Image(systemName: icon(for: item.kind))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.bighelp(.subheadline).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .accessibilityHidden(true)
                 Text(statusTitle(item.kind))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.bighelp(.subheadline).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                 Text(statusDetail(item.kind))
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.secondaryText)
                     .monospacedDigit()
             }

@@ -73,7 +73,7 @@ struct AgentHomeChatHeader: View {
                     if chrome.isHome { chrome.onMenu() } else { onBack() }
                 } label: {
                     Image(systemName: chrome.isHome ? "line.3.horizontal" : "chevron.left")
-                        .font(.title3.weight(.semibold))
+                        .font(.bighelp(.title3).weight(.semibold))
                         .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
                         .bighelpNavigationGlass(in: Circle(), isInteractive: true)
                         .padding(HeaderButtonMetrics.slop)
@@ -106,7 +106,7 @@ extension AgentHomeChatHeader {
             chrome.onNewChat(isDirect ? agentID : nil)
         }
         return Image(systemName: "square.and.pencil")
-            .font(.title3.weight(.semibold))
+            .font(.bighelp(.title3).weight(.semibold))
             .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
             .bighelpNavigationGlass(in: Circle(), isInteractive: true)
             .padding(HeaderButtonMetrics.slop)
@@ -120,11 +120,13 @@ extension AgentHomeChatHeader {
                 BighelpHaptics.tap()
                 pickAgents()
             }
+            .newChatRightClickMenu(startTitle: isDirect ? "New chat with \(displayName)" : nil,
+                                   start: { beforeAction(); chrome.onStartChat(agentID) }, pick: pickAgents)
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(isDirect ? "New chat with \(displayName)" : "New chat")
             .accessibilityHint(isDirect
-                ? "Touch and hold to pick other agents or start a group."
+                ? NewChatButtonCopy.pickHint
                 : "Pick one agent for a chat, or several for a group chat.")
             .accessibilityAction {
                 if isDirect { beforeAction(); chrome.onStartChat(agentID) } else { pickAgents() }
@@ -157,7 +159,7 @@ struct AgentBoardHeaderButtons: View {
                 } label: {
                     // Glass goes around the menu, not in its label, or it takes the tap.
                     Image(systemName: "ellipsis")
-                        .font(.title3.weight(.semibold))
+                        .font(.bighelp(.title3).weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                         .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
                         .contentShape(.rect)
@@ -180,10 +182,12 @@ struct AgentBoardHeaderButtons: View {
                 BighelpHaptics.tap()
                 context.onPickAgents()
             }
+            .newChatRightClickMenu(startTitle: "New chat with \(context.agentName)",
+                                   start: context.onNewChat, pick: context.onPickAgents)
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel("New chat with \(context.agentName)")
-            .accessibilityHint("Touch and hold to pick other agents or start a group.")
+            .accessibilityHint(NewChatButtonCopy.pickHint)
             .accessibilityAction { context.onNewChat() }
             .accessibilityAction(named: "Pick agents") { context.onPickAgents() }
             .accessibilityIdentifier("board.new-chat")
@@ -191,7 +195,7 @@ struct AgentBoardHeaderButtons: View {
 
     private func glyph(_ systemImage: String) -> some View {
         Image(systemName: systemImage)
-            .font(.title3.weight(.semibold))
+            .font(.bighelp(.title3).weight(.semibold))
             .foregroundStyle(theme.primaryText)
             .frame(width: HeaderButtonMetrics.glass, height: HeaderButtonMetrics.glass)
             .bighelpNavigationGlass(in: Circle(), isInteractive: true)
@@ -208,10 +212,35 @@ struct AgentBoardHeaderButtons: View {
 enum HeaderButtonMetrics {
     #if os(visionOS)
     /// Eyes need bigger targets than fingers (60pt, per visionOS guidance).
-    static let glass: CGFloat = 52
+    static var glass: CGFloat { BighelpTokens.scaled(52) }
     static let slop: CGFloat = 6
     #else
-    static let glass: CGFloat = 44
+    /// Follows Settings › Appearance › Button size.
+    static var glass: CGFloat { BighelpTokens.scaled(44) }
     static let slop: CGFloat = 5
     #endif
+}
+
+private enum NewChatButtonCopy {
+    static var pickHint: String {
+        BighelpPlatform.isMac
+            ? "Right-click to pick other agents or start a group."
+            : "Touch and hold to pick other agents or start a group."
+    }
+}
+
+private extension View {
+    /// The Mac has no touch and hold: right-click offers the same choices.
+    @ViewBuilder
+    func newChatRightClickMenu(startTitle: String?, start: @escaping () -> Void,
+                               pick: @escaping () -> Void) -> some View {
+        #if targetEnvironment(macCatalyst)
+        contextMenu {
+            if let startTitle { Button(startTitle, systemImage: "square.and.pencil", action: start) }
+            Button("Pick Agents or Start a Group…", systemImage: "person.2", action: pick)
+        }
+        #else
+        self
+        #endif
+    }
 }

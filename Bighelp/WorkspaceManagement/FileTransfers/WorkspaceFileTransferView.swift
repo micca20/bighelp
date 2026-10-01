@@ -55,6 +55,7 @@ struct WorkspaceFileTransferView: View {
         }
         .sheet(item: $mediaPlayback) { playback in
             WorkspaceManagedMediaView(playback: playback)
+                .bighelpSheetSize(.large)
         }
         .alert("New Folder", isPresented: $isCreatingDirectory) {
             TextField("Folder name", text: $newDirectoryName)
@@ -117,14 +118,14 @@ struct WorkspaceFileTransferView: View {
             LabeledContent("Host", value: store.hostName)
             LabeledContent("Workspace folder") {
                 Text(store.workspaceRoot ?? "Discovering from host…")
-                    .font(.caption.monospaced())
+                    .font(.bighelp(.caption).monospaced())
                     .multilineTextAlignment(.trailing)
                     .textSelection(.enabled)
             }
             if !store.directory.path.isEmpty, store.directory.path != store.workspaceRoot {
                 LabeledContent("Folder") {
                     Text(store.directory.path)
-                        .font(.caption.monospaced())
+                        .font(.bighelp(.caption).monospaced())
                         .multilineTextAlignment(.trailing)
                         .textSelection(.enabled)
                 }
@@ -334,7 +335,7 @@ private struct WorkspaceManagedFileRow: View {
                     }
                     if let mime = file.mimeType { Text(mime) }
                 }
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: BighelpTokens.space8)

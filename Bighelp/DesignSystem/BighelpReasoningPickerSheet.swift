@@ -15,6 +15,9 @@ struct BighelpReasoningLevelControl: View {
     let accessibilityIdentifier: String
     let onSelect: (String) -> Void
     var isEmbedded = false
+    /// Mac: start with keyboard focus here, so the arrow keys change the level
+    /// right away. Pickers with a search field leave focus in the field.
+    var takesKeyboardFocus = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -26,6 +29,9 @@ struct BighelpReasoningLevelControl: View {
     @GestureState private var dragProgress: CGFloat? = nil
     @State private var lastDragIndex: Int?
     @State private var selectionFeedback = false
+    #if targetEnvironment(macCatalyst)
+    @FocusState private var isKeyboardFocused: Bool
+    #endif
 
     private let thumbDiameter: CGFloat = 28
     private let tickDiameter: CGFloat = 8
@@ -35,6 +41,11 @@ struct BighelpReasoningLevelControl: View {
             unavailableState
         } else {
             Group {
+                #if targetEnvironment(macCatalyst)
+                // A drag track and a pop-up menu both need the mouse; the Mac
+                // shows every level to click, and the arrow keys step through them.
+                macControl
+                #else
                 if uiV3Enabled {
                     nativeControl
                 } else if isEmbedded {
@@ -42,12 +53,15 @@ struct BighelpReasoningLevelControl: View {
                 } else {
                     BighelpMenuPanel { controlContent.padding(BighelpTokens.space12) }
                 }
+                #endif
             }
-            .accessibilityElement(children: uiV3Enabled ? .contain : .ignore)
+            .accessibilityElement(children: uiV3Enabled || BighelpPlatform.isMac ? .contain : .ignore)
             .accessibilityLabel("Reasoning level")
             .accessibilityValue(selectedChoice?.label ?? "Not selected")
             .accessibilityHint(canAdjust
-                ? "Swipe up or down to change the reasoning level."
+                ? (BighelpPlatform.isMac
+                    ? "Choose a level. The arrow keys also change it."
+                    : "Swipe up or down to change the reasoning level.")
                 : choices.count == 1 ? "Only one reasoning level is available." : "Reasoning is currently unavailable.")
             .accessibilityAdjustableAction(adjustSelection)
             .accessibilityIdentifier(accessibilityIdentifier)
@@ -83,17 +97,81 @@ struct BighelpReasoningLevelControl: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
-            .font(.body)
+            .font(.bighelp(.body))
 
             if let selectedChoice {
                 Text(selectedChoice.detail)
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    #if targetEnvironment(macCatalyst)
+    private var macControl: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: BighelpTokens.space4) { macChoiceButtons }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: BighelpTokens.scaled(88)), spacing: BighelpTokens.space4)],
+                          spacing: BighelpTokens.space4) { macChoiceButtons }
+            }
+            if let selectedChoice {
+                Text(selectedChoice.detail)
+                    .font(.bighelp(.footnote))
+                    .foregroundStyle(theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .focusable(canAdjust)
+        .focused($isKeyboardFocused)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard canAdjust else { return .ignored }
+            let towardHigher = switch press.key {
+            case .rightArrow: layoutDirection == .leftToRight
+            case .leftArrow: layoutDirection == .rightToLeft
+            case .upArrow: true
+            default: false
+            }
+            adjustSelection(towardHigher ? .increment : .decrement)
+            return .handled
+        }
+        .onAppear {
+            guard takesKeyboardFocus, canAdjust else { return }
+            // Focus only takes once the control is in its window.
+            Task { @MainActor in isKeyboardFocused = true }
+        }
+    }
+
+    private var macChoiceButtons: some View {
+        ForEach(choices) { choice in
+            let selected = choice.value == selectedValue
+            Button {
+                if !selected { onSelect(choice.value) }
+                // After a click the arrow keys carry on from here.
+                isKeyboardFocused = true
+            } label: {
+                Text(choice.label)
+                    .font(.bighelp(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .foregroundStyle(selected ? theme.actionForeground : theme.primaryText)
+                    .padding(.horizontal, BighelpTokens.space12)
+                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.scaled(34))
+                    .background(selected ? theme.action : theme.surface, in: .capsule)
+                    .overlay {
+                        Capsule().stroke(selected ? theme.action : theme.border, lineWidth: BighelpTokens.hairline)
+                    }
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("\(accessibilityIdentifier).\(choice.id)")
+        }
+    }
+    #endif
 
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {

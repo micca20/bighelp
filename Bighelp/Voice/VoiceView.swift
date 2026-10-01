@@ -8,6 +8,9 @@ struct VoiceView: View {
     @GestureState private var walkieGestureActive = false
     @State private var walkieGestureGeneration: UInt64?
     @State private var isTranscriptExpanded = false
+    #if targetEnvironment(macCatalyst)
+    @State private var lastSpacePress = Date.distantPast
+    #endif
     @ScaledMetric(relativeTo: .title2) private var captionSize: CGFloat = 24
     let agentID: String?
     let agentImageURL: URL?
@@ -483,7 +486,30 @@ struct VoiceView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        #if targetEnvironment(macCatalyst)
+        .background { spaceToTalk }
+        #endif
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// A Mac has the space bar for the Speak button: press it to start talking
+    /// and again to send. Holding Space repeats the key, so a press that comes
+    /// right after another is the key repeating, not a second press.
+    @ViewBuilder private var spaceToTalk: some View {
+        if model.mode == .walkieTalkie {
+            Button("Speak") {
+                let now = Date.now
+                defer { lastSpacePress = now }
+                guard now.timeIntervalSince(lastSpacePress) > 0.5 else { return }
+                toggleAccessibleWalkieTalkieCapture()
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            .frame(width: 0, height: 0)
+            .opacity(0)
+            .accessibilityHidden(true)
+        }
+    }
+    #endif
 
     private var agentAudioControl: some View {
         voiceControl(
@@ -546,6 +572,9 @@ struct VoiceView: View {
                 : "Hold while speaking and release to send. With VoiceOver, double tap to start."
         )
         .accessibilityAction { toggleAccessibleWalkieTalkieCapture() }
+        #if targetEnvironment(macCatalyst)
+        .help("Hold while you speak, or press Space to start and Space again to send")
+        #endif
         .accessibilityIdentifier("voice.walkie-talkie.speak")
     }
 
@@ -610,6 +639,7 @@ struct VoiceView: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
         .opacity(model.isActive || model.isEndPending ? 1 : 0.5)
         .disabled(model.isEndPending || !model.isActive)
         .accessibilityLabel("End voice chat")

@@ -175,7 +175,7 @@ struct ConnectionIslandPill: View {
                 .foregroundStyle(.primary)
                 .contentTransition(.opacity)
         }
-        .font(.footnote.weight(.semibold))
+        .font(.bighelp(.footnote).weight(.semibold))
         .lineLimit(1)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 12)

@@ -69,14 +69,14 @@ struct ChatToolDetailText: View {
         let preview = ChatToolDetailPreview(value)
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             Text(preview.text)
-                .font(.system(.caption, design: .monospaced))
+                .font(.bighelp(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier(identifier)
             if preview.isTruncated && !isCanonicalPreview {
                 Button("View full \(label.lowercased())") { showsCompleteValue = true }
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .buttonStyle(.plain)
                     .accessibilityIdentifier(identifier + ".view-full")
             }
@@ -104,7 +104,7 @@ private struct ChatToolDetailReader: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(pages.indices, id: \.self) { index in
                         Text(pages[index])
-                            .font(.system(.caption, design: .monospaced))
+                            .font(.bighelp(.caption, design: .monospaced))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -115,7 +115,7 @@ private struct ChatToolDetailReader: View {
             .navigationTitle(label)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() }.bighelpToolbarText() }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Copy all", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = value

@@ -42,16 +42,16 @@ private struct HostRowLabel: View {
             HostIcon(inUse: inUse, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.name)
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                 Text(HostStatus.line(for: host, registry: registry))
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
                 if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
                     Text(attention)
-                        .font(.footnote.weight(.medium))
+                        .font(.bighelp(.footnote).weight(.medium))
                         .foregroundStyle(.tint)
                         .accessibilityIdentifier("hosts.host.plugin-update")
                 }
@@ -59,7 +59,7 @@ private struct HostRowLabel: View {
             Spacer(minLength: 0)
             if inUse {
                 Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .accessibilityLabel("In use")
             }
@@ -176,11 +176,11 @@ struct BighelpConfiguredHostView: View {
                     VStack(spacing: BighelpTokens.space8) {
                         HostIcon(inUse: host.id == registry.selectedHostID, size: 64)
                         Text(host.name)
-                            .font(.title2.weight(.bold))
+                            .font(.bighelp(.title2).weight(.bold))
                             .multilineTextAlignment(.center)
                             .accessibilityAddTraits(.isHeader)
                         Text(HostStatus.line(for: host, registry: registry))
-                            .font(.subheadline)
+                            .font(.bighelp(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -241,6 +241,7 @@ struct BighelpConfiguredHostView: View {
                     // New connections pick up the saved access; reconnect the current one now.
                     Task { await workspace.suspend(); await workspace.reconnect() }
                 }
+                .bighelpSheetSize(.standard)
             }
         }
         .alert("Remove this computer from bighelp?", isPresented: $showsRemove) {

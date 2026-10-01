@@ -4,7 +4,7 @@ enum NativeMessageReactionLayoutMetrics {
     static let visualHeight: CGFloat = 26
     static let attachmentOverlap: CGFloat = 13
     static let edgeInset: CGFloat = 8
-    static let hitPadding: CGFloat = (BighelpTokens.hitTarget - visualHeight) / 2
+    static var hitPadding: CGFloat { (BighelpTokens.hitTarget - visualHeight) / 2 }
 }
 
 struct NativeMessageReactionBar: View {
@@ -22,7 +22,7 @@ struct NativeMessageReactionBar: View {
                         onSelection(reaction.author == .user ? nil : reaction.emoji)
                     } label: {
                         Text(reaction.emoji)
-                            .font(.body)
+                            .font(.bighelp(.body))
                             .frame(
                                 minWidth: NativeMessageReactionLayoutMetrics.visualHeight,
                                 minHeight: NativeMessageReactionLayoutMetrics.visualHeight
@@ -122,7 +122,7 @@ struct NativeMessageReactionPicker: View {
                 ) {
                     ForEach(NativeMessageReactionBar.choices, id: \.self) { emoji in
                         Button(emoji) { select(emoji) }
-                            .font(.title2)
+                            .font(.bighelp(.title2))
                             .frame(minWidth: BighelpTokens.hitTarget,
                                    minHeight: BighelpTokens.hitTarget)
                             .buttonStyle(.bordered)
@@ -130,7 +130,7 @@ struct NativeMessageReactionPicker: View {
                     }
                 }
                 TextField("Any emoji", text: $draft)
-                    .font(.largeTitle)
+                    .font(.bighelp(.largeTitle))
                     .multilineTextAlignment(.center)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()

@@ -36,7 +36,7 @@ private struct NativeSelectableTextView: UIViewRepresentable {
         view.isSelectable = true
         view.isScrollEnabled = true
         view.adjustsFontForContentSizeCategory = true
-        view.font = .preferredFont(forTextStyle: .body)
+        view.font = UIFont.bighelp(.body)
         view.textColor = .label
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 20, left: 16, bottom: 20, right: 16)

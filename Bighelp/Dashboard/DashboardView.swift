@@ -224,12 +224,17 @@ struct DashboardView: View {
             await model.expireAttentionWhenDue()
         }
         .onAppear { model.expireAttention() }
-        .refreshable {
-            async let dashboardRefresh: Void = model.refresh()
-            async let weatherRefresh: Void = refreshDeviceWeather()
-            await dashboardRefresh
-            await weatherRefresh
+        .refreshable { await refreshHome() }
+        #if targetEnvironment(macCatalyst)
+        // A Mac list can't be pulled down to refresh.
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Refresh", systemImage: "arrow.clockwise") { Task { await refreshHome() } }
+                    .keyboardShortcut("r")
+                    .accessibilityIdentifier("dashboard.refresh")
+            }
         }
+        #endif
         .task(id: scenePhase) {
             await refreshGreetingWhileActive()
         }
@@ -348,7 +353,7 @@ struct DashboardView: View {
                     Text(model.lastUpdatedLabel)
                 }
             }
-            .font(.caption)
+            .font(.bighelp(.caption))
             .foregroundStyle(theme.secondaryText)
             .accessibilityElement(children: .combine)
         } else {
@@ -374,7 +379,7 @@ struct DashboardView: View {
                 Text(model.lastUpdatedLabel)
             }
         }
-        .font(.caption)
+        .font(.bighelp(.caption))
         .foregroundStyle(theme.secondaryText)
         .accessibilityElement(children: .combine)
     }
@@ -389,6 +394,13 @@ struct DashboardView: View {
         }
         guard model.weatherState == .idle else { return }
         await model.refreshWeather()
+    }
+
+    private func refreshHome() async {
+        async let dashboardRefresh: Void = model.refresh()
+        async let weatherRefresh: Void = refreshDeviceWeather()
+        await dashboardRefresh
+        await weatherRefresh
     }
 
     private func refreshDeviceWeather() async {
@@ -578,7 +590,7 @@ struct DashboardView: View {
     private func weatherDetails(_ weather: DashboardWeather) -> some View {
         HStack(alignment: .center, spacing: BighelpTokens.space12) {
             Image(systemName: weather.systemImage)
-                .font(.title2.weight(.semibold))
+                .font(.bighelp(.title2).weight(.semibold))
                 .foregroundStyle(theme.warning)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
@@ -869,7 +881,7 @@ struct DashboardView: View {
     private func genericAttentionRow(_ item: DashboardAttentionItem) -> some View {
         HStack(alignment: .top, spacing: BighelpTokens.space12) {
             Image(systemName: item.urgency.systemImage)
-                .font(.title3.weight(.semibold))
+                .font(.bighelp(.title3).weight(.semibold))
                 .foregroundStyle(theme.warning)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
@@ -1369,7 +1381,7 @@ struct DashboardClarificationAccessibilityIdentifiers: Equatable, Sendable {
 }
 
 enum ClarificationComposerLayout {
-    static let inputMinimumHeight = BighelpTokens.hitTarget
+    static var inputMinimumHeight: CGFloat { BighelpTokens.hitTarget }
 
     static func leadingBalanceWidth(trailingControlWidth: CGFloat) -> CGFloat {
         max(0, trailingControlWidth)
@@ -1513,6 +1525,7 @@ private struct DashboardInboxUpdateCanvas: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Delete", systemImage: "trash", role: .destructive) {

@@ -26,7 +26,7 @@ struct SkillEditorSheet: View {
                     .bighelpFont(.body)
                     .foregroundStyle(uiV2Enabled ? AnyShapeStyle(theme.secondaryText) : AnyShapeStyle(.secondary))
                 TextEditor(text: $content)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.bighelp(.body, design: .monospaced))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .scrollContentBackground(uiV2Enabled ? .hidden : .automatic)
@@ -48,6 +48,7 @@ struct SkillEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
@@ -122,6 +123,7 @@ struct SkillCreationWizard: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {

@@ -71,7 +71,7 @@ struct HermesLogsView: View {
             Section("Workspace") {
                 LabeledContent("Host", value: store.hostName)
                 Text("Logs are host-wide and private. bighelp keeps only this in-memory window, marks it sensitive, and discards it when this screen closes.")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
             }
 
@@ -101,7 +101,7 @@ struct HermesLogsView: View {
                     } else if store.appliedQuery?.lineLimit == HermesLogQuery.maximumLineLimit,
                               store.entries.count == HermesLogQuery.maximumLineLimit {
                         Text("Reached bighelp’s 500-line maximum window.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -117,7 +117,7 @@ struct HermesLogsView: View {
             if let query = store.appliedQuery {
                 Section("Window") {
                     Text("\(store.entries.count) lines returned from the requested last \(query.lineLimit). Hermes applies level, component, and text filters on the server before bighelp displays the bounded result.")
-                        .font(.footnote)
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -164,22 +164,22 @@ struct HermesLogsView: View {
         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
             HStack(alignment: .firstTextBaseline) {
                 Label(entry.severity.title, systemImage: entry.severity.symbol)
-                    .font(.caption.weight(.semibold))
+                    .font(.bighelp(.caption).weight(.semibold))
                 Spacer(minLength: BighelpTokens.space8)
                 if let timestamp = entry.timestampText {
                     Text(timestamp)
-                        .font(.caption.monospacedDigit())
+                        .font(.bighelp(.caption).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Host time \(timestamp)")
                 }
             }
             if let logger = entry.logger {
                 Text(logger)
-                    .font(.caption.monospaced())
+                    .font(.bighelp(.caption).monospaced())
                     .foregroundStyle(.secondary)
             }
             Text(entry.message.isEmpty ? "No message text" : entry.message)
-                .font(.body.monospaced())
+                .font(.bighelp(.body).monospaced())
                 .fixedSize(horizontal: false, vertical: true)
                 .privacySensitive()
         }

@@ -42,11 +42,11 @@ struct PinnedAgentTileLabel<Avatar: View, Detail: View>: View {
                 .scaleEffect(isLifted ? 1.08 : 1)
                 .shadow(color: .black.opacity(isLifted ? 0.22 : 0), radius: 12, y: 6)
             Text(name)
-                .font(.subheadline.weight(.semibold))
+                .font(.bighelp(.subheadline).weight(.semibold))
                 .foregroundStyle(isPlaceholder ? theme.secondaryText : theme.primaryText)
                 .lineLimit(1)
             detail()
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(theme.secondaryText)
                 .lineLimit(1)
         }

@@ -84,6 +84,7 @@ struct MemoryGraphView: View {
         .refreshable { await store.refreshGraph() }
         .sheet(item: $presentedNode, onDismiss: { store.closeNode() }) { node in
             MemoryNodeDetailView(store: store, node: node)
+                .bighelpSheetSize(.standard)
         }
     }
 
@@ -134,12 +135,12 @@ private struct LearningNodeRow: View {
         Label {
             VStack(alignment: .leading, spacing: 5) {
                 Text(node.label.isEmpty ? "Untitled \(node.kind.rawValue)" : node.label)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                 if let preview = node.memoryPreview, !preview.isEmpty {
                     Text(preview)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
                 }
@@ -148,7 +149,7 @@ private struct LearningNodeRow: View {
                     if node.kind == .skill { Text("Used \(node.useCount) times") }
                     Text("\(connections) links")
                 }
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(.secondary)
             }
         } icon: {
@@ -215,7 +216,7 @@ private struct MemoryNodeDetailView: View {
                         LabeledContent("Type", value: detail.kind == .skill ? "Learned skill" : "Memory")
                         LabeledContent("Profile", value: store.profileName)
                         LabeledContent("Identifier", value: detail.rawID)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                     }
 
                     Section {

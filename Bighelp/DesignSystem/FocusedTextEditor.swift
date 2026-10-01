@@ -12,7 +12,7 @@ struct FocusedTextEditorButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.footnote.weight(.semibold))
+                .font(.bighelp(.footnote).weight(.semibold))
                 .frame(minWidth: BighelpTokens.hitTarget, minHeight: 32)
                 .contentShape(.rect)
         }
@@ -54,26 +54,35 @@ private struct FocusedTextEditorPresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Save waits for the cover to close, so the form can close its own sheet.
-            .fullScreenCover(isPresented: $isPresented, onDismiss: {
-                guard savesAfterClosing else { return }
-                savesAfterClosing = false
-                onSave?()
-            }) {
-                FocusedTextEditor(
-                    title: title,
-                    text: $text,
-                    placeholder: placeholder,
-                    identifier: identifier,
-                    onSave: onSave == nil ? nil : {
-                        savesAfterClosing = true
-                        isPresented = false
-                    }
-                )
-            }
+            // Save waits for the editor to close, so the form can close its own sheet.
+            #if targetEnvironment(macCatalyst)
+            // A cover would fill the whole Mac window; a large sheet is the Mac's editor.
+            .sheet(isPresented: $isPresented, onDismiss: closed) { editor.bighelpSheetSize(.large) }
+            #else
+            .fullScreenCover(isPresented: $isPresented, onDismiss: closed) { editor }
+            #endif
             .onChange(of: isPresented) { _, presented in
                 if presented { savesAfterClosing = false }
             }
+    }
+
+    private var editor: some View {
+        FocusedTextEditor(
+            title: title,
+            text: $text,
+            placeholder: placeholder,
+            identifier: identifier,
+            onSave: onSave == nil ? nil : {
+                savesAfterClosing = true
+                isPresented = false
+            }
+        )
+    }
+
+    private func closed() {
+        guard savesAfterClosing else { return }
+        savesAfterClosing = false
+        onSave?()
     }
 }
 
@@ -90,7 +99,7 @@ struct FocusedTextEditor: View {
     var body: some View {
         NavigationStack {
             TextEditor(text: $text)
-                .font(.body)
+                .font(.bighelp(.body))
                 .focused($isFocused)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel(title)
@@ -99,7 +108,7 @@ struct FocusedTextEditor: View {
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(placeholder)
-                            .font(.body)
+                            .font(.bighelp(.body))
                             .foregroundStyle(theme.tertiaryText)
                             .padding(.top, 8)
                             .padding(.leading, BighelpTokens.space12 + 5)
@@ -115,8 +124,10 @@ struct FocusedTextEditor: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
                             .accessibilityHint("Keeps your changes and goes back")
                             .accessibilityIdentifier("\(identifier).done")
+                            .bighelpToolbarText()
                     }
                     if let onSave {
                         ToolbarItem(placement: .confirmationAction) {

@@ -50,7 +50,7 @@ struct ProviderRowLabel: View {
                 Text(name)
                     .foregroundStyle(theme.primaryText)
                 Text(detail)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(theme.secondaryText)
             }
         }
@@ -87,7 +87,7 @@ struct ProviderSignInSheet: View {
                             .fill(theme.isDarkPalette ? Color(white: 0.16) : .white))
                         .accessibilityHidden(true)
                     Text("Sign in to \(provider.name)")
-                        .font(.title2.weight(.bold))
+                        .font(.bighelp(.title2).weight(.bold))
                         .multilineTextAlignment(.center)
                     content
                 }
@@ -99,7 +99,9 @@ struct ProviderSignInSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(isConnected ? "Done" : "Cancel") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .accessibilityIdentifier("providers.sign-in.close")
+                        .bighelpToolbarText()
                 }
             }
         }
@@ -159,9 +161,9 @@ struct ProviderSignInSheet: View {
                     .font(.system(size: 52))
                     .foregroundStyle(theme.success)
                 Text("Connected")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                 if let email {
-                    Text(email).font(.subheadline).foregroundStyle(theme.secondaryText)
+                    Text(email).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -191,10 +193,10 @@ struct ProviderSignInSheet: View {
         if let code = progress.code {
             VStack(spacing: BighelpTokens.space8) {
                 Text("Your code")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                 Text(code)
-                    .font(.system(.largeTitle, design: .monospaced).weight(.semibold))
+                    .font(.bighelp(.largeTitle, design: .monospaced).weight(.semibold))
                     .textSelection(.enabled)
                     .privacySensitive()
                     .accessibilityLabel("Sign-in code \(code.map(String.init).joined(separator: " "))")
@@ -203,7 +205,7 @@ struct ProviderSignInSheet: View {
                        systemImage: copiedCode == code ? "checkmark" : "doc.on.doc") {
                     copyCode()
                 }
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
             }
         }
         if let link = progress.link {
@@ -229,7 +231,7 @@ struct ProviderSignInSheet: View {
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("providers.sign-in.waiting")
             Text("Your code is copied. Paste it on the page if it asks, then approve. This finishes on its own.")
-                .font(.footnote)
+                .font(.bighelp(.footnote))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -238,7 +240,7 @@ struct ProviderSignInSheet: View {
     @ViewBuilder
     private func pasteBack(_ progress: ProviderSignInProgress) -> some View {
         Text("Sign in on the page, then copy the code it shows and come back here.")
-            .font(.footnote)
+            .font(.bighelp(.footnote))
             .foregroundStyle(theme.secondaryText)
             .multilineTextAlignment(.center)
         PasteButton(payloadType: String.self) { strings in
@@ -262,7 +264,7 @@ struct ProviderSignInSheet: View {
             .accessibilityIdentifier("providers.sign-in.finish")
         if let problem = progress.problem {
             Text(problem)
-                .font(.footnote)
+                .font(.bighelp(.footnote))
                 .foregroundStyle(theme.warning)
                 .multilineTextAlignment(.center)
         }
@@ -400,9 +402,9 @@ struct ProviderComputerSignInView: View {
     private var explanation: String {
         switch reason {
         case .terminalOnly:
-            "Hermes doesn't sign in to \(name) from the phone. It takes one command on the computer running Hermes."
+            "Hermes doesn't sign in to \(name) from \(BighelpPlatform.isMac ? "this Mac" : "the phone"). It takes one command on the computer running Hermes."
         case .pluginUpdate:
-            "Update the bighelp plugin on \(hostName) to sign in to \(name) from your phone. Until then, it takes one command on the computer."
+            "Update the bighelp plugin on \(hostName) to sign in to \(name) from your \(BighelpPlatform.isMac ? "Mac" : "phone"). Until then, it takes one command on the computer."
         case .needsTool(let client, _):
             "\(name) signs in with \(client), which isn't installed on \(hostName) yet. Once it is, you can sign in from here."
         }
@@ -411,7 +413,7 @@ struct ProviderComputerSignInView: View {
     private func commandSection(_ command: String, header: String, footer: String, identifier: String) -> some View {
         Section {
             Text(command)
-                .font(.system(.body, design: .monospaced))
+                .font(.bighelp(.body, design: .monospaced))
                 .textSelection(.enabled)
                 .accessibilityIdentifier(identifier)
             Button(copied == command ? "Copied" : "Copy command",

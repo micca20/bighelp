@@ -103,7 +103,8 @@ struct ChatSessionSettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .keyboardShortcut(.cancelAction)
+                        .frame(minHeight: BighelpTokens.toolbarHitTarget)
                 }
             }
             .accessibilityIdentifier("chat.session-info")
@@ -117,11 +118,11 @@ struct ChatSessionSettingsView: View {
                 participantCluster(size: 76)
                 VStack(spacing: BighelpTokens.space4) {
                     Text(sessionTitle)
-                        .font(.title2.weight(.bold))
+                        .font(.bighelp(.title2).weight(.bold))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(participantSummary)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -230,12 +231,12 @@ struct ChatSessionSettingsView: View {
                             size: 52
                         )
                         Text(participant.name)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .lineLimit(1)
                             .frame(maxWidth: 76)
                         if let detail = participant.detail {
                             Text(detail)
-                                .font(.caption2)
+                                .font(.bighelp(.caption2))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .frame(maxWidth: 76)
@@ -261,7 +262,7 @@ struct ChatSessionSettingsView: View {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Text(destination.title)
                         Text(destination.subtitle)
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
@@ -290,12 +291,12 @@ struct ChatSessionSettingsView: View {
     private func quickActionLabel(_ title: String, systemImage: String) -> some View {
         VStack(spacing: BighelpTokens.space8) {
             Image(systemName: systemImage)
-                .font(.title3)
+                .font(.bighelp(.title3))
                 .foregroundStyle(theme.action)
                 .frame(width: 48, height: 48)
                 .background(theme.surface, in: .circle)
             Text(title)
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, minHeight: 76)

@@ -92,7 +92,7 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .accountAndDevices: "Profile, bighelp Link, and paired devices"
         case .workspace: "Sessions, scheduled tasks, and gestures"
         case .agentsAndPersonalities: "Manage how Hermes agents present themselves"
-        case .chat: "Haptics, reactions and the Dynamic Island"
+        case .chat: Self.chatDetail
         case .voice: "How voice chats sound"
         case .notifications: "Alerts from your agents"
         case .providerUsage: "Which plans and balances show"
@@ -103,6 +103,14 @@ enum SettingsMenuSection: String, CaseIterable, Identifiable, Equatable, Sendabl
         case .help: "Report a problem, guides and version"
         case .watch: "Pairing and connection"
         }
+    }
+
+    private static var chatDetail: String {
+        #if targetEnvironment(macCatalyst) // A Mac has no haptics or Dynamic Island.
+        "Reactions and the Return key"
+        #else
+        "Haptics, reactions and the Dynamic Island"
+        #endif
     }
 
     var systemImage: String {

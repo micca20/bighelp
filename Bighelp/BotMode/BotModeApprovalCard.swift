@@ -18,20 +18,20 @@ struct BotModeApprovalCard: View {
         BighelpCard {
             VStack(alignment: .leading, spacing: BighelpTokens.space12) {
                 Label("Needs your approval", systemImage: "exclamationmark.circle.fill")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.warning)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("\(agentName) asked Hermes to run this action.")
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                 if let detail, !detail.isEmpty {
                     Text(detail)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let command {
                     Text(command)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.bighelp(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(BighelpTokens.space12)
@@ -40,7 +40,7 @@ struct BotModeApprovalCard: View {
                 }
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.danger)
                         .accessibilityIdentifier("chat.bot-approval.error.\(approvalID)")
                 }

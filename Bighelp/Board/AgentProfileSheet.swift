@@ -57,22 +57,27 @@ struct AgentProfileSheet: View {
         .overlay(alignment: .topLeading) {
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.title3.weight(.semibold))
+                    .font(.bighelp(.title3).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .frame(width: 44, height: 44)
                     .contentShape(.circle)
                     .bighelpNavigationGlass(in: Circle(), isInteractive: true)
             }
             .buttonStyle(.plain)
+            #if targetEnvironment(macCatalyst)
+            .keyboardShortcut(.cancelAction)
+            #endif
             .padding(BighelpTokens.space16)
             .accessibilityLabel("Close")
             .accessibilityIdentifier("agent.profile.close")
         }
         .background(BighelpThemeCanvas(theme: theme).ignoresSafeArea())
+        .bighelpSheetSize(.standard)
         .task(id: agent.id) { await store.loadLogs(agentID: agent.id) }
         .sheet(isPresented: Binding(get: { document != nil }, set: { if !$0 { document = nil } })) {
             if let document {
                 IdentityDocumentView(title: document.title, document: document.body)
+                    .bighelpSheetSize(.standard)
             }
         }
         .accessibilityElement(children: .contain)
@@ -99,10 +104,10 @@ struct AgentProfileSheet: View {
                 }
                 .padding(.top, BighelpTokens.space32)
             Text(agent.name)
-                .font(.title.weight(.bold))
+                .font(.bighelp(.title).weight(.bold))
                 .foregroundStyle(theme.primaryText)
             Label(isConnected ? "Connected" : "Offline", systemImage: isConnected ? "bolt.circle.fill" : "bolt.slash.circle")
-                .font(.body.weight(.medium))
+                .font(.bighelp(.body).weight(.medium))
                 .foregroundStyle(isConnected ? Color.green : theme.secondaryText)
                 .accessibilityIdentifier("agent.profile.connection")
         }
@@ -131,7 +136,7 @@ struct AgentProfileSheet: View {
                     withAnimation(.snappy) { tab = item }
                 } label: {
                     Image(systemName: item.systemImage)
-                        .font(.title3.weight(.semibold))
+                        .font(.bighelp(.title3).weight(.semibold))
                         .foregroundStyle(selected ? theme.primaryText : theme.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .background {
@@ -180,15 +185,15 @@ struct AgentProfileSheet: View {
                             .background(Circle().fill(theme.incomingMessageBackground))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.headline)
-                                .font(.headline)
+                                .font(.bighelp(.headline))
                                 .foregroundStyle(theme.primaryText)
                             if !entry.summary.isEmpty {
                                 Text(entry.summary)
-                                    .font(.subheadline)
+                                    .font(.bighelp(.subheadline))
                                     .foregroundStyle(theme.secondaryText)
                             }
                             Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(theme.tertiaryText)
                         }
                     }
@@ -217,15 +222,15 @@ struct AgentProfileSheet: View {
                         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.incomingMessageBackground))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(entry.description.isEmpty ? entry.command : entry.description)
-                            .font(.headline)
+                            .font(.bighelp(.headline))
                             .foregroundStyle(theme.primaryText)
                         if !entry.sessionTitle.isEmpty {
                             Text(entry.sessionTitle)
-                                .font(.subheadline)
+                                .font(.bighelp(.subheadline))
                                 .foregroundStyle(theme.secondaryText)
                         }
                         Text("\(entry.decisionLabel) · \(entry.createdAt.formatted(.relative(presentation: .named)))")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.tertiaryText)
                     }
                 }
@@ -261,14 +266,14 @@ struct AgentProfileSheet: View {
                                 }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(task.name)
-                                    .font(.headline)
+                                    .font(.bighelp(.headline))
                                     .foregroundStyle(theme.primaryText)
                                 Text(task.isPaused ? "Paused" : task.scheduleDescription)
-                                    .font(.subheadline)
+                                    .font(.bighelp(.subheadline))
                                     .foregroundStyle(theme.secondaryText)
                                 if let next = task.nextRun, !task.isPaused {
                                     Text(next.formatted(date: .omitted, time: .shortened))
-                                        .font(.footnote)
+                                        .font(.bighelp(.footnote))
                                         .foregroundStyle(theme.tertiaryText)
                                 }
                             }
@@ -307,26 +312,26 @@ struct AgentProfileSheet: View {
     private var identityPanel: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             Text(agent.name)
-                .font(.title2.weight(.bold))
+                .font(.bighelp(.title2).weight(.bold))
                 .foregroundStyle(theme.primaryText)
             if !agent.role.isEmpty {
                 Text(agent.role)
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
             }
             if !agent.summary.isEmpty {
                 Text("VIBE")
-                    .font(.caption.monospaced().weight(.semibold))
+                    .font(.bighelp(.caption).monospaced().weight(.semibold))
                     .tracking(1.5)
                     .foregroundStyle(theme.tertiaryText)
                     .padding(.top, BighelpTokens.space4)
                 Text(agent.summary)
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.primaryText)
             }
             Button(action: onEdit) {
                 Label("Edit", systemImage: "pencil")
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(Capsule().fill(theme.incomingMessageBackground))
@@ -359,21 +364,21 @@ struct AgentProfileSheet: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.title2.weight(.heavy))
+                    .font(.bighelp(.title2).weight(.heavy))
                     .foregroundStyle(.white)
                 Text("ACCESS WITH CARE")
-                    .font(.caption2.monospaced())
+                    .font(.bighelp(.caption2).monospaced())
                     .tracking(1.5)
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: BighelpTokens.space24)
                 HStack(alignment: .bottom) {
                     Text(document.updatedAt?.formatted(.dateTime.month(.twoDigits).day(.twoDigits).year(.twoDigits))
                          .replacingOccurrences(of: "/", with: ".") ?? "—")
-                        .font(.footnote.monospaced())
+                        .font(.bighelp(.footnote).monospaced())
                         .foregroundStyle(.white.opacity(0.75))
                     Spacer()
                     Image(systemName: symbol)
-                        .font(.title2)
+                        .font(.bighelp(.title2))
                         .foregroundStyle(.white.opacity(0.85))
                 }
             }
@@ -395,7 +400,7 @@ struct AgentProfileSheet: View {
 
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.title3.weight(.semibold))
+            .font(.bighelp(.title3).weight(.semibold))
             .foregroundStyle(theme.primaryText)
             .padding(.top, BighelpTokens.space8)
             .accessibilityAddTraits(.isHeader)
@@ -404,10 +409,10 @@ struct AgentProfileSheet: View {
     private func emptyState(symbol: String, text: String) -> some View {
         VStack(spacing: BighelpTokens.space8) {
             Image(systemName: symbol)
-                .font(.title)
+                .font(.bighelp(.title))
                 .foregroundStyle(theme.tertiaryText)
             Text(text)
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         }
@@ -446,13 +451,13 @@ private struct IdentityDocumentView: View {
                             .foregroundStyle(theme.secondaryText)
                     } else {
                         Text(document.text)
-                            .font(.body.monospaced())
+                            .font(.bighelp(.body).monospaced())
                             .foregroundStyle(theme.primaryText)
                             .textSelection(.enabled)
                     }
                     if document.truncated {
                         Label("Showing the first 64 KB.", systemImage: "scissors")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(theme.secondaryText)
                     }
                 }
@@ -463,7 +468,12 @@ private struct IdentityDocumentView: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                }
             }
         }
     }
@@ -502,9 +512,9 @@ struct AgentSwitcherSheet: View {
                             HStack(spacing: BighelpTokens.space12) {
                                 AgentLiveAvatar(agentID: agent.id, displayName: agent.name, imageURL: imageURL(agent), size: 44)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(agent.name).font(.headline).foregroundStyle(theme.primaryText)
+                                    Text(agent.name).font(.bighelp(.headline)).foregroundStyle(theme.primaryText)
                                     if !agent.role.isEmpty {
-                                        Text(agent.role).font(.subheadline).foregroundStyle(theme.secondaryText)
+                                        Text(agent.role).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                                     }
                                 }
                                 Spacer()
@@ -542,11 +552,11 @@ struct AgentSwitcherSheet: View {
                             Label {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(group.name).foregroundStyle(theme.primaryText)
-                                    Text("\(group.memberCount) agents").font(.footnote).foregroundStyle(theme.secondaryText)
+                                    Text("\(group.memberCount) agents").font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText)
                                 }
                             } icon: {
                                 Image(systemName: "person.3.fill")
-                                    .font(.footnote)
+                                    .font(.bighelp(.footnote))
                                     .foregroundStyle(theme.action)
                             }
                         }
@@ -566,9 +576,15 @@ struct AgentSwitcherSheet: View {
             .navigationTitle("Switch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                }
             }
         }
+        .bighelpSheetSize(.standard)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agent.switcher")
     }

@@ -67,7 +67,24 @@ the loaded plugin revision and a fresh connected Link state after one restart.
 Record physical Health/EventKit acceptance separately from injected-boundary
 and simulator checks.
 
-## Native macOS foundation
+## Mac app (Mac Catalyst)
+
+The shipping Mac app is the iPad app through Mac Catalyst:
+
+```sh
+xcodebuild build \
+  -project Bighelp.xcodeproj \
+  -scheme BighelpCatalyst \
+  -destination 'platform=macOS,variant=Mac Catalyst' \
+  -derivedDataPath /tmp/bighelp-mac-dd
+open /tmp/bighelp-mac-dd/Build/Products/Debug-maccatalyst/bighelp.app --args -use-demo-fixtures -disable-demo-delays
+```
+
+`-start-chat-mid-session` opens a demo chat whose agent is still working, for trying Command-Return.
+`Scripts/release-mac.sh` archives it, exports it with Developer ID, wraps it in a signed and notarized DMG and
+posts it to GitHub Releases (`--no-publish` stops after the DMG).
+
+## Native macOS foundation (prototype)
 
 Build and test the native Mac target with one reusable DerivedData root:
 

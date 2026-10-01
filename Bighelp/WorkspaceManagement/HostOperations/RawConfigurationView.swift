@@ -43,6 +43,7 @@ struct RawConfigurationView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Back", systemImage: "chevron.backward") { confirmsLeaving = true }
                         .accessibilityIdentifier("host.raw-config.back")
+                        .bighelpToolbarText()
                 }
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -82,6 +83,7 @@ struct RawConfigurationView: View {
                 saveAfterExpandedEditor = true
                 isExpanded = false
             }
+            .bighelpSheetSize(.large)
         }
         .task { if store.snapshot == nil { await store.load() } }
         .onDisappear { store.closePrivateEditor() }
@@ -93,6 +95,7 @@ struct RawConfigurationView: View {
         ) {
             if let review = store.review {
                 RawConfigurationReviewView(store: store, review: review)
+                    .bighelpSheetSize(.large)
             }
         }
     }
@@ -103,11 +106,11 @@ struct RawConfigurationView: View {
             LabeledContent("Profile", value: store.profileID)
             if let path = store.snapshot?.path {
                 LabeledContent("Resolved file") {
-                    Text(path).font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                    Text(path).font(.bighelp(.caption).monospaced()).multilineTextAlignment(.trailing)
                 }
             }
         } header: { Text("Workspace") } footer: {
-            Text("Changes stay a draft until you tap Save, and the draft is gone when you leave this screen. The editor never includes content in errors, runs commands, or exposes an arbitrary host request console.")
+            Text("Changes stay a draft until you \(BighelpPlatform.isMac ? "click" : "tap") Save, and the draft is gone when you leave this screen. The editor never includes content in errors, runs commands, or exposes an arbitrary host request console.")
         }
     }
 
@@ -171,7 +174,7 @@ struct RawConfigurationView: View {
                 Text("YAML document")
                 Spacer()
                 Button("Expand", systemImage: "arrow.up.left.and.arrow.down.right") { isExpanded = true }
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .textCase(nil)
                     .disabled(!store.canEdit)
                     .accessibilityHint("Full screen, with Find and Find and Replace")
@@ -218,7 +221,7 @@ private struct RawConfigurationReviewView: View {
                     LabeledContent("Host", value: store.hostName)
                     LabeledContent("Profile", value: review.original.profileID)
                     LabeledContent("Resolved file") {
-                        Text(review.original.path).font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                        Text(review.original.path).font(.bighelp(.caption).monospaced()).multilineTextAlignment(.trailing)
                     }
                 } header: { Text("Workspace") } footer: {
                     Text("The save is owner-bound and re-reads this exact path and original UTF-8 snapshot. Any change on the host invalidates this review.")
@@ -251,7 +254,9 @@ private struct RawConfigurationReviewView: View {
                         store.cancelReview()
                         dismiss()
                     }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(store.isSaving)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isSaving ? "Saving…" : "Save") {
@@ -274,13 +279,13 @@ private struct RawConfigurationReviewView: View {
             } else {
                 ForEach(Array(diff.removed.enumerated()), id: \.offset) { offset, line in
                     Text("− \(diff.commonPrefixCount + offset + 1)  \(line)")
-                        .font(.caption.monospaced())
+                        .font(.bighelp(.caption).monospaced())
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
                 }
                 ForEach(Array(diff.added.enumerated()), id: \.offset) { offset, line in
                     Text("+ \(diff.commonPrefixCount + offset + 1)  \(line)")
-                        .font(.caption.monospaced())
+                        .font(.bighelp(.caption).monospaced())
                         .foregroundStyle(.green)
                         .textSelection(.enabled)
                 }
@@ -296,7 +301,7 @@ private struct RawConfigurationReviewView: View {
         Section {
             ScrollView([.horizontal, .vertical]) {
                 Text(text.isEmpty ? "" : text)
-                    .font(.caption.monospaced())
+                    .font(.bighelp(.caption).monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(.vertical, BighelpTokens.space4)

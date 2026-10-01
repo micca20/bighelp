@@ -61,10 +61,10 @@ private struct LiveVoiceUnavailableView: View {
                        imageURL: agentImageURL, size: 140, state: .idle)
                 .accessibilityHidden(true)
             Text("Live voice isn't available")
-                .font(.title2.weight(.bold))
+                .font(.bighelp(.title2).weight(.bold))
                 .foregroundStyle(theme.primaryText)
-            Text("Your Hermes computer doesn't support live voice yet. TTS voice mode listens on this phone and answers in the voice set up on your computer.")
-                .font(.body)
+            Text("Your Hermes computer doesn't support live voice yet. TTS voice mode listens on this \(BighelpPlatform.isMac ? "Mac" : "phone") and answers in the voice set up on your computer.")
+                .font(.bighelp(.body))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, BighelpTokens.space32)
@@ -72,7 +72,7 @@ private struct LiveVoiceUnavailableView: View {
             if let onUseTurnBased {
                 Button(action: onUseTurnBased) {
                     Text("Use TTS voice mode")
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(theme.actionForeground)
                         .frame(maxWidth: .infinity, minHeight: 52)
                         .background(theme.action, in: .capsule)
@@ -84,12 +84,13 @@ private struct LiveVoiceUnavailableView: View {
             // Close is secondary when turn-based voice is the way forward.
             Button(action: onClose) {
                 Text("Close")
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(onUseTurnBased == nil ? theme.actionForeground : theme.action)
                     .frame(maxWidth: .infinity, minHeight: 52)
                     .background(onUseTurnBased == nil ? theme.action : .clear, in: .capsule)
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
             .padding(.horizontal, BighelpTokens.space24)
             .padding(.bottom, BighelpTokens.space24)
             .accessibilityIdentifier("voice.live-unavailable.close")
@@ -123,6 +124,7 @@ struct BighelpSessionContentDisclosure: View {
             .accessibilityIdentifier("chat.complete-content.\(rowID)")
             .sheet(isPresented: $isPresented) {
                 BighelpSessionContentSheet(sessionID: sessionID, rowID: rowID, reader: reader)
+                    .bighelpSheetSize(.standard)
             }
         }
     }
@@ -166,7 +168,7 @@ private struct BighelpSessionContentSheet: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
             }
             .task(id: CanonicalContentReference(sessionID: sessionID, rowID: rowID)) {

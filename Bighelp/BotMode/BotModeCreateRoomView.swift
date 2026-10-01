@@ -48,7 +48,7 @@ struct BotModeCreateRoomView: View {
             .background(theme.canvas)
             .navigationTitle(onStartDirect == nil ? "New group chat" : "New chat")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
             .onAppear {
                 if let seedProfileID, selected.isEmpty { selected.insert(seedProfileID) }
             }

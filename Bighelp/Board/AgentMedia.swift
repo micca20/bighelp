@@ -176,7 +176,7 @@ struct AgentMediaTile: View {
                             LinearGradient(colors: [theme.action.opacity(0.35), theme.action.opacity(0.12)],
                                            startPoint: .topLeading, endPoint: .bottomTrailing)
                             Text(item.fileName)
-                                .font(.caption2.weight(.medium))
+                                .font(.bighelp(.caption2).weight(.medium))
                                 .foregroundStyle(theme.primaryText)
                                 .lineLimit(3)
                                 .multilineTextAlignment(.center)
@@ -189,7 +189,7 @@ struct AgentMediaTile: View {
                 .overlay(alignment: .bottomLeading) {
                     if item.isVideo {
                         Image(systemName: "play.fill")
-                            .font(.caption.weight(.bold))
+                            .font(.bighelp(.caption).weight(.bold))
                             .foregroundStyle(.white)
                             .padding(6)
                             .background(.black.opacity(0.45), in: Circle())

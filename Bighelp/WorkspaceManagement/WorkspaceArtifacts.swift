@@ -315,6 +315,7 @@ struct WorkspaceArtifactsView: View {
         )) {
             if let attachment = store.openedAttachment {
                 WorkspaceArtifactOpenView(attachment: attachment)
+                    .bighelpSheetSize(.large)
             }
         }
         .accessibilityIdentifier("workspace.artifacts")
@@ -337,7 +338,7 @@ struct WorkspaceArtifactsView: View {
                     if let root = store.workspaceRoot {
                         LabeledContent("Workspace folder") {
                             Text(root)
-                                .font(.caption.monospaced())
+                                .font(.bighelp(.caption).monospaced())
                                 .multilineTextAlignment(.trailing)
                                 .textSelection(.enabled)
                         }
@@ -357,7 +358,7 @@ struct WorkspaceArtifactsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     if !store.files.isEmpty {
                         Text("Showing the last successful file index.")
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     Button("Retry") { Task { await store.refresh() } }
@@ -373,7 +374,7 @@ struct WorkspaceArtifactsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     ForEach(Array(store.scanDiagnostics.enumerated()), id: \.offset) { _, diagnostic in
                         Text(diagnostic.message)
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
@@ -482,9 +483,9 @@ private struct WorkspaceArtifactRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Text(entry.name)
-                    .font(.body)
+                    .font(.bighelp(.body))
                 Text(relativePath)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 HStack(spacing: BighelpTokens.space8) {
@@ -493,12 +494,12 @@ private struct WorkspaceArtifactRow: View {
                     }
                     Text(modifiedLabel)
                 }
-                .font(.caption2)
+                .font(.bighelp(.caption2))
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: BighelpTokens.space8)
             Image(systemName: "chevron.right")
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
@@ -545,8 +546,8 @@ private struct WorkspaceArtifactOpenView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: BighelpTokens.space16) {
                     ChatAttachmentGallery(attachments: [attachment], alignsTrailing: false)
-                    Text("Tap the file above to open bighelp's native preview and save options.")
-                        .font(.footnote)
+                    Text("\(BighelpPlatform.isMac ? "Click" : "Tap") the file above to open bighelp's native preview and save options.")
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -556,7 +557,8 @@ private struct WorkspaceArtifactOpenView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
             }
         }

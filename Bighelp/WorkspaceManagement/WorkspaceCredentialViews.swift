@@ -12,16 +12,16 @@ struct WorkspaceCredentialsSection: View {
     var body: some View {
         Section("Credentials") {
             Text("Only credential presence is shown. Values are never revealed. A saved key is not proof that a provider account works.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             ForEach(Array(rows.prefix(store.visibleLimit))) { credential in
                 NavigationLink {
                     WorkspaceCredentialDetailView(store: store, credentialID: credential.id)
                 } label: {
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                        Text(credential.id).font(.callout)
+                        Text(credential.id).font(.bighelp(.callout))
                         Label(credential.isSet ? "Set on host" : "Not set",
                             systemImage: credential.isSet ? "key.fill" : "key")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -71,7 +71,7 @@ struct WorkspaceCredentialDetailView: View {
                     }
                 } else {
                     Text("Manage this credential through its Hermes connection setup. This page does not reveal or remove it.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.bighelp(.footnote)).foregroundStyle(.secondary)
                 }
             } else {
                 Text("This credential is no longer available in the selected workspace.")
@@ -110,7 +110,8 @@ struct WorkspaceMutationReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { store.review = nil }
+                    Button("Cancel") { store.review = nil }.keyboardShortcut(.cancelAction)
+                        .bighelpToolbarText()
                 }
             }
         }

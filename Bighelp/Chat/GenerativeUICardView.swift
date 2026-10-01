@@ -185,7 +185,7 @@ struct GenerativeUICardView: View {
                 if let team = value.object {
                     HStack(spacing: BighelpTokens.space12) {
                         Text(team["abbreviation"]?.string ?? "")
-                            .font(.system(.headline, design: .rounded).weight(.bold))
+                            .font(.bighelp(.headline, design: .rounded).weight(.bold))
                             .frame(width: 48, height: 38)
                             .background(theme.action.opacity(0.10), in: .rect(cornerRadius: 10))
                         VStack(alignment: .leading, spacing: 2) {
@@ -197,7 +197,7 @@ struct GenerativeUICardView: View {
                         }
                         Spacer()
                         Text(team["score"]?.displayText ?? "—")
-                            .font(.system(.title3, design: .rounded).weight(.bold))
+                            .font(.bighelp(.title3, design: .rounded).weight(.bold))
                             .monospacedDigit()
                     }
                     .foregroundStyle(theme.primaryText)
@@ -219,7 +219,7 @@ struct GenerativeUICardView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.data["symbol"]?.string ?? "")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .font(.bighelp(.title3, design: .rounded).weight(.bold))
                     Text(card.data["company_name"]?.string ?? "")
                         .bighelpFont(.metadata)
                         .foregroundStyle(theme.secondaryText)
@@ -227,7 +227,7 @@ struct GenerativeUICardView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(stockPrice(card.data["price"]?.number, currency: currency))
-                        .font(.system(.title2, design: .rounded).weight(.semibold))
+                        .font(.bighelp(.title2, design: .rounded).weight(.semibold))
                         .monospacedDigit()
                     Text("\(signed(change))  \(signed(percent))%")
                         .bighelpFont(.metadata, weight: .bold)
@@ -279,7 +279,7 @@ struct GenerativeUICardView: View {
                 .bighelpFont(.metadata)
                 .foregroundStyle(theme.secondaryText)
             Text(value)
-                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .font(.bighelp(.title3, design: .rounded).weight(.semibold))
                 .foregroundStyle(theme.primaryText)
                 .lineLimit(2)
             if let status {
@@ -406,7 +406,7 @@ private struct GenerativeUIChecklistView: View {
                     HStack(alignment: .top, spacing: BighelpTokens.space12) {
                         Image(systemName: isCompleted(item) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(isCompleted(item) ? theme.success : theme.secondaryText)
-                            .font(.title3)
+                            .font(.bighelp(.title3))
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.label)
                                 .bighelpFont(.body)
@@ -494,7 +494,7 @@ private struct GenerativeUISelectionView: View {
                         HStack(alignment: .top, spacing: BighelpTokens.space12) {
                             Image(systemName: selection.contains(option.id) ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(selection.contains(option.id) ? theme.action : theme.secondaryText)
-                                .font(.title3)
+                                .font(.bighelp(.title3))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(option.label).bighelpFont(.body)
                                 if let detail = option.detail {
@@ -943,7 +943,7 @@ private struct GenerativeUIFormPreview: View {
                         Text(card.data["submit_label"]?.string ?? "Respond")
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
+                            .font(.bighelp(.caption).weight(.bold))
                     }
                     .bighelpFont(.label)
                     .foregroundStyle(theme.action)

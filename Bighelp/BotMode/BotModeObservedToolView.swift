@@ -14,9 +14,9 @@ struct BotModeObservedToolView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(memberName) · \(row.observation.tool.name)")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.bighelp(.subheadline).weight(.semibold))
                         Text(row.observation.kind == .started ? "Started · live observation" : "Finished · outcome not reported")
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: BighelpTokens.space8)
@@ -40,12 +40,12 @@ struct BotModeObservedToolView: View {
     @ViewBuilder
     private func detail(_ detail: HermesBotModeActivityDetail, title: String) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-            Text(title).font(.caption.weight(.semibold))
+            Text(title).font(.bighelp(.caption).weight(.semibold))
             if let text = detail.text, detail.state == .available {
                 ChatToolDetailText(label: title, value: text, identifier: "\(row.id).\(title)")
             } else {
                 Text(omissionMessage(detail.state))
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
             }
         }

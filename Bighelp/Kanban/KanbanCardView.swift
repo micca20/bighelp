@@ -13,7 +13,7 @@ struct KanbanCardView: View {
                 HStack(spacing: BighelpTokens.space8) {
                     if let note = task.statusNote {
                         Text(note)
-                            .font(.caption.weight(.semibold))
+                            .font(.bighelp(.caption).weight(.semibold))
                             .foregroundStyle(lane.tint)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -23,7 +23,7 @@ struct KanbanCardView: View {
                     if task.urgency.rawValue > 0 {
                         Label(task.urgency.title, systemImage: "flag.fill")
                             .labelStyle(.iconOnly)
-                            .font(.caption.weight(.bold))
+                            .font(.bighelp(.caption).weight(.bold))
                             .foregroundStyle(task.urgency == .urgent ? KanbanLane.needsYou.tint : theme.warning)
                             .accessibilityLabel("\(task.urgency.title) priority")
                     }
@@ -69,7 +69,7 @@ struct KanbanCardView: View {
                         if task.status == .running { KanbanPulseRing(color: lane.tint) }
                     }
                 Text(agent.name)
-                    .font(.caption.weight(.medium))
+                    .font(.bighelp(.caption).weight(.medium))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
             } else {
@@ -77,19 +77,19 @@ struct KanbanCardView: View {
                     .font(.system(size: 17))
                     .foregroundStyle(theme.tertiaryText)
                 Text("Anyone")
-                    .font(.caption.weight(.medium))
+                    .font(.bighelp(.caption).weight(.medium))
                     .foregroundStyle(theme.tertiaryText)
             }
             Spacer(minLength: 0)
             if task.commentCount > 0 {
                 Label("\(task.commentCount)", systemImage: "bubble.left")
-                    .font(.caption2.weight(.semibold))
+                    .font(.bighelp(.caption2).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityLabel("\(task.commentCount) comment\(task.commentCount == 1 ? "" : "s")")
             }
             if task.childCount > 0 {
                 Label("\(task.childCount)", systemImage: "square.stack.3d.up")
-                    .font(.caption2.weight(.semibold))
+                    .font(.bighelp(.caption2).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .accessibilityLabel("\(task.childCount) smaller task\(task.childCount == 1 ? "" : "s")")
             }
@@ -107,7 +107,7 @@ struct KanbanWhen: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             Text(text(now: context.date))
-                .font(.caption2.weight(.medium).monospacedDigit())
+                .font(.bighelp(.caption2).weight(.medium).monospacedDigit())
                 .foregroundStyle(isQuiet(now: context.date) ? theme.warning : theme.tertiaryText)
         }
     }

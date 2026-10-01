@@ -43,6 +43,7 @@ struct HostHooksView: View {
                     timeout = "60"
                     approve = false
                 }
+                .bighelpSheetSize(.standard)
             }
         }
         .sheet(
@@ -53,6 +54,7 @@ struct HostHooksView: View {
         ) {
             if let review = store.hookDeleteReview {
                 HookDeleteReviewView(store: store, review: review)
+                    .bighelpSheetSize(.standard)
             }
         }
     }
@@ -110,24 +112,24 @@ struct HostHooksView: View {
                     ForEach(snapshot.hooks) { hook in
                         VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                             HStack {
-                                Text(hook.event).font(.headline.monospaced())
+                                Text(hook.event).font(.bighelp(.headline).monospaced())
                                 Spacer()
                                 Label(hook.isAllowed ? "Approved" : "Not approved",
                                       systemImage: hook.isAllowed ? "checkmark.shield" : "shield.slash")
-                                    .font(.caption)
+                                    .font(.bighelp(.caption))
                                     .foregroundStyle(hook.isAllowed ? .green : .orange)
                             }
                             Text(hook.command)
-                                .font(.caption.monospaced())
+                                .font(.bighelp(.caption).monospaced())
                                 .textSelection(.enabled)
                                 .privacySensitive()
                             if let matcher = hook.matcher {
-                                LabeledContent("Matcher", value: matcher).font(.caption)
+                                LabeledContent("Matcher", value: matcher).font(.bighelp(.caption))
                             }
-                            LabeledContent("Timeout", value: "\(hook.timeoutSeconds) seconds").font(.caption)
-                            LabeledContent("Executable now", value: hook.isExecutable ? "Yes" : "No").font(.caption)
+                            LabeledContent("Timeout", value: "\(hook.timeoutSeconds) seconds").font(.bighelp(.caption))
+                            LabeledContent("Executable now", value: hook.isExecutable ? "Yes" : "No").font(.bighelp(.caption))
                             if let approvedAt = hook.approvedAt {
-                                LabeledContent("Approved at", value: approvedAt).font(.caption)
+                                LabeledContent("Approved at", value: approvedAt).font(.bighelp(.caption))
                             }
                             Button("Review Removal", systemImage: "trash", role: .destructive) {
                                 Task { await store.reviewHookDeletion(hook) }
@@ -215,7 +217,7 @@ private struct HookCreateReviewView: View {
                     LabeledContent("Target profile", value: store.operationTargetProfileID ?? "Not verified")
                     LabeledContent("Event", value: review.draft.event)
                     LabeledContent("Command") {
-                        Text(review.draft.command).font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                        Text(review.draft.command).font(.bighelp(.caption).monospaced()).multilineTextAlignment(.trailing)
                     }
                     if let matcher = review.draft.matcher { LabeledContent("Matcher", value: matcher) }
                     LabeledContent("Timeout", value: "\(review.draft.timeoutSeconds ?? 60) seconds")
@@ -234,7 +236,9 @@ private struct HookCreateReviewView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { store.cancelHookReview(); dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .disabled(store.isMutating)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create Reviewed Hook") {
@@ -268,7 +272,7 @@ private struct HookDeleteReviewView: View {
                     LabeledContent("Target profile", value: store.operationTargetProfileID ?? "Not verified")
                     LabeledContent("Event", value: review.hook.event)
                     LabeledContent("Command") {
-                        Text(review.hook.command).font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                        Text(review.hook.command).font(.bighelp(.caption).monospaced()).multilineTextAlignment(.trailing)
                     }
                     LabeledContent("Entries removed", value: review.matchingCommandsRemoved.formatted())
                 }
@@ -283,7 +287,9 @@ private struct HookDeleteReviewView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { store.cancelHookReview(); dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .disabled(store.isMutating)
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Remove \(review.matchingCommandsRemoved) Hook\(review.matchingCommandsRemoved == 1 ? "" : "s")", role: .destructive) {

@@ -41,7 +41,7 @@ private struct BoardScroll<Content: View>: View {
                     .padding(.top, BighelpTokens.space8)
                 if let title {
                     Text(title)
-                        .font(.largeTitle.weight(.bold))
+                        .font(.bighelp(.largeTitle).weight(.bold))
                         .foregroundStyle(theme.primaryText)
                         .accessibilityAddTraits(.isHeader)
                 }
@@ -200,12 +200,12 @@ private struct BoardUndoBar: View {
     var body: some View {
         HStack(spacing: BighelpTokens.space12) {
             Text("Deleted “\(item.title)”")
-                .font(.subheadline.weight(.medium))
+                .font(.bighelp(.subheadline).weight(.medium))
                 .foregroundStyle(theme.primaryText)
                 .lineLimit(1)
             Spacer(minLength: BighelpTokens.space8)
             Button("Undo") { Task { await store.undoHide() } }
-                .font(.subheadline.weight(.semibold))
+                .font(.bighelp(.subheadline).weight(.semibold))
                 .foregroundStyle(theme.action)
                 .frame(minHeight: BighelpTokens.hitTarget)
                 .accessibilityIdentifier("board.undo")
@@ -242,15 +242,15 @@ private struct BoardEmptyState: View {
                 .foregroundStyle(theme.action)
                 .padding(.top, BighelpTokens.space24)
             Text(title)
-                .font(.title3.weight(.bold))
+                .font(.bighelp(.title3).weight(.bold))
                 .foregroundStyle(theme.primaryText)
                 .multilineTextAlignment(.center)
             Text(message)
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
             Text("“\(example)”")
-                .font(.subheadline.italic())
+                .font(.bighelp(.subheadline).italic())
                 .foregroundStyle(theme.primaryText)
                 .multilineTextAlignment(.center)
                 .padding(BighelpTokens.space12)
@@ -260,7 +260,7 @@ private struct BoardEmptyState: View {
                 onAsk(example)
             } label: {
                 Label("Ask \(agentName)", systemImage: "bubble.left.and.text.bubble.right")
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
             }
             .bighelpProminentButtonStyle()
@@ -313,11 +313,11 @@ private struct BoardStateBanner: View {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, BighelpTokens.space24)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
         case .unavailable where context.store.isDisconnected:
             Label("Connect to your Hermes host to see this.", systemImage: "bolt.horizontal.circle")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
         case .unavailable:
             pluginUpdate
@@ -330,11 +330,11 @@ private struct BoardStateBanner: View {
     private var pluginUpdate: some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             Label("Your Hermes host is running an older bighelp plugin", systemImage: "puzzlepiece.extension")
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .foregroundStyle(theme.primaryText)
             Text("Update it in Settings, under this computer's Plugin version, or ask \(context.agentName) to do it. "
                  + "Already updated? Restart every Hermes dashboard this phone connects to, so it loads the new copy.")
-                .font(.subheadline)
+                .font(.bighelp(.subheadline))
                 .foregroundStyle(theme.secondaryText)
             HStack(spacing: BighelpTokens.space12) {
                 Button {
@@ -347,7 +347,7 @@ private struct BoardStateBanner: View {
                 }
                 .accessibilityIdentifier("board.plugin-required.ask")
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.bighelp(.subheadline).weight(.semibold))
             .tint(theme.action)
         }
         .padding(BighelpTokens.space16)
@@ -414,7 +414,7 @@ struct AgentFeedView: View {
             }
             ForEach(BoardTimeBucket.grouped(store.feed), id: \.title) { group in
                 Text(group.title)
-                    .font(.title2.weight(.bold))
+                    .font(.bighelp(.title2).weight(.bold))
                     .foregroundStyle(theme.primaryText)
                     .padding(.top, BighelpTokens.space8)
                     .accessibilityAddTraits(.isHeader)
@@ -442,7 +442,7 @@ private struct FeedPostView: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                 HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
                     Text(item.title)
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                         .foregroundStyle(theme.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -450,7 +450,7 @@ private struct FeedPostView: View {
                 }
                 if !item.body.isEmpty {
                     Text(markdown(item.body))
-                        .font(.body)
+                        .font(.bighelp(.body))
                         .foregroundStyle(theme.primaryText.opacity(0.9))
                         .tint(theme.action)
                         .fixedSize(horizontal: false, vertical: true)
@@ -474,7 +474,7 @@ private struct FeedPostView: View {
                 ForEach(item.links.filter { $0.url != previewedLink?.url }, id: \.url) { link in
                     Link(destination: link.url) {
                         Label(link.title.isEmpty ? (link.url.host() ?? "Open link") : link.title, systemImage: "link")
-                            .font(.subheadline.weight(.medium))
+                            .font(.bighelp(.subheadline).weight(.medium))
                     }
                     .tint(theme.action)
                 }
@@ -502,7 +502,7 @@ private struct FeedPostView: View {
                 Task { await context.store.rate(item, item.rating == .up ? .none : .up) }
             } label: {
                 Image(systemName: item.rating == .up ? "hand.thumbsup.fill" : "hand.thumbsup")
-                    .font(.title3)
+                    .font(.bighelp(.title3))
                     .foregroundStyle(item.rating == .up ? theme.action : theme.primaryText)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
@@ -521,7 +521,7 @@ private struct FeedPostView: View {
                     }
                 } label: {
                     Image(systemName: item.rating == .down ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                        .font(.title3)
+                        .font(.bighelp(.title3))
                         .foregroundStyle(item.rating == .down ? theme.action : theme.primaryText)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
@@ -535,7 +535,7 @@ private struct FeedPostView: View {
                 context.onAsk("About “\(item.title)”: ")
             } label: {
                 Label("Discuss", systemImage: "bubble.left")
-                    .font(.body.weight(.medium))
+                    .font(.bighelp(.body).weight(.medium))
                     .foregroundStyle(theme.primaryText)
                     .frame(minHeight: BighelpTokens.hitTarget)
             }
@@ -546,7 +546,7 @@ private struct FeedPostView: View {
                 isShowingInfo = true
             } label: {
                 Image(systemName: "info.circle")
-                    .font(.title3)
+                    .font(.bighelp(.title3))
                     .foregroundStyle(theme.secondaryText)
                     .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget, alignment: .trailing)
             }
@@ -555,13 +555,13 @@ private struct FeedPostView: View {
             .popover(isPresented: $isShowingInfo) {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                     Text(item.source.isEmpty ? "Posted by \(context.agentName)" : item.source)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                     Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .foregroundStyle(.secondary)
                     if item.rating == .down, !item.reason.isEmpty {
                         Label("You said: \(item.reason)", systemImage: "hand.thumbsdown")
-                            .font(.caption)
+                            .font(.bighelp(.caption))
                             .foregroundStyle(.secondary)
                     }
                     Button("Delete this post", role: .destructive) {
@@ -638,7 +638,7 @@ struct AgentIdeasView: View {
             ForEach(sections(store.ideas), id: \.title) { section in
                 if !section.title.isEmpty {
                     Text(section.title)
-                        .font(.title2.weight(.bold))
+                        .font(.bighelp(.title2).weight(.bold))
                         .foregroundStyle(theme.primaryText)
                         .padding(.top, BighelpTokens.space8)
                 }
@@ -655,6 +655,7 @@ struct AgentIdeasView: View {
             IdeaDetailSheet(idea: idea, context: context)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .bighelpSheetSize(.standard)
         }
     }
 
@@ -675,11 +676,11 @@ struct AgentIdeasView: View {
             BoardIcon(icon: idea.icon, fallback: "lightbulb", size: 48)
             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                 Text(idea.title)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .multilineTextAlignment(.leading)
                 Text(idea.body)
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(4)
                     .multilineTextAlignment(.leading)
@@ -705,10 +706,10 @@ private struct IdeaDetailSheet: View {
             VStack(alignment: .leading, spacing: BighelpTokens.space16) {
                 BoardIcon(icon: idea.icon, fallback: "lightbulb", size: 64)
                 Text(idea.title)
-                    .font(.title2.weight(.bold))
+                    .font(.bighelp(.title2).weight(.bold))
                     .foregroundStyle(theme.primaryText)
                 Text(markdown(idea.body))
-                    .font(.body)
+                    .font(.bighelp(.body))
                     .foregroundStyle(theme.primaryText)
                     .tint(theme.action)
                 VStack(spacing: BighelpTokens.space8) {
@@ -717,7 +718,7 @@ private struct IdeaDetailSheet: View {
                         context.onAsk("Yes, go ahead with this idea: “\(idea.title)”.")
                     } label: {
                         Text("Let's do it")
-                            .font(.body.weight(.semibold))
+                            .font(.bighelp(.body).weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
                     }
                     .bighelpProminentButtonStyle()
@@ -731,7 +732,7 @@ private struct IdeaDetailSheet: View {
                             Task { await context.store.promote(idea) }
                         } label: {
                             Label("Make it a goal", systemImage: "target")
-                                .font(.body.weight(.semibold))
+                                .font(.bighelp(.body).weight(.semibold))
                                 .foregroundStyle(theme.primaryText)
                                 .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
                         }
@@ -743,7 +744,7 @@ private struct IdeaDetailSheet: View {
                         Task { await context.store.hide(idea) }
                     } label: {
                         Text("Not now")
-                            .font(.body.weight(.semibold))
+                            .font(.bighelp(.body).weight(.semibold))
                             .foregroundStyle(theme.secondaryText)
                             .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
                     }
@@ -755,6 +756,23 @@ private struct IdeaDetailSheet: View {
             .padding(BighelpTokens.space24)
         }
         .background(theme.canvas.ignoresSafeArea())
+        #if targetEnvironment(macCatalyst)
+        // iPhone swipes the sheet away; a Mac sheet needs a button (and Esc).
+        .overlay(alignment: .topTrailing) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.bighelp(.body).weight(.semibold))
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .padding(BighelpTokens.space8)
+            .accessibilityLabel("Close")
+            .accessibilityIdentifier("board.idea.close")
+        }
+        #endif
     }
 
     @BighelpThemeReader private var theme
@@ -788,7 +806,7 @@ struct AgentGoalsView: View {
                     context.onAsk("I'd like to set a goal: ")
                 } label: {
                     Label("Create a goal", systemImage: "plus")
-                        .font(.body.weight(.semibold))
+                        .font(.bighelp(.body).weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                         .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -809,7 +827,7 @@ struct AgentGoalsView: View {
                     .padding(6)
                     .background(Circle().fill(color.opacity(0.18)))
                 Text(title)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(color)
             }
             .padding(.top, BighelpTokens.space8)
@@ -821,7 +839,7 @@ struct AgentGoalsView: View {
                 } label: {
                     Label(visible.isEmpty ? "Show \(items.count) done" : "Show \(items.count - visible.count) more",
                           systemImage: "ellipsis")
-                        .font(.subheadline.weight(.medium))
+                        .font(.bighelp(.subheadline).weight(.medium))
                         .foregroundStyle(theme.secondaryText)
                         .frame(minHeight: BighelpTokens.hitTarget)
                 }
@@ -837,7 +855,7 @@ struct AgentGoalsView: View {
                 Task { await context.store.setDone(goal, !goal.isDone) }
             } label: {
                 Image(systemName: goal.isDone ? "checkmark.square.fill" : "square")
-                    .font(.title2)
+                    .font(.bighelp(.title2))
                     .foregroundStyle(goal.isDone ? theme.action : theme.secondaryText)
                     .frame(width: 30, height: BighelpTokens.hitTarget)
                     .contentShape(.rect)
@@ -847,12 +865,12 @@ struct AgentGoalsView: View {
             .accessibilityIdentifier("board.goal.toggle.\(goal.id)")
             VStack(alignment: .leading, spacing: 2) {
                 Text(goal.title)
-                    .font(.headline)
+                    .font(.bighelp(.headline))
                     .foregroundStyle(theme.primaryText)
                     .strikethrough(goal.isDone)
                 if !goal.note.isEmpty {
                     Text(goal.note)
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                 }
             }
@@ -871,7 +889,7 @@ struct AgentGoalsView: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .rotationEffect(.degrees(90))
-                    .font(.body.weight(.semibold))
+                    .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.secondaryText)
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
             }
@@ -964,7 +982,7 @@ struct AgentAppsView<Artifacts: View>: View {
         }
         .refreshable { await media.load(agentID: context.agentID) }
         .task(id: context.agentID) { await media.load(agentID: context.agentID) }
-        .sheet(item: $preview) { ChatAttachmentPreviewView(attachment: $0) }
+        .sheet(item: $preview) { ChatAttachmentPreviewView(attachment: $0).bighelpSheetSize(.large) }
         .padding(.bottom, 100)
         .accessibilityIdentifier("board.media")
     }

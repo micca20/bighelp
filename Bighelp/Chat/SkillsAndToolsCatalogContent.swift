@@ -167,7 +167,7 @@ struct SkillsAndToolsCatalogContent: View {
                             }
                         } label: {
                             HStack(alignment: .top, spacing: BighelpTokens.space12) {
-                                Image(systemName: row.symbol).font(.title3)
+                                Image(systemName: row.symbol).font(.bighelp(.title3))
                                     .foregroundStyle(theme.action).frame(width: 28)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(row.title).bighelpFont(.label, weight: .semibold).foregroundStyle(theme.primaryText)
@@ -179,7 +179,7 @@ struct SkillsAndToolsCatalogContent: View {
                                 VStack(spacing: 6) {
                                     Text(row.enabled ? "On" : "Off")
                                         .bighelpFont(.metadata, weight: .semibold)
-                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                                    Image(systemName: "chevron.right").font(.bighelp(.caption).weight(.semibold))
                                 }
                                 .foregroundStyle(theme.secondaryText)
                             }
@@ -335,7 +335,7 @@ struct SkillsAndToolsCatalogContent: View {
             Spacer(minLength: BighelpTokens.space8)
             if showsDisclosure {
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.tertiaryText)
                     .padding(.top, BighelpTokens.space8)
             }

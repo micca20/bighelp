@@ -149,12 +149,12 @@ struct ChatConnectionBanner: View {
                     .accessibilityHidden(true)
             }
             Text(state == .reconnecting ? "Reconnecting to your computer…" : "Not connected to your computer")
-                .font(.footnote.weight(.medium))
+                .font(.bighelp(.footnote).weight(.medium))
                 .foregroundStyle(theme.secondaryText)
             Spacer(minLength: BighelpTokens.space8)
             if state == .disconnected {
                 Button("Retry", action: retry)
-                    .font(.footnote.weight(.semibold))
+                    .font(.bighelp(.footnote).weight(.semibold))
                     .foregroundStyle(theme.action)
                     .frame(minHeight: BighelpTokens.hitTarget)
                     .accessibilityIdentifier("chat.connection.retry")

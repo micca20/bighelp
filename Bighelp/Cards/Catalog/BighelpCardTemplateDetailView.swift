@@ -45,7 +45,7 @@ struct BighelpCardTemplateDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(entry.summary)
-                .font(.headline)
+                .font(.bighelp(.headline))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -61,7 +61,7 @@ struct BighelpCardTemplateDetailView: View {
             ForEach(entry.dataSourceDisclosures) { source in
                 VStack(alignment: .leading, spacing: 4) {
                     Label(source.host, systemImage: "globe")
-                        .font(.headline)
+                        .font(.bighelp(.headline))
                     Text(refreshDescription(source.minimumIntervalSeconds))
                     Text("Marks data stale after \(durationDescription(source.staleAfterSeconds))")
                     Text(expirationDescription(source.expiresAt))
@@ -72,7 +72,7 @@ struct BighelpCardTemplateDetailView: View {
             }
             Divider()
             Text("Requested components")
-                .font(.headline)
+                .font(.bighelp(.headline))
             ForEach(entry.requestedComponentTypes, id: \.self) { component in
                 Text(component)
             }

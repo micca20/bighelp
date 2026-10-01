@@ -53,7 +53,7 @@ struct VoiceLaunchCover: View {
             AgentLiveAvatar(agentID: agent?.id ?? "voice", displayName: agent?.name ?? "Agent",
                             imageURL: agent?.imageURL, activity: .thinking, size: 200, showsBadge: false)
             Text(agent.map { "Starting voice with \($0.name)…" } ?? "Starting voice…")
-                .font(.title3.weight(.semibold))
+                .font(.bighelp(.title3).weight(.semibold))
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
             ProgressView()

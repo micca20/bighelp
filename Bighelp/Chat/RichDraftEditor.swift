@@ -102,15 +102,23 @@ struct RichDraftLinkSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add", action: onAdd)
                         .disabled(URL(string: target.trimmingCharacters(in: .whitespacesAndNewlines))?.scheme == nil)
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.defaultAction)
+                        #endif
                 }
             }
         }
         .presentationDetents([.height(180)])
         .presentationDragIndicator(.visible)
+        .bighelpSheetSize(.compact)
     }
 }
 
@@ -203,7 +211,7 @@ struct MarkdownSourceTextView: UIViewRepresentable {
         let textView = ClipboardPasteTextView()
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        textView.font = UIFont.bighelp(.body)
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.alwaysBounceVertical = true
@@ -401,7 +409,7 @@ struct RichDraftEditor: View {
                 Button(isSourceMode ? "Rich text" : "Markdown") {
                     if isSourceMode { tryRichMode() } else { showSource() }
                 }
-                .font(.caption)
+                .font(.bighelp(.caption))
                 .frame(minHeight: BighelpTokens.hitTarget)
                 .disabled(pendingReason != nil)
                 .accessibilityIdentifier("\(identifierPrefix).mode")
@@ -416,7 +424,7 @@ struct RichDraftEditor: View {
 
             if let sourceReason, isSourceMode, verticalSizeClass != .compact {
                 Text(sourceReason)
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("\(identifierPrefix).sourceReason")
             }
@@ -424,12 +432,12 @@ struct RichDraftEditor: View {
             if let pendingReason {
                 HStack(alignment: .top) {
                     Text(pendingReason)
-                        .font(.caption)
+                        .font(.bighelp(.caption))
                         .accessibilityIdentifier("\(identifierPrefix).unsaved")
                     Button("Discard unsaved changes", role: .destructive) {
                         discardConfirmation = true
                     }
-                    .font(.caption)
+                    .font(.bighelp(.caption))
                 }
             }
 

@@ -102,7 +102,7 @@ struct ChatConversationIdentityLabel: View {
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
                     Image(systemName: disclosureSymbol)
-                        .font(.caption2.weight(.semibold))
+                        .font(.bighelp(.caption2).weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                         .accessibilityHidden(true)
                 }

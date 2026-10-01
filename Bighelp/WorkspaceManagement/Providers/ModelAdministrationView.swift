@@ -247,6 +247,7 @@ struct ModelAdministrationView: View {
         .task { if store.snapshot == nil { await store.load() } }
         .sheet(item: $assignmentTarget) { target in
             ModelAdministrationPicker(store: store, target: target) { assignmentTarget = nil }
+                .bighelpSheetSize(.standard)
         }
         .confirmationDialog("Reset every auxiliary assignment?", isPresented: $confirmAuxiliaryReset, titleVisibility: .visible) {
             Button("Reset to Automatic", role: .destructive) { Task { await store.resetAuxiliary() } }
@@ -290,7 +291,7 @@ struct ModelAdministrationView: View {
         Section("Readiness") {
             LabeledContent("New sessions", value: runtime.isUsable ? "Ready" : "Needs attention")
             if let source = runtime.source { LabeledContent("Credential source", value: source) }
-            if let message = runtime.errorMessage { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            if let message = runtime.errorMessage { Text(message).font(.bighelp(.footnote)).foregroundStyle(.secondary) }
             if let onOpenProviderAccounts {
                 Button("Open Provider Keys", action: onOpenProviderAccounts)
                     .frame(minHeight: BighelpTokens.hitTarget)
@@ -320,7 +321,7 @@ struct ModelAdministrationView: View {
             if let recommendation = snapshot.recommendation, !recommendation.modelID.isEmpty,
                recommendation.modelID != snapshot.info.modelID {
                 Text("Recommended for \(recommendation.providerID): \(recommendation.modelID)")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
             if let onOpenAgentDefaults {
                 Button("Agent runtime defaults", action: onOpenAgentDefaults)
@@ -375,7 +376,7 @@ struct ModelAdministrationView: View {
             .disabled(store.isBusy)
             if !configuration.privacyFilter.isEmpty {
                 Label("This host has a MoA privacy-filter override. The pinned write API cannot preserve it, so bighelp keeps this page read-only.", systemImage: "lock")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
     }
@@ -402,7 +403,7 @@ struct ModelAdministrationView: View {
                 }
             }
             if analytics.rows.count > 20 {
-                Text("Showing the 20 most-used model routes.").font(.footnote).foregroundStyle(.secondary)
+                Text("Showing the 20 most-used model routes.").font(.bighelp(.footnote)).foregroundStyle(.secondary)
             }
         }
     }
@@ -566,6 +567,7 @@ private struct ModelAdministrationMoAView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $slotTarget) { target in
             slotPicker(target)
+                .bighelpSheetSize(.standard)
         }
         .confirmationDialog("Save all MoA preset assignments?", isPresented: $confirmSave, titleVisibility: .visible) {
             Button("Save") {

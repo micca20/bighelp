@@ -25,6 +25,7 @@ struct ChatAttachmentGallery: View {
         .accessibilityIdentifier("chat.message-attachments")
         .sheet(item: $previewAttachment) { attachment in
             ChatAttachmentPreviewView(attachment: attachment)
+                .bighelpSheetSize(.large)
         }
     }
 
@@ -144,6 +145,10 @@ struct ChatAttachmentPreviewView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        #if targetEnvironment(macCatalyst)
+                        .keyboardShortcut(.cancelAction)
+                        #endif
+                        .bighelpToolbarText()
                 }
                 ToolbarItem(placement: .primaryAction) {
                     saveControl

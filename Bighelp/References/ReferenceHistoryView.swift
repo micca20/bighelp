@@ -11,15 +11,15 @@ struct ReferenceHistoryView: View {
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Context saved with this message. It has not been refreshed.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                         ReferenceSnapshotSource(snapshot: snapshot)
                         Text(snapshot.fetchedAt, format: .dateTime.year().month().day().hour().minute())
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 8)
                 } label: {
                     Label(snapshot.displayLabel, systemImage: "doc.text.magnifyingglass")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .frame(minHeight: 44)
                 }
                 .accessibilityIdentifier("reference-history.snapshot.\(snapshot.identityKey)")

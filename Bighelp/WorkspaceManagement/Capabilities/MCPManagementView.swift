@@ -34,10 +34,10 @@ struct MCPManagementView: View {
                                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                     Text(server.name)
                                     Text("\(server.transport.uppercased()) • \(server.isEnabled ? "Enabled" : "Disabled")")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                     if let runtime = model.runtimeStatus(for: server.name) {
                                         Text("Runtime: \(runtime.state.displayName) • \(runtime.toolCount) tools")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                            .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                     }
                                 }
                                 .frame(minHeight: BighelpTokens.hitTarget)
@@ -52,13 +52,13 @@ struct MCPManagementView: View {
                         ForEach(catalog) { entry in
                             VStack(alignment: .leading, spacing: BighelpTokens.space8) {
                                 HStack {
-                                    Text(entry.name).font(.headline)
+                                    Text(entry.name).font(.bighelp(.headline))
                                     Spacer()
                                     if entry.isInstalled { Image(systemName: "checkmark.circle.fill").accessibilityLabel("Installed") }
                                 }
-                                if !entry.summary.isEmpty { Text(entry.summary).font(.subheadline) }
+                                if !entry.summary.isEmpty { Text(entry.summary).font(.bighelp(.subheadline)) }
                                 Text("\(entry.transport.uppercased()) • \(entry.authType)")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.bighelp(.caption)).foregroundStyle(.secondary)
                                 Button(entry.isInstalled ? "Already installed" : "Review installation") {
                                     catalogCandidate = entry
                                 }
@@ -72,7 +72,7 @@ struct MCPManagementView: View {
 
                     if !snapshot.diagnostics.isEmpty, !ManagementSearch.isActive(search) {
                         Section("Advanced · Catalog diagnostics") {
-                            ForEach(snapshot.diagnostics, id: \.self) { Text($0).font(.footnote) }
+                            ForEach(snapshot.diagnostics, id: \.self) { Text($0).font(.bighelp(.footnote)) }
                         }
                     }
                 }
@@ -87,12 +87,14 @@ struct MCPManagementView: View {
                 showsAdd = false
                 Task { await model.add(draft) }
             }
+            .bighelpSheetSize(.standard)
         }
         .sheet(item: $catalogCandidate) { entry in
             MCPCatalogInstallView(entry: entry, isBusy: model.isBusy) { environment, enabled in
                 catalogCandidate = nil
                 Task { await model.install(entry, environment: environment, enable: enabled) }
             }
+            .bighelpSheetSize(.standard)
         }
     }
 }
@@ -158,7 +160,7 @@ private struct MCPServerFormView: View {
             .navigationTitle("Add MCP server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { save(draft) }.disabled(!isValid || isBusy)
                 }
@@ -221,7 +223,7 @@ private struct MCPCatalogInstallView: View {
                                 set: { values[requirement.name] = $0 }
                             ))
                             .textContentType(.password)
-                            Text(requirement.name).font(.caption).foregroundStyle(.secondary)
+                            Text(requirement.name).font(.bighelp(.caption)).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -235,7 +237,7 @@ private struct MCPCatalogInstallView: View {
             }
             .navigationTitle("Install MCP server")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
         }
     }
 
@@ -318,13 +320,13 @@ private struct MCPServerDetailView: View {
                         if let error = probe.error { Text(error).foregroundStyle(.secondary) }
                         if probe.toolCount > probe.tools.count {
                             Text("Showing the first \(probe.tools.count.formatted()). Hermes uses only the tools your MCP settings include.")
-                                .font(.footnote)
+                                .font(.bighelp(.footnote))
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(probe.tools) { tool in
                             VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                                 Text(tool.name)
-                                if !tool.summary.isEmpty { Text(tool.summary).font(.caption).foregroundStyle(.secondary) }
+                                if !tool.summary.isEmpty { Text(tool.summary).font(.bighelp(.caption)).foregroundStyle(.secondary) }
                             }
                         }
                     }
@@ -343,6 +345,7 @@ private struct MCPServerDetailView: View {
         }
         .sheet(isPresented: $showsCredentialUpdate) {
             MCPServerCredentialEditorView(model: model, serverName: serverName)
+                .bighelpSheetSize(.standard)
         }
         .confirmationDialog("Remove this MCP server?", isPresented: $confirmsRemoval, titleVisibility: .visible) {
             if let server {
@@ -412,7 +415,7 @@ private struct MCPServerCredentialEditorView: View {
             }
             .navigationTitle("Update API Key")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() } }
             .onAppear { model.clearMessages() }
             .onDisappear { value = "" }
             .confirmationDialog("Update this server’s API key?", isPresented: $confirmsUpdate, titleVisibility: .visible) {

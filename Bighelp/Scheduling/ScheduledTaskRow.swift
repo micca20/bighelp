@@ -22,15 +22,15 @@ struct ScheduledTaskRow: View {
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.name)
-                    .font(.callout.weight(.semibold))
+                    .font(.bighelp(.callout).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 Text(ScheduledTaskCopy.friendlySchedule(task))
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 Text(ScheduledTaskCopy.shortNextRun(task, isRunning: isRunning))
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(task.status == .failed ? theme.danger : theme.tertiaryText)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             }
@@ -127,11 +127,11 @@ struct ScheduledTaskSectionCaption: View {
     var body: some View {
         HStack(spacing: BighelpTokens.space8) {
             Text(title.uppercased())
-                .font(.caption2.weight(.bold))
+                .font(.bighelp(.caption2).weight(.bold))
                 .tracking(0.88)
             if let count {
                 Text(count.formatted())
-                    .font(.caption2.weight(.bold))
+                    .font(.bighelp(.caption2).weight(.bold))
                     .monospacedDigit()
             }
         }

@@ -152,7 +152,7 @@ struct HostAccessEditorView: View {
             .navigationTitle("Connection access")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save).accessibilityIdentifier("host-access.save")
                 }

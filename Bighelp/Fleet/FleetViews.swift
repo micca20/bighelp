@@ -6,7 +6,7 @@ struct FleetHostTag: View {
 
     var body: some View {
         Text(name)
-            .font(.caption2.weight(.semibold))
+            .font(.bighelp(.caption2).weight(.semibold))
             .foregroundStyle(theme.secondaryText)
             .lineLimit(1)
             .padding(.horizontal, 7)
@@ -52,11 +52,11 @@ struct FleetHostFilter: View {
                 if status == .loading {
                     ProgressView().controlSize(.mini)
                 } else if case .unreachable = status {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+                    Image(systemName: "exclamationmark.triangle.fill").font(.bighelp(.caption2))
                 }
                 Text(title).lineLimit(1)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.bighelp(.subheadline).weight(.semibold))
             .foregroundStyle(isOn ? theme.actionForeground : theme.primaryText)
             .padding(.horizontal, BighelpTokens.space12)
             .frame(minHeight: 34)
@@ -86,14 +86,14 @@ struct FleetAgentRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
                     Text(agent.name)
-                        .font(.callout.weight(.semibold))
+                        .font(.bighelp(.callout).weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
                     if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(agent.hostID)) }
                     Spacer(minLength: BighelpTokens.space4)
                     if let latest {
                         Text(SessionRow.compactTimestamp(latest.updatedAt))
-                            .font(.footnote)
+                            .font(.bighelp(.footnote))
                             .monospacedDigit()
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
@@ -102,12 +102,12 @@ struct FleetAgentRow: View {
                 }
                 if !agent.role.isEmpty {
                     Text(agent.role)
-                        .font(.footnote.weight(.medium))
+                        .font(.bighelp(.footnote).weight(.medium))
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                 }
                 Text(subtitle(latest))
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
             }
@@ -294,7 +294,7 @@ struct FleetConnectingView: View {
                             .buttonStyle(.borderless)
                     }
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(.bighelp(.subheadline).weight(.semibold))
                 .foregroundStyle(theme.primaryText)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background(theme.surface)
@@ -319,13 +319,13 @@ struct FleetHostNotes: View {
                 HStack(spacing: BighelpTokens.space8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.secondaryText)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(host.name).font(.subheadline.weight(.semibold)).foregroundStyle(theme.primaryText)
+                        Text(host.name).font(.bighelp(.subheadline).weight(.semibold)).foregroundStyle(theme.primaryText)
                         Text(fleet.snapshots[host.id] == nil ? message : "\(message) Showing what it had last time.")
-                            .font(.footnote).foregroundStyle(theme.secondaryText)
+                            .font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText)
                     }
                     Spacer(minLength: BighelpTokens.space8)
                     Button("Try again") { fleet.refresh(force: true) }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.bighelp(.subheadline).weight(.semibold))
                         .buttonStyle(.borderless)
                 }
                 .listRowBackground(Color.clear)
@@ -334,7 +334,7 @@ struct FleetHostNotes: View {
             case .loading where fleet.snapshots[host.id] == nil:
                 HStack(spacing: BighelpTokens.space8) {
                     ProgressView()
-                    Text("Loading \(host.name)…").font(.subheadline).foregroundStyle(theme.secondaryText)
+                    Text("Loading \(host.name)…").font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
                 }
                 .listRowBackground(Color.clear)
             default:
@@ -408,14 +408,14 @@ struct FleetChatRow: View {
                         .lineLimit(1)
                     Spacer(minLength: BighelpTokens.space4)
                     Text(SessionRow.compactTimestamp(chat.updatedAt))
-                        .font(.footnote)
+                        .font(.bighelp(.footnote))
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                         .layoutPriority(1)
                 }
                 HStack(spacing: 6) {
                     Text(agent?.name ?? "Agent")
-                        .font(.subheadline)
+                        .font(.bighelp(.subheadline))
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                     if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(chat.hostID)) }
@@ -478,17 +478,17 @@ struct FleetTasksView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: BighelpTokens.space8) {
                     Text(task.name)
-                        .font(.callout.weight(.semibold))
+                        .font(.bighelp(.callout).weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
                     if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(task.hostID)) }
                 }
                 Text([agent?.name, task.schedule].compactMap { $0 }.joined(separator: " · "))
-                    .font(.subheadline)
+                    .font(.bighelp(.subheadline))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(2)
                 Text(ScheduledTaskCopy.shortNextRun(status: task.status, nextRun: task.nextRun))
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(task.status == .failed ? theme.danger : theme.tertiaryText)
                     .lineLimit(1)
             }
@@ -520,15 +520,15 @@ struct FleetHostPicker: View {
                                 BighelpIconTile(systemName: "desktopcomputer")
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(host.name)
-                                        .font(.body.weight(.semibold))
+                                        .font(.bighelp(.body).weight(.semibold))
                                         .foregroundStyle(theme.primaryText)
                                     Text(detail(host))
-                                        .font(.footnote)
+                                        .font(.bighelp(.footnote))
                                         .foregroundStyle(theme.secondaryText)
                                 }
                                 Spacer(minLength: BighelpTokens.space8)
                                 Image(systemName: "chevron.right")
-                                    .font(.footnote.weight(.semibold))
+                                    .font(.bighelp(.footnote).weight(.semibold))
                                     .foregroundStyle(theme.tertiaryText)
                             }
                             .frame(minHeight: BighelpTokens.hitTarget)
@@ -546,7 +546,9 @@ struct FleetHostPicker: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .accessibilityIdentifier("fleet.gate.cancel")
+                        .bighelpToolbarText()
                 }
             }
         }
@@ -582,11 +584,11 @@ struct FleetAgentPicker: View {
                                    imageURL: fleet.avatars.url(for: agent.avatarFile), size: 40)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: BighelpTokens.space8) {
-                                Text(agent.name).font(.body.weight(.semibold)).foregroundStyle(theme.primaryText)
+                                Text(agent.name).font(.bighelp(.body).weight(.semibold)).foregroundStyle(theme.primaryText)
                                 if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(agent.hostID)) }
                             }
                             if !agent.role.isEmpty {
-                                Text(agent.role).font(.footnote).foregroundStyle(theme.secondaryText).lineLimit(1)
+                                Text(agent.role).font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText).lineLimit(1)
                             }
                         }
                         Spacer(minLength: 0)
@@ -601,7 +603,7 @@ struct FleetAgentPicker: View {
             .navigationTitle("New chat with…")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
             }
         }
         .presentationDragIndicator(.visible)

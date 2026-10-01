@@ -9,7 +9,7 @@ struct SkippedPartsNote: View {
             Section {
                 Label("This host didn't return: \(parts.joined(separator: ", ")). Everything else is up to date.",
                       systemImage: "info.circle")
-                    .font(.footnote)
+                    .font(.bighelp(.footnote))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings.skipped-parts")
             }

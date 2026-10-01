@@ -101,9 +101,11 @@ struct LiveVoiceView: View {
                     model.end()
                     onEnded()
                 }
+                .keyboardShortcut(.cancelAction)
                 .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
                 .accessibilityHint("Stops live audio. Accepted tasks are not cancelled.")
                 .accessibilityIdentifier("live-voice.close")
+                    .bighelpToolbarText()
             }
             ToolbarItem(placement: .principal) {
                 statusPill
@@ -173,7 +175,8 @@ struct LiveVoiceView: View {
         if !model.userCaption.isEmpty { return model.userCaption }
         if let last = model.transcripts.last { return last.text }
         if model.isCallOpen { return "Start speaking when you’re ready" }
-        return model.phase == .failed ? "Live voice didn’t connect" : "Tap Start to talk live"
+        if model.phase == .failed { return "Live voice didn’t connect" }
+        return BighelpPlatform.isMac ? "Click Start to talk live" : "Tap Start to talk live"
     }
 
     private var hasCaption: Bool {
