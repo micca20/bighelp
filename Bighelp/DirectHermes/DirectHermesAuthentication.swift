@@ -651,6 +651,10 @@ final class DirectHermesAuthenticator {
         try await verifyModeAndSession()
     }
 
+    #if DEBUG
+    func adoptForTesting(_ saved: DirectHermesSavedConnection) { savedConnection = saved }
+    #endif
+
     func verifyModeAndSession() async throws {
         guard let saved = savedConnection else { throw DirectHermesError.notConnected }
         let gated = try await discoverGatedMode()
@@ -988,12 +992,46 @@ final class DirectHermesAuthenticator {
 
     func authenticatedResponse(_ request: DirectHermesHTTPRequest,
                                nativeGuard: DirectHermesNativeRequestGuard? = nil) async throws -> DirectHermesHTTP.Response {
+        func send(_ tokens: (bearer: String?, dashboard: String?)) async throws -> DirectHermesHTTP.Response {
+            try await http.send(route: request.path, method: request.method.rawValue,
+                                query: request.query, body: request.body, bearer: tokens.bearer,
+                                legacyToken: tokens.dashboard,
+                                maximumResponseBytes: request.maximumResponseBytes, timeout: request.timeout,
+                                nativeGuard: nativeGuard)
+        }
         let tokens = try await authenticatedTokens()
-        return try await http.send(route: request.path, method: request.method.rawValue,
-                                   query: request.query, body: request.body, bearer: tokens.bearer,
-                                   legacyToken: tokens.dashboard,
-                                   maximumResponseBytes: request.maximumResponseBytes, timeout: request.timeout,
-                                   nativeGuard: nativeGuard)
+        let response = try await send(tokens)
+        guard response.http.statusCode == 401,
+              response.http.value(forHTTPHeaderField: "WWW-Authenticate") == nil,
+              await renewSignIn(turnedAway: tokens) else { return response }
+        // Hermes checks the sign-in before any route runs, so the request never
+        // started and sending it once more is safe.
+        return try await send(try await authenticatedTokens())
+    }
+
+    /// The socket stays signed in from when it connected, but Hermes checks every
+    /// web request again. A token revoked early, renewed by another request, or
+    /// replaced when the dashboard restarted fails here first, while chat still
+    /// works. Renew once and say whether the request is worth sending again.
+    private func renewSignIn(turnedAway tokens: (bearer: String?, dashboard: String?)) async -> Bool {
+        guard let saved = savedConnection else { return false }
+        switch saved.authentication {
+        case .bearer(let token, let refreshToken, _):
+            guard token == tokens.bearer else { return true }
+            guard refreshTask != nil || (refreshToken != nil && !refreshOutcomeUncertain) else { return false }
+            return (try? await refresh()) != nil
+        case .dashboardSession(let token, let automatic):
+            guard token == tokens.dashboard else { return true }
+            guard automatic, let fresh = try? await dashboardToken(), fresh != token,
+                  savedConnection == saved else { return false }
+            var replacement = saved
+            replacement.authentication = .dashboardSession(token: fresh, automatic: true)
+            do { try persistRotation?(saved, replacement) } catch { return false }
+            savedConnection = replacement
+            return true
+        case .legacyLoopbackToken:
+            return false
+        }
     }
 
     func authenticatedManagedFileResponse(

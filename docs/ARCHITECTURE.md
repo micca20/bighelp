@@ -215,10 +215,16 @@ direct chats and scheduled tasks without changing that selection model.
 live runtime stores; `RegistryFleetReader` reads the others at most once a
 minute through each host's own `DirectHermesWorkspaceStore` (one connection per
 host, never a second client for the same credentials), discovering its
-capabilities like a runtime does, then suspends a connection it opened. A read
-stops if that host becomes selected. Opening an agent, chat or task on another
-host selects that host and runs the open once its runtime is ready; host-only
-screens ask which host first. Removing a host deletes its snapshot.
+capabilities like a runtime does. A read stops if that host becomes selected.
+While the view is on and the app isn't in the background,
+`BighelpHostRegistry.keepsOtherHostsConnected` keeps every host's store
+connected: a switch doesn't suspend the previous host's store, and the reader
+keeps the others open. Turning it off or going to the background closes all but
+the selected one, as before. Opening an agent, chat or task on another host
+selects that host and runs the open as soon as its runtime exists with its saved
+catalog, before the runtime's refresh finishes (the same point the home chat
+opens at launch); host-only screens ask which host first. Removing a host
+deletes its snapshot.
 
 The optional account device list retains separate selected/primary preferences
 for account management and fixtures. Those paired-device preferences cannot

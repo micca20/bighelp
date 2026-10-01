@@ -34,7 +34,9 @@ struct HostPluginFeatureSection: View {
     @State private var requestID = UUID()
 
     private var identity: String {
-        "\(registry?.selectedHostID?.uuidString ?? "none"):\(registry?.generation.uuidString ?? "none"):\(registry?.selectedWorkspace?.connectionGeneration.uuidString ?? "none")"
+        // The connection generation isn't observed; isConnected is, so a drop and
+        // reconnect re-runs the check instead of keeping the old answer.
+        "\(registry?.selectedHostID?.uuidString ?? "none"):\(registry?.generation.uuidString ?? "none"):\(registry?.selectedWorkspace?.connectionGeneration.uuidString ?? "none"):\(registry?.selectedWorkspace?.isConnected == true)"
     }
 
     var body: some View {
@@ -124,8 +126,17 @@ struct HostPluginFeatureSection: View {
         // middleware did not advertise it; a thrown route means the plugin is
         // not loaded there. Both are distinct from "not installed".
         var nativeResponded = false
+        var nativeFailure: (any Error)?
         do {
-            let context = try await client.loadContext(force: true)
+            let context: DirectHermesNativeContext
+            do { context = try await client.loadContext(force: true) }
+            catch where Self.isMomentary(error) {
+                // A host waking up or a network hand-off; one more try before
+                // reporting anything.
+                try await Task.sleep(for: .seconds(1))
+                guard owns() else { return }
+                context = try await client.loadContext(force: true)
+            }
             guard owns() else { return }
             nativeResponded = true
             if context.features.contains(feature.capability) {
@@ -144,6 +155,7 @@ struct HostPluginFeatureSection: View {
             }
         } catch {
             guard owns() else { return }
+            nativeFailure = error
             // A missing route can mean absent, disabled, or not yet loaded.
             // Read the official manager before offering any installation.
         }
@@ -165,7 +177,7 @@ struct HostPluginFeatureSection: View {
                 } else if installed.configuredEnabled {
                     status = nativeResponded
                         ? "The plugin is installed and its native API answered, but it did not advertise this feature. Check the hermes serve log on the host for why the native middleware was skipped, restart the hermes serve process on the host itself, then check again."
-                        : "The plugin is installed, but bighelp could not reach its native API on this host. Restarting the messaging gateway only loads agent tools; restart the hermes serve process on the host itself, then reconnect and check again."
+                        : Self.unreachableMessage(nativeFailure)
                 } else {
                     status = "The bighelp plugin is installed but disabled."
                     action = "Enable bighelp Plugin"
@@ -176,6 +188,30 @@ struct HostPluginFeatureSection: View {
         } catch {
             guard owns() else { return }
             status = "Plugin status could not be verified. Check your host connection and try again."
+        }
+    }
+
+    /// Only a missing route means hermes serve hasn't loaded the plugin. A
+    /// turned-away sign-in or a host that didn't answer needs a different step,
+    /// and a restart wouldn't help.
+    static func unreachableMessage(_ failure: (any Error)?) -> String {
+        switch failure {
+        case WorkspaceClientError.unavailable(.pluginRequired)?:
+            "The plugin is installed, but bighelp could not reach its native API on this host. Restarting the messaging gateway only loads agent tools; restart the hermes serve process on the host itself, then reconnect and check again."
+        case WorkspaceClientError.authenticationRequired?:
+            "The plugin is installed, but this host turned down bighelp's sign-in. Sign in to the host again, then check again."
+        default:
+            "The plugin is installed, but this host didn't answer bighelp just now. Check again in a moment."
+        }
+    }
+
+    private static func isMomentary(_ error: any Error) -> Bool {
+        switch error {
+        case WorkspaceClientError.transportUnavailable, DirectHermesError.timedOut, DirectHermesError.connectionFailed,
+             DirectHermesError.serverUnavailable:
+            true
+        default:
+            false
         }
     }
 

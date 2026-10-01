@@ -275,6 +275,53 @@ def board_feedback(home: Path) -> dict:
             "all_read": all(row[3] == 1 for key, row in rows.items() if key.startswith("probe-") and key != "probe-trip")}
 
 
+class DelayProxy:
+    """Forwards a loopback port to another, holding each chunk for `delay` seconds each way, like a slower
+    network (a Tailscale link to another computer). Order is kept and throughput isn't limited."""
+
+    def __init__(self, target_port: int, delay: float):
+        import asyncio
+        self.port = free_port()
+        self.loop = asyncio.new_event_loop()
+        threading.Thread(target=self.loop.run_forever, daemon=True).start()
+
+        async def pipe(reader, writer):
+            queue = asyncio.Queue()
+
+            async def send():
+                while (item := await queue.get()) is not None:
+                    due, data = item
+                    await asyncio.sleep(max(0.0, due - self.loop.time()))
+                    writer.write(data)
+                    await writer.drain()
+                writer.close()
+            sender = asyncio.ensure_future(send())
+            try:
+                while data := await reader.read(65536):
+                    queue.put_nowait((self.loop.time() + delay, data))
+            except (ConnectionError, OSError):
+                pass
+            queue.put_nowait(None)
+            await sender
+
+        async def handle(client_reader, client_writer):
+            try:
+                upstream_reader, upstream_writer = await asyncio.open_connection("127.0.0.1", target_port)
+            except OSError:
+                client_writer.close()
+                return
+            await asyncio.gather(pipe(client_reader, upstream_writer), pipe(upstream_reader, client_writer),
+                                 return_exceptions=True)
+
+        async def start():
+            return await asyncio.start_server(handle, "127.0.0.1", self.port)
+        self.server = asyncio.run_coroutine_threadsafe(start(), self.loop).result(10)
+
+    def close(self):
+        self.loop.call_soon_threadsafe(self.server.close)
+        self.loop.call_soon_threadsafe(self.loop.stop)
+
+
 def free_port() -> int:
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
@@ -305,7 +352,7 @@ def run_fleet(args, repo: Path) -> int:
         temp = Path(temporary).resolve()
         model = ThreadingHTTPServer(("127.0.0.1", 0), SyntheticModel)
         threading.Thread(target=model.serve_forever, daemon=True).start()
-        hosts, logs = [], []
+        hosts, logs, proxies = [], [], []
         try:
             for label, display, extra in (("desk", "Desk agent", []), ("lab", "Lab agent", ["researcher"])):
                 home, project = temp / label / "home", temp / label / "project"
@@ -313,7 +360,12 @@ def run_fleet(args, repo: Path) -> int:
                 project.mkdir(parents=True)
                 port = free_port()
                 origin = f"http://127.0.0.1:{port}"
-                config = {"dashboard": {"public_url": origin},
+                # The app reaches each host through a proxy that adds the given network delay.
+                proxy = DelayProxy(port, args.latency_ms / 1000) if args.latency_ms else None
+                if proxy:
+                    proxies.append(proxy)
+                public = f"http://127.0.0.1:{proxy.port}" if proxy else origin
+                config = {"dashboard": {"public_url": public},
                           "model": {"default": "fixture-model", "provider": "custom",
                                     "base_url": f"http://127.0.0.1:{model.server_port}/v1",
                                     "api_key": "local-synthetic-no-auth"},
@@ -337,8 +389,8 @@ def run_fleet(args, repo: Path) -> int:
                 process = subprocess.Popen([args.hermes, "serve", "--host", "127.0.0.1", "--port", str(port),
                                             "--isolated", "--skip-build"], cwd=project, env=env, stdout=log,
                                            stderr=subprocess.STDOUT)
-                hosts.append((label, origin, env["HERMES_DASHBOARD_SESSION_TOKEN"], process, home))
-            for label, origin, token, process, _ in hosts:
+                hosts.append((label, origin, env["HERMES_DASHBOARD_SESSION_TOKEN"], process, home, public))
+            for label, origin, token, process, _, _ in hosts:
                 deadline = time.monotonic() + 90
                 while True:
                     if process.poll() is not None:
@@ -352,8 +404,8 @@ def run_fleet(args, repo: Path) -> int:
                         raise TimeoutError(f"Hermes not ready (fleet {label})")
                     time.sleep(0.3)
             secret = temp / "probe.json"
-            secret.write_text(json.dumps({"mode": "fleet", "address_a": hosts[0][1].removeprefix("http://"),
-                                          "address_b": hosts[1][1].removeprefix("http://")}))
+            secret.write_text(json.dumps({"mode": "fleet", "address_a": hosts[0][5].removeprefix("http://"),
+                                          "address_b": hosts[1][5].removeprefix("http://")}))
             secret.chmod(0o600)
             client_env = dict(os.environ, TEST_RUNNER_BIGHELP_SIGNIN_PROBE=str(secret),
                               TEST_RUNNER_BIGHELP_SIGNIN_EVIDENCE=str(args.results / "fleet"))
@@ -366,12 +418,18 @@ def run_fleet(args, repo: Path) -> int:
             with (args.results / "xcodebuild-fleet.log").open("w") as output:
                 result = subprocess.run(command, env=client_env, cwd=repo, stdout=output, stderr=subprocess.STDOUT,
                                         timeout=1500)
-            for label, *_, home in hosts:
+            for label, _, _, _, home, _ in hosts:
                 print(json.dumps({"host": label, "session_sources_on_host": session_sources(home)}), flush=True)
+            timings = args.results / "fleet" / "fleet-timings.json"
+            if timings.exists():
+                print(json.dumps({"switch_seconds": json.loads(timings.read_text()),
+                                  "latency_ms": args.latency_ms}), flush=True)
             print(json.dumps({"mode": "fleet", "exit_code": result.returncode}), flush=True)
             return result.returncode
         finally:
-            for label, _, _, process, home in hosts:
+            for proxy in proxies:
+                proxy.close()
+            for label, _, _, process, home, _ in hosts:
                 if (home / "logs").exists():
                     shutil.copytree(home / "logs", args.results / f"hermes-fleet-{label}-logs", dirs_exist_ok=True)
                 process.terminate()
@@ -508,6 +566,8 @@ def main():
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--modes", default="open,password,sso")
     parser.add_argument("--plugin", type=Path, help="bighelp (loopdy) plugin folder, for the tools mode")
+    parser.add_argument("--latency-ms", type=int, default=0,
+                        help="fleet mode: network delay each way between the app and each host")
     args = parser.parse_args()
     args.results.mkdir(parents=True, exist_ok=True)
     repo = Path(__file__).resolve().parents[1]

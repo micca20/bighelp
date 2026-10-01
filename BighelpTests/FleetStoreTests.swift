@@ -19,6 +19,7 @@ struct FleetStoreTests {
         var failures: [UUID: String] = [:]
         private(set) var reads: [UUID] = []
         private(set) var selected: [UUID] = []
+        private(set) var keptConnected: [UUID] = []
 
         init(hosts: [FleetHost]) { self.hosts = hosts }
 
@@ -34,6 +35,8 @@ struct FleetStoreTests {
         }
 
         func canOpen(_ hostID: UUID) -> Bool { true }
+
+        func keepConnected(_ hostID: UUID) async { keptConnected.append(hostID) }
     }
 
     private func directory() -> URL {
@@ -90,6 +93,19 @@ struct FleetStoreTests {
         fleet.refresh(force: true)
         await fleet.waitForReads()
         #expect(reader.reads == [studio, studio])
+    }
+
+    @Test func aHostReadRecentlyIsStillKeptConnectedForTheNextSwitch() async {
+        let reader = reader()
+        let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)
+        fleet.refresh()
+        await fleet.waitForReads()
+        #expect(reader.keptConnected.isEmpty, "A read connects it anyway")
+
+        fleet.refresh()
+        for _ in 0..<20 where reader.keptConnected.isEmpty { await Task.yield() }
+        #expect(reader.reads == [studio])
+        #expect(reader.keptConnected == [studio], "Not read again, but its connection is checked")
     }
 
     @Test func aHostOutOfReachKeepsWhatItHadLastTime() async {

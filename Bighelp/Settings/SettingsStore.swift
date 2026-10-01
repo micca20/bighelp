@@ -345,7 +345,7 @@ final class SettingsStore {
         )
         organizeChatsByProjects = defaults.bool(
             forKey: Keys.organizeChatsByProjects,
-            default: false
+            default: true
         )
         showCronSessions = defaults.bool(
             forKey: Keys.showCronSessions,

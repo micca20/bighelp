@@ -122,13 +122,24 @@ extension RootShellView {
         performFleetOpen(pending.open)
     }
 
-    /// The selected host's own screens are live: its runtime is ready and its
-    /// chats are loaded.
+    /// The selected host is connected and its chats are on hand. That's the
+    /// saved copy from its last visit, so a chat opens at once while the host's
+    /// details finish loading behind it (like the home chat at launch).
     var isFleetHostReady: Bool {
         if usesWorkspaceFixtures, workspaceConnections?.isDirectSelected != true { return sessionCatalog.hasLoadedState }
-        guard let runtime = nativeRuntime, runtime.isReady, !runtime.isSuspended,
+        guard let runtime = nativeRuntime, !runtime.isSuspended,
               runtime.authority == currentWorkspaceOwner?.authority else { return false }
         return sessionCatalog.hasLoadedState
+    }
+
+    /// Other hosts stay connected while the all-hosts view is on and the app
+    /// is open; in the background only the selected host's connection stays,
+    /// as before.
+    var keepsFleetHostsConnected: Bool { fleetModeOn && scenePhase != .background && hostRegistry != nil }
+
+    func setKeepsFleetHostsConnected(_ keep: Bool) {
+        hostRegistry?.keepsOtherHostsConnected = keep
+        if keep { fleet?.refresh() }
     }
 
     struct FleetOpenReadiness: Equatable {
@@ -321,10 +332,12 @@ struct FleetHooks: ViewModifier {
     let readiness: RootShellView.FleetOpenReadiness
     let hostsKey: [UUID]
     let scenePhase: ScenePhase
+    let keepsConnected: Bool
     let recordLive: () -> Void
     let openPending: () -> Void
     let syncHosts: () -> Void
     let cancelReads: () -> Void
+    let setKeepsConnected: (Bool) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -332,5 +345,6 @@ struct FleetHooks: ViewModifier {
             .onChange(of: readiness, initial: true) { _, _ in openPending() }
             .onChange(of: hostsKey) { _, _ in syncHosts() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { cancelReads() } }
+            .onChange(of: keepsConnected, initial: true) { _, keep in setKeepsConnected(keep) }
     }
 }

@@ -377,18 +377,18 @@ struct SettingsStoreTests {
         #expect(SettingsStore(defaults: defaults).showProjectChanges)
     }
 
-    @Test func organizeChatsByProjectsIsOffByDefaultAndPersistsWhenEnabled() {
+    @Test func organizeChatsByProjectsIsOnByDefaultAndPersistsWhenTurnedOff() {
         let suiteName = #function
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = SettingsStore(defaults: defaults)
-        #expect(!settings.organizeChatsByProjects)
+        #expect(settings.organizeChatsByProjects)
 
-        settings.organizeChatsByProjects = true
+        settings.organizeChatsByProjects = false
 
-        #expect(SettingsStore(defaults: defaults).organizeChatsByProjects)
+        #expect(!SettingsStore(defaults: defaults).organizeChatsByProjects)
     }
 
     @Test func midSessionChatBehaviorDefaultsToSteerAndOffersEveryHermesMode() {

@@ -186,8 +186,10 @@ struct RootShellView: View {
             onNewChat: startFleetChat))
         .modifier(FleetHooks(
             liveKey: liveFleetKey, readiness: fleetOpenReadiness, hostsKey: fleetHostsKey, scenePhase: scenePhase,
+            keepsConnected: keepsFleetHostsConnected,
             recordLive: recordLiveFleet, openPending: openPendingFleetIfReady,
-            syncHosts: { fleet?.syncHosts() }, cancelReads: { fleet?.cancelReads() }))
+            syncHosts: { fleet?.syncHosts() }, cancelReads: { fleet?.cancelReads() },
+            setKeepsConnected: setKeepsFleetHostsConnected))
         .environment(\.agentDeletion, agentDeletionAction)
         .bighelpThemePresentation(theme)
         .onChange(of: hostRegistry?.hosts.isEmpty, initial: true) { _, _ in

@@ -14,6 +14,12 @@ protocol FleetHostReading: AnyObject {
     func select(_ hostID: UUID)
     /// Demo hosts can be listed but not opened.
     func canOpen(_ hostID: UUID) -> Bool
+    /// Opens the host's connection ahead of a switch, when the app keeps them.
+    func keepConnected(_ hostID: UUID) async
+}
+
+extension FleetHostReading {
+    func keepConnected(_ hostID: UUID) async {}
 }
 
 /// Why a host couldn't be read, in words for the list.
@@ -160,7 +166,12 @@ final class FleetStore {
         syncHosts()
         for host in hosts where !host.isSelected && reads[host.id] == nil {
             if !force, statuses[host.id] == .ready, let snapshot = snapshots[host.id],
-               Date().timeIntervalSince(snapshot.refreshedAt) < Self.freshness { continue }
+               Date().timeIntervalSince(snapshot.refreshedAt) < Self.freshness {
+                // Read recently, but its connection may have closed since.
+                let id = host.id
+                Task { [reader] in await reader.keepConnected(id) }
+                continue
+            }
             statuses[host.id] = .loading
             let id = host.id
             reads[id] = Task { [weak self] in

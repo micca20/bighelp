@@ -273,6 +273,7 @@
 		36B7524D0B1D91AA51D0F9B1 /* DirectHermesProjectLifecycleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 443A7C01587F2C21EA5FAA7E /* DirectHermesProjectLifecycleClient.swift */; };
 		36D0665883394BC3945B7E06 /* KanbanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FE492B5B8378E9BE51DE32 /* KanbanStore.swift */; };
 		36E55359D4641854EF9DC789 /* ChatQuickActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFCDE26931664C3249FF5F51 /* ChatQuickActionsView.swift */; };
+		370B8298AD07F8E455C8376B /* DirectHermesSignInRenewalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6DC920A857FEE48A139A6 /* DirectHermesSignInRenewalTests.swift */; };
 		371BB39D4A8F91DC1BBCCCBF /* BighelpWidgetStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0C46DD88DD92320846BD65 /* BighelpWidgetStyle.swift */; };
 		37D8C4DF6A7A0C7D16FF2301 /* VoiceLaunchCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75825C0D9C432116324712E3 /* VoiceLaunchCover.swift */; };
 		37E1B15E43AFAAD681410A94 /* ChatModel+Reactions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C0A77E2E8EA521E679BE14 /* ChatModel+Reactions.swift */; };
@@ -2154,6 +2155,7 @@
 		B4739CC04F81734EEE532D09 /* DirectHermesHostPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesHostPayload.swift; sourceTree = "<group>"; };
 		B47A0A6E9897C9A89CA374A3 /* BighelpRealtimeAudioPeerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpRealtimeAudioPeerTests.swift; sourceTree = "<group>"; };
 		B4941F32A0895F8230986EE1 /* NativeWikiOwnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWikiOwnerTests.swift; sourceTree = "<group>"; };
+		B4F6DC920A857FEE48A139A6 /* DirectHermesSignInRenewalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesSignInRenewalTests.swift; sourceTree = "<group>"; };
 		B514B0875F7F274E6189C77B /* DirectHermesHistoryProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectHermesHistoryProjectionTests.swift; sourceTree = "<group>"; };
 		B59BF95659611DA054F74F94 /* BighelpLinkPushCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BighelpLinkPushCoordinatorTests.swift; sourceTree = "<group>"; };
 		B6042C0EC3B8B2FA6F5837C4 /* ProjectsLifecycleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsLifecycleView.swift; sourceTree = "<group>"; };
@@ -3372,6 +3374,7 @@
 				14ECCEE2E9EEA43F1B402D52 /* DirectHermesSecurePromptTests.swift */,
 				99BE727EEC8E98B908ECBF3D /* DirectHermesSessionCatalogClientTests.swift */,
 				37B2EB49CB9A23116469C17F /* DirectHermesSessionControlClientTests.swift */,
+				B4F6DC920A857FEE48A139A6 /* DirectHermesSignInRenewalTests.swift */,
 				95D917C06BD57494A90A5534 /* DirectHermesTransferBudgetTests.swift */,
 				156C32372A4D91EB1456BAB2 /* DirectHermesVoiceClientTests.swift */,
 				A004480D232CF549915BBCB7 /* DirectHermesVoiceMediaTests.swift */,
@@ -5708,6 +5711,7 @@
 				5DAD7173116DA217836A9D93 /* DirectHermesSecurePromptTests.swift in Sources */,
 				662F45EB53808D0E9668CA25 /* DirectHermesSessionCatalogClientTests.swift in Sources */,
 				0295E1C420530DDEC8B25050 /* DirectHermesSessionControlClientTests.swift in Sources */,
+				370B8298AD07F8E455C8376B /* DirectHermesSignInRenewalTests.swift in Sources */,
 				097D67F2E01BD2916CF4A97E /* DirectHermesTransferBudgetTests.swift in Sources */,
 				F1562FA78D50387FF05BA312 /* DirectHermesVoiceClientTests.swift in Sources */,
 				11147F16C9BD7E368352F905 /* DirectHermesVoiceMediaTests.swift in Sources */,
@@ -6103,7 +6107,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6145,7 +6149,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6178,7 +6182,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6226,7 +6230,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6265,7 +6269,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpWatch/Info.plist;
 				MARKETING_VERSION = 2.3.0;
@@ -6376,7 +6380,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6395,7 +6399,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpNotificationService/BighelpNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6424,7 +6428,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Bighelp/BighelpCarPlay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				"GENERATE_INFOPLIST_FILE[sdk=xros*]" = YES;
@@ -6457,7 +6461,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = BighelpLiveActivity/BighelpLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				"EXCLUDED_ARCHS[sdk=xrsimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BighelpLiveActivity/Info.plist;
@@ -6539,7 +6543,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

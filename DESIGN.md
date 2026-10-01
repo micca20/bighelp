@@ -152,7 +152,9 @@ first while the list stays up. ☰'s recent chats, All chats and Scheduled tasks
 its host's name. Screens that belong to one host (Settings, Agents, Projects, Kanban, Provider usage, the folder,
 New group) ask which host first. The tab bar hides, ☰ › All agents is home, and the button in the list's top bar
 turns it off. Other hosts are read at most once a minute over their own saved sign-ins (`Bighelp/Fleet`); one
-that can't be reached says so and keeps showing what it had last time.
+that can't be reached says so and keeps showing what it had last time. While it's on and the app is open, every
+host stays connected, so a switch opens the agent's chat at once from the copy saved on the phone while that
+host's details finish loading.
 
 Group chats (Hermes hosted rooms / Bot Mode) live in the switcher, ☰ and Agents. Agents opens on the
 **Pinned** agents: each shows its role under the name (one line, trailing off), or what it's doing when it's busy.

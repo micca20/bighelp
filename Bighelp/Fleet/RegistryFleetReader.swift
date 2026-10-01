@@ -15,6 +15,16 @@ final class RegistryFleetReader: FleetHostReading {
     }
 
     func select(_ hostID: UUID) { registry.select(hostID) }
+
+    /// Opens a host's connection ahead of a switch, while the all-hosts view
+    /// keeps other hosts connected.
+    func keepConnected(_ hostID: UUID) async {
+        guard registry.keepsOtherHostsConnected, registry.selectedHostID != hostID, registry.isWorkspaceReady,
+              let host = registry.hosts.first(where: { $0.id == hostID }) else { return }
+        let store = registry.workspace(for: host)
+        guard store.hasSavedConnection, !store.isConnected, !store.isConnecting else { return }
+        await store.reconnect()
+    }
     func canOpen(_ hostID: UUID) -> Bool { registry.hosts.contains { $0.id == hostID } }
 
     func read(_ hostID: UUID, avatars: FleetAvatarFolder) async throws -> FleetSnapshot {
@@ -31,13 +41,17 @@ final class RegistryFleetReader: FleetHostReading {
         guard registry.selectedHostID != hostID, registry.isWorkspaceReady,
               let host = registry.hosts.first(where: { $0.id == hostID }) else { throw CancellationError() }
         let store = registry.workspace(for: host)
+        // Another caller is already connecting it (keeping it connected, or a switch).
+        for _ in 0..<100 where store.isConnecting { try await Task.sleep(for: .milliseconds(200)) }
         let connectsHere = !store.isConnected
-        if connectsHere {
-            guard !store.isConnecting else { throw FleetReadError(message: "Still connecting to this host.") }
-            await store.reconnect()
+        if connectsHere { await store.reconnect() }
+        // Let the connection go again unless the app switched to this host meanwhile,
+        // or the all-hosts view keeps it for the next switch.
+        defer {
+            if connectsHere, registry.selectedHostID != hostID, !registry.keepsOtherHostsConnected {
+                store.suspendForPresentationExit()
+            }
         }
-        // Let the connection go again, unless the app switched to this host meanwhile.
-        defer { if connectsHere, registry.selectedHostID != hostID { store.suspendForPresentationExit() } }
         guard registry.selectedHostID != hostID else { throw CancellationError() }
         guard store.isConnected, let client = store.nativeClient, let saved = store.savedConnection,
               DirectHermesIdentity.matches(saved.identity, host.principalIdentity),

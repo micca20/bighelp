@@ -79,6 +79,12 @@ final class BighelpHostRegistry {
     private(set) var deviceToolFeatureReadinessToken: UInt64 = 0
     private(set) var liveVoiceFeatureReadinessToken: UInt64 = 0
     var isSetupPresented = false
+    /// While the all-hosts view is on and the app is open, a host the app
+    /// switches away from keeps its connection, so switching back skips
+    /// connecting and signing in. Turning it off closes them all again.
+    var keepsOtherHostsConnected = false {
+        didSet { if oldValue, !keepsOtherHostsConnected { closeUnselectedConnections() } }
+    }
     private(set) var setupHostID: UUID?
     private(set) var onboardingHostID: UUID?
     func finishSetup() { onboardingHostID = nil; setupHostID = nil; isSetupPresented = false }
@@ -351,7 +357,7 @@ final class BighelpHostRegistry {
         do {
             try persist(hosts: hosts, selected: id)
             generation = UUID()
-            selectedWorkspace?.suspendForPresentationExit()
+            if !keepsOtherHostsConnected { selectedWorkspace?.suspendForPresentationExit() }
             selectedHostID = id
             selectedWorkspace = selectedHost.map { workspace(for: $0) }
             errorMessage = nil
@@ -381,6 +387,14 @@ final class BighelpHostRegistry {
         selectedWorkspace = selectedHost.map { workspace(for: $0) }
         workspaces[host.id] = nil; vaults[host.id] = nil; draftStores[host.id] = nil
         generation = UUID()
+    }
+
+    /// Every host's connection but the selected one's.
+    func closeUnselectedConnections() {
+        for (id, store) in workspaces where id != selectedHostID && !pendingIDs.contains(id)
+            && (store.isConnected || store.isConnecting) {
+            store.suspendForPresentationExit()
+        }
     }
 
     func beginPluginManagement(hostID: UUID) -> UUID? {

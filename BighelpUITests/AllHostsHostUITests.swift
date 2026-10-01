@@ -46,21 +46,78 @@ final class AllHostsHostUITests: BighelpUITestCase {
         save("fleet-1-both-hosts", app)
 
         // Opening Desk Hermes' agent switches to that host and opens its chat.
+        // Give each agent a chat first, so later taps reopen it.
         desk.tap()
-        let composer = app.textViews["chat.composer.text"]
-        XCTAssertTrue(composer.waitForExistence(timeout: 45), "The agent's chat opens on its own host")
+        try say("Hello desk", in: app)
         save("fleet-2-other-host-chat", app)
         app.buttons["chat.back"].firstMatch.tap()
 
         // Back on the list, Lab Hermes is now the one read in the background.
         XCTAssertTrue(agent(on: "Lab Hermes", in: app).waitForExistence(timeout: 45))
         XCTAssertTrue(agent(on: "Desk Hermes", in: app).exists)
+        named("Lab agent", in: app).tap()
+        try say("Hello lab", in: app)
+        app.buttons["chat.back"].firstMatch.tap()
+
+        // Each switch is timed from the tap to that agent's own chat on screen.
+        var timings: [String: Double] = [:]
+        timings["1-to-desk"] = try timeToOpen(named("Desk agent", in: app), showing: "Hello desk", in: app)
+        app.buttons["chat.back"].firstMatch.tap()
+        timings["2-to-lab"] = try timeToOpen(named("Lab agent", in: app), showing: "Hello lab", in: app)
+        app.buttons["chat.back"].firstMatch.tap()
+        timings["3-to-desk-again"] = try timeToOpen(named("Desk agent", in: app), showing: "Hello desk", in: app)
+        app.buttons["chat.back"].firstMatch.tap()
+        // The floor: the same host's agent again, with no switch at all.
+        timings["4-same-host"] = try timeToOpen(named("Desk agent", in: app), showing: "Hello desk", in: app)
+        app.buttons["chat.back"].firstMatch.tap()
+        report(timings)
         app.buttons["fleet.toggle"].tap()
         menu.tap()
         let hosts = app.buttons["menu.hosts"]
         XCTAssertTrue(hosts.waitForExistence(timeout: 5))
         XCTAssertTrue(hosts.label.contains("Desk Hermes"), "Desk Hermes became the selected host: \(hosts.label)")
         save("fleet-3-desk-selected", app)
+    }
+
+    /// Seconds from tapping an agent to its chat, with the given message, on screen.
+    @MainActor private func timeToOpen(_ agent: XCUIElement, showing message: String,
+                                       in app: XCUIApplication) throws -> Double {
+        XCTAssertTrue(agent.waitForExistence(timeout: 30))
+        let text = app.textViews.matching(NSPredicate(format: "value CONTAINS %@", message)).firstMatch
+        let start = Date()
+        agent.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 60), "The agent's own chat opens on its host")
+        return (Date().timeIntervalSince(start) * 100).rounded() / 100
+    }
+
+    /// Sends a message and waits for the agent's reply, so the chat is saved on the host.
+    @MainActor private func say(_ message: String, in app: XCUIApplication) throws {
+        let composer = app.textViews["chat.composer.text"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 45), "The agent's chat opens on its own host")
+        composer.tap()
+        composer.typeText(message)
+        let send = app.buttons["chat.send"]
+        let deadline = Date().addingTimeInterval(30)
+        while !send.isEnabled, Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        send.tap()
+        let reply = app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "fixture complete")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 45), "The agent replies")
+    }
+
+    @MainActor private func named(_ name: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "(identifier BEGINSWITH 'fleet.agent.' OR identifier BEGINSWITH "
+            + "'fleet.pinned.') AND label BEGINSWITH %@", name)).firstMatch
+    }
+
+    @MainActor private func report(_ timings: [String: Double]) {
+        let json = (try? JSONSerialization.data(withJSONObject: timings, options: [.sortedKeys])) ?? Data()
+        let attachment = XCTAttachment(data: json, uniformTypeIdentifier: "public.json")
+        attachment.name = "fleet-timings"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard let folder = ProcessInfo.processInfo.environment["BIGHELP_SIGNIN_EVIDENCE"] else { return }
+        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try? json.write(to: URL(fileURLWithPath: folder).appendingPathComponent("fleet-timings.json"))
     }
 
     @MainActor private func agent(on host: String, in app: XCUIApplication) -> XCUIElement {
