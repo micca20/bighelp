@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 import Testing
 @testable import Bighelp
@@ -50,6 +51,23 @@ struct DirectHermesBrowserAuthenticationTests {
                 challenge: "synthetic-challenge", provider: nil
             )
         }
+    }
+
+    /// AuthenticationServices may finish the sign-in sheet on its own queue (on the
+    /// Mac, an XPC queue). A main-actor completion trapped there (2.3.0 (59) crash).
+    @Test func sheetCompletionRunsOnAnyQueue() async {
+        let cancelled = await withCheckedContinuation { continuation in
+            let completion = DirectHermesBrowserAuthentication.sessionCompletion { continuation.resume(returning: $0) }
+            DispatchQueue(label: "test.authentication-services").async {
+                completion(nil, ASWebAuthenticationSessionError(.canceledLogin))
+            }
+        }
+        #expect(cancelled)
+        let failed = await withCheckedContinuation { continuation in
+            let completion = DirectHermesBrowserAuthentication.sessionCompletion { continuation.resume(returning: $0) }
+            DispatchQueue.global().async { completion(nil, URLError(.cannotConnectToHost)) }
+        }
+        #expect(!failed)
     }
 
     @Test func callbackRequiresExactPathHostAndState() throws {

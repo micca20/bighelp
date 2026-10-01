@@ -191,8 +191,9 @@ struct DirectHermesBrowserAttemptState: Sendable {
 }
 
 /// Public-API iOS candidate, NOT a claim of runtime qualification. ASWebAuthenticationSession
-/// drives the auth sheet; the HTTP callback is received only by NWListener, never
-/// by a made-up custom scheme or an intercepted browser/cookie API.
+/// drives the auth sheet (on the Mac, your default browser does); the HTTP callback is
+/// received only by NWListener, never by a made-up custom scheme or an intercepted
+/// browser/cookie API.
 @MainActor
 final class DirectHermesBrowserAuthentication: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var state = DirectHermesBrowserAttemptState()
@@ -327,20 +328,48 @@ final class DirectHermesBrowserAuthentication: NSObject, ASWebAuthenticationPres
                 try authorizeOpener(authorize)
                 return
             }
-            let session = ASWebAuthenticationSession(url: authorize, callbackURLScheme: nil) { [weak self] _, error in
-                // HTTP is deliberately NOT registered as a custom scheme. Ignore
-                // any completion URL: only our validated listener supplies code.
-                let userCancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+            #if targetEnvironment(macCatalyst)
+            // The Mac signs in in your own browser, with its saved logins and
+            // passkeys; the 127.0.0.1 listener receives the code just the same.
+            UIApplication.shared.open(authorize) { [weak self] opened in
+                guard !opened else { return }
+                self?.fail(.browserAuthenticationUnavailable)
+            }
+            return
+            #else
+            // HTTP is deliberately NOT registered as a custom scheme. Ignore any
+            // completion URL: only our validated listener supplies code.
+            let session = ASWebAuthenticationSession(url: authorize, callbackURLScheme: nil,
+                                                     completionHandler: Self.sessionCompletion { [weak self] cancelled in
                 Task { @MainActor [weak self] in
                     guard let self, self.state.phase == .pending else { return }
-                    self.fail(userCancelled ? .cancelled(outcomeUnknown: false) : .browserAuthenticationUnavailable)
+                    self.fail(cancelled ? .cancelled(outcomeUnknown: false) : .browserAuthenticationUnavailable)
                 }
-            }
+            })
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
             webSession = session
             guard session.start() else { fail(.browserAuthenticationUnavailable); return }
+            #endif
         } catch { fail(DirectHermesHTTP.safeError(error)) }
+    }
+
+    #if targetEnvironment(macCatalyst)
+    /// bighelp's own link scheme; opening it brings the app back from the browser.
+    private static let returnURL = URL(string: "app.loopdy.mobile://signed-in")!
+    private static let receivedMessage = "<p>Signed in. <a href=\"app.loopdy.mobile://signed-in\">Return to bighelp</a>"
+        + " and close this tab.</p>"
+    #else
+    private static let receivedMessage = "<p>Sign-in received. Return to bighelp.</p>"
+    #endif
+
+    /// The sheet's completion, which AuthenticationServices may call on its own
+    /// queue (on the Mac, an XPC queue). It must not be main-actor isolated: an
+    /// isolated closure traps there. It only reports whether the person cancelled.
+    nonisolated static func sessionCompletion(
+        _ deliver: @escaping @Sendable (_ cancelled: Bool) -> Void
+    ) -> @Sendable (URL?, (any Error)?) -> Void {
+        { _, error in deliver((error as? ASWebAuthenticationSessionError)?.code == .canceledLogin) }
     }
 
     private func accept(_ connection: NWConnection) {
@@ -375,7 +404,8 @@ final class DirectHermesBrowserAuthentication: NSObject, ASWebAuthenticationPres
                 for other in Array(connections.keys) where other != id { close(other) }
                 incoming.deadline?.cancel()
                 incoming.deadline = timeout(seconds: 2) { [weak self] in self?.responseFinished() }
-                let body = "<!doctype html><meta name=\"viewport\" content=\"width=device-width\"><title>bighelp</title><p>Sign-in received. Return to bighelp.</p>"
+                let body = "<!doctype html><meta name=\"viewport\" content=\"width=device-width\"><title>bighelp</title>"
+                    + Self.receivedMessage
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nCache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n" + body
                 incoming.connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] _ in
                     Task { @MainActor [weak self] in self?.responseFinished() }
@@ -392,6 +422,11 @@ final class DirectHermesBrowserAuthentication: NSObject, ASWebAuthenticationPres
     private func responseFinished() {
         guard let code = state.finishResponse() else { return }
         complete(.success(code))
+        #if targetEnvironment(macCatalyst)
+        // Signing in happened in the browser; open bighelp's own link to come
+        // back to the front (no route handles it, so nothing else happens).
+        if authorizeOpener == nil { UIApplication.shared.open(Self.returnURL) }
+        #endif
     }
 
     private func fail(_ error: DirectHermesError) {

@@ -289,18 +289,24 @@ struct ProviderSignInSheet: View {
 
 /// The provider's sign-in page in the system sign-in sheet, which shares the
 /// phone's Safari logins. There's no redirect back to bighelp: the sheet stays
-/// until Hermes confirms the sign-in, then `finish` closes it.
+/// until Hermes confirms the sign-in, then `finish` closes it. The Mac opens the
+/// page in your default browser instead.
 @MainActor
 final class ProviderSignInBrowser: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
 
     func start(_ url: URL) {
+        #if targetEnvironment(macCatalyst)
+        UIApplication.shared.open(url)
+        #else
         session?.cancel()
-        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { _, _ in }
+        // Its completion may come on another queue; @Sendable keeps it off the main actor.
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { @Sendable _, _ in }
         session.presentationContextProvider = self
         session.prefersEphemeralWebBrowserSession = false
         self.session = session
         session.start()
+        #endif
     }
 
     func finish() {

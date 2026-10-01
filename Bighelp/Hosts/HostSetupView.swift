@@ -524,9 +524,9 @@ struct HostSetupView: View {
             "Use your Hermes username and password."
         case .browser:
             if discovery.providers.count == 1, let only = discovery.providers.first {
-                "Sign in with \(only.name) in Safari, then come back here."
+                "Sign in with \(only.name) in \(Self.signInBrowser), then come back here."
             } else {
-                "Sign in on your Hermes sign-in page in Safari, then come back here."
+                "Sign in on your Hermes sign-in page in \(Self.signInBrowser), then come back here."
             }
         }
     }
@@ -623,6 +623,9 @@ struct HostSetupView: View {
     }
 
     /// TLS failing or nothing answering on HTTPS can mean the computer serves plain HTTP.
+    /// Where browser sign-in opens: the Mac uses your default browser.
+    private static var signInBrowser: String { BighelpPlatform.isMac ? "your browser" : "Safari" }
+
     private static func mayBePlainHTTP(_ error: DirectHermesError) -> Bool {
         error == .tlsRequired || error == .connectionFailed
     }
