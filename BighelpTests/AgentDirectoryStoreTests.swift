@@ -725,6 +725,11 @@ final class AgentDirectoryFixtureClient: AgentDirectoryClient {
         self.profiles = profiles
     }
 
+    func petSheet(_ pet: PetdexPet) async throws -> Data {
+        guard let sheet = PetdexFixtures.sheet(slug: pet.slug) else { throw PetdexError.unsupported }
+        return sheet
+    }
+
     func list() async throws -> [AgentProfile] {
         profiles
     }

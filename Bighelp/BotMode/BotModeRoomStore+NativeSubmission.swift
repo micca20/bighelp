@@ -8,6 +8,12 @@ extension BotModeRoomStore {
         activitySink: ((BotModeRunActivity) -> Void)?
     ) async throws {
         guard let nativeClient else { throw BotModeRoomError.executionUnavailable }
+        if let working = room(id: roomID), working.isNativeWorking {
+            // Hermes queues a message sent while members work behind the
+            // room's active drive, so it goes out now instead of waiting.
+            try await sendNativeFollowUp(text: text, roomID: roomID, senderSnapshot: senderSnapshot)
+            return
+        }
         let boundary = nativeBoundaryGeneration
         _ = try await requireNativeCapabilities(using: nativeClient, boundary: boundary)
         try requireNativeBoundary(boundary)
@@ -120,7 +126,7 @@ extension BotModeRoomStore {
             // operation sent to Hermes.
             if boundary == nativeBoundaryGeneration,
                let current = self.room(id: roomID),
-               current.nativePendingEventID != nil || current.isRunning {
+               current.nativePendingEventID != nil || current.isRunning || !current.nativeFollowUps.isEmpty {
                 beginNativeRoomObservation(roomID: roomID)
             }
         }
@@ -155,6 +161,7 @@ extension BotModeRoomStore {
             ) else { throw BotModeRoomError.persistenceConflict }
             replaceStored(saved)
             var complete = false
+            var discussionSettled = false
             var noTerminalTaskIDs = Set<String>()
             var cursor = self.room(id: roomID)?.nativeLogCursor ?? 0
             while !complete {
@@ -178,6 +185,11 @@ extension BotModeRoomStore {
                     try settleNative(roomID: roomID, owner: owner, clearPending: false)
                     return
                 }
+                // A message sent meanwhile whose answer was lost supersedes
+                // this discussion; only its receipt can tell when it settles.
+                if self.room(id: roomID)?.nativeFollowUps.contains(where: { $0.discussionEventID == nil }) == true {
+                    try? await recoverNativeFollowUpReceipts(roomID: roomID, client: nativeClient, boundary: boundary)
+                }
                 let page = try await nativeClient.groupsLog(
                     roomID: roomID,
                     sinceSequence: cursor,
@@ -186,7 +198,7 @@ extension BotModeRoomStore {
                 )
                 try requireNativeBoundary(boundary)
                 try validateNativeAuthority(page.authority, roomID: roomID)
-                complete = try applyNativeEvents(
+                discussionSettled = try applyNativeEvents(
                     page.events,
                     cursor: page.cursor,
                     roomID: roomID,
@@ -200,8 +212,11 @@ extension BotModeRoomStore {
                     expectedTaskIDs: nil,
                     expectedRetryReceipts: nil,
                     terminalTaskIDs: &noTerminalTaskIDs
-                )
+                ) || discussionSettled
                 cursor = max(cursor, page.cursor)
+                // Messages sent meanwhile are queued behind (or supersede) this
+                // discussion: the room works until Hermes settles them too.
+                complete = discussionSettled && self.room(id: roomID)?.hasUnsettledNativeFollowUps != true
             }
             try settleNative(roomID: roomID, owner: owner, clearPending: true)
         } catch is CancellationError {
@@ -215,6 +230,101 @@ extension BotModeRoomStore {
             try? settleNative(roomID: roomID, owner: owner, clearPending: false)
             throw error
         }
+    }
+
+    /// Sends a message while the room's members are still working. Hermes
+    /// appends it and queues it behind the active drive. The intent is saved
+    /// before dispatch, and the same text sent again after a lost answer
+    /// reuses its idempotency key.
+    func sendNativeFollowUp(
+        text: String,
+        roomID: String,
+        senderSnapshot: TimelineSenderSnapshot?
+    ) async throws {
+        guard let nativeClient else { throw BotModeRoomError.executionUnavailable }
+        let boundary = nativeBoundaryGeneration
+        _ = try await requireNativeCapabilities(using: nativeClient, boundary: boundary)
+        try requireNativeBoundary(boundary)
+        guard var room = room(id: roomID) else { throw BotModeRoomError.roomNotFound }
+        guard room.hasNativeRoom, room.nativePendingCancelID == nil,
+              room.nativeRetryJournal?.awaitingReceipt.isEmpty != false else {
+            throw BotModeRoomError.runAlreadyActive
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              text.utf8.count <= 64 * 1024,
+              !text.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0) && !"\n\r\t".unicodeScalars.contains($0)
+              }) else {
+            throw WorkspaceClientError.invalidRequest
+        }
+        let followUp: HermesBotModeFollowUp
+        if let unconfirmed = room.nativeFollowUps.first(where: { $0.discussionEventID == nil && $0.text == text }) {
+            followUp = unconfirmed
+        } else {
+            guard room.nativeFollowUps.count < HermesBotModeFollowUp.maximumPending else {
+                throw BotModeRoomError.runAlreadyActive
+            }
+            followUp = HermesBotModeFollowUp(
+                eventID: "bot-user-\(UUID().uuidString)",
+                threadID: HermesBotModeWireCodec.mainThreadID(roomID: room.id),
+                text: text,
+                senderSnapshot: senderSnapshot
+            )
+            room.queueNativeFollowUp(followUp)
+            guard let saved = try compareAndSave(
+                room,
+                expectedRevision: room.persistenceRevision,
+                expectedOwner: room.runOwner.map(BotModeRunOwnerExpectation.owner) ?? .noOwner
+            ) else { throw BotModeRoomError.persistenceConflict }
+            replaceStored(saved)
+        }
+
+        defer {
+            // The run that was working may have finished meanwhile, or the
+            // answer was lost: the store's observer then follows (and
+            // re-sends, under the same key) until Hermes settles it.
+            if boundary == nativeBoundaryGeneration, let current = self.room(id: roomID),
+               !current.nativeFollowUps.isEmpty,
+               !(current.runOwner.map { nativeActiveRunIDs.contains($0.runID) } ?? false) {
+                beginNativeRoomObservation(roomID: roomID)
+            }
+        }
+        let result = try await nativeClient.groupsSend(
+            roomID: roomID,
+            eventID: followUp.eventID,
+            payload: HermesBotModeUserPayload(text: followUp.text, threadID: followUp.threadID)
+        )
+        try requireNativeBoundary(boundary)
+        guard result.accepted, result.clientEventID == followUp.eventID else {
+            // Hermes answered and refused it: nothing to recover.
+            try? dropNativeFollowUp(roomID: roomID, eventID: followUp.eventID)
+            throw BotModeRoomError.nativeSendRejected
+        }
+        try recordNativeFollowUpReceipt(roomID: roomID, eventID: followUp.eventID,
+                                        discussionEventID: result.event.eventID)
+    }
+
+    private func dropNativeFollowUp(roomID: String, eventID: String) throws {
+        guard var current = room(id: roomID), current.removeNativeFollowUp(eventID: eventID) else { return }
+        guard let saved = try compareAndSave(
+            current,
+            expectedRevision: current.persistenceRevision,
+            expectedOwner: current.runOwner.map(BotModeRunOwnerExpectation.owner) ?? .noOwner
+        ) else { throw BotModeRoomError.persistenceConflict }
+        replaceStored(saved)
+    }
+
+    func recordNativeFollowUpReceipt(roomID: String, eventID: String, discussionEventID: String) throws {
+        guard var current = room(id: roomID),
+              current.nativeFollowUps.contains(where: { $0.eventID == eventID && $0.discussionEventID == nil })
+        else { return }
+        current.markNativeFollowUpReceipt(eventID: eventID, discussionEventID: discussionEventID)
+        guard let saved = try compareAndSave(
+            current,
+            expectedRevision: current.persistenceRevision,
+            expectedOwner: current.runOwner.map(BotModeRunOwnerExpectation.owner) ?? .noOwner
+        ) else { throw BotModeRoomError.persistenceConflict }
+        replaceStored(saved)
     }
 
     func retryNative(

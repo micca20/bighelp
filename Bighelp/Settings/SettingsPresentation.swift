@@ -16,38 +16,18 @@ struct SettingsConnectivityPresentation: Equatable {
 }
 
 struct SettingsLinkConnectionPresentation: Equatable, Sendable {
-    let title: String
+    let status: HostConnectionStatus
     let detail: String
-    let systemImage: String
-    let isTransient: Bool
+    var title: String { status.label }
 
     init(state: BighelpLinkLiveSocketState) {
-        switch state {
-        case .stopped:
-            title = "Disconnected"
-            detail = "bighelp Link will reconnect when your account and paired host are available."
-            systemImage = "link.slash"
-            isTransient = false
-        case .connecting:
-            title = "Connecting"
-            detail = "bighelp Link is establishing the secure connection in the background."
-            systemImage = "link"
-            isTransient = true
-        case .retrying:
-            title = "Reconnecting"
-            detail = "bighelp Link is restoring the secure connection in the background."
-            systemImage = "arrow.triangle.2.circlepath"
-            isTransient = true
-        case .superseded:
-            title = "Connection moved"
-            detail = "A newer connection owns this device. Retry only if you want this app to take it back."
-            systemImage = "arrow.left.arrow.right"
-            isTransient = false
-        case .verified:
-            title = "Connected"
-            detail = "The secure connection to your paired Hermes host is ready."
-            systemImage = "link.circle.fill"
-            isTransient = false
+        status = HostConnectionStatus(link: state)
+        detail = switch state {
+        case .stopped: "bighelp Link will reconnect when your account and paired host are available."
+        case .connecting: "bighelp Link is establishing the secure connection in the background."
+        case .retrying: "bighelp Link is restoring the secure connection in the background."
+        case .superseded: "A newer connection owns this device. Retry only if you want this app to take it back."
+        case .verified: "The secure connection to your paired Hermes host is ready."
         }
     }
 }

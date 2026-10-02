@@ -190,6 +190,44 @@ struct ChatBotModeIntegrationTests {
         #expect(store.room(id: "bot-fixture")?.isRunning == false)
     }
 
+    /// "I cannot message a group chat while it's active." Hermes queues a
+    /// message sent during a member turn behind the room's drive, so the
+    /// message box stays usable and Send goes out while agents work.
+    @Test func groupChatSendsWhileAgentsAreStillWorking() async throws {
+        let model = ChatModel.testBotFixture(
+            draft: "@everyone plan the trip",
+            roomMemberIDs: ["finance", "research"],
+            executionEnabled: false
+        )
+        let store = try #require(model.botModeRoomStore)
+        let native = NativeBotModeTestClient(capabilities: .fixture())
+        store.configureNativeClient(native)
+        defer { store.configureNativeClient(nil) }
+        await store.refreshNativeCapabilities()
+        let sending = Task { await model.send() }
+        for _ in 0..<200 where store.room(id: "bot-fixture")?.nativePendingDiscussionEventID == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(model.isSending)
+        #expect(store.room(id: "bot-fixture")?.isRunning == true)
+
+        model.draft = "@finance keep it under budget"
+        #expect(!model.isComposerInputDisabled)
+        #expect(model.canSend)
+        await model.send()
+
+        #expect(native.sentPayloads.map(\.text) == ["@everyone plan the trip", "@finance keep it under budget"])
+        #expect(model.draft.isEmpty)
+        #expect(model.failureMessage == nil)
+        #expect(model.isSending)
+        #expect(model.canStop)
+
+        await model.stop()
+        await sending.value
+        #expect(store.room(id: "bot-fixture")?.nativeFollowUps.isEmpty == true)
+        #expect(model.isSending == false)
+    }
+
     @Test func nativeApprovalIsVisibleDuringSendAndOnlyTheCurrentCardCanResolve() async throws {
         let model = ChatModel.testBotFixture(
             draft: "@everyone review this task",

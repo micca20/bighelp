@@ -106,6 +106,7 @@ struct MessageBubble: View {
     @State private var isCopied = false
     @State private var isReactionPickerPresented = false
     @State private var contentCache = ChatMessageContentCache()
+    @State private var cardCopyContext = ChatCardCopyContext()
     @AppStorage(ChatLayoutPreferences.textSizeKey) private var chatTextSize: ChatTextSize = .standard
     @AppStorage(LinkPreviewPreferences.enabledKey) private var showsLinkPreviews = true
 
@@ -311,7 +312,7 @@ struct MessageBubble: View {
                 .accessibilityLabel("\(speakerName): \(document.visiblePlainText)")
                 .accessibilityHint("Links open in your chosen browser. \(BighelpPlatform.isMac ? "Right-click" : "Long press") shows message actions.")
                 .accessibilityAction(named: copyActionLabel) {
-                    copy(interaction.copyText)
+                    copyMessage(interaction)
                 }
                 #if !targetEnvironment(macCatalyst)
                 .accessibilityAction(named: "Select text") {
@@ -342,7 +343,7 @@ struct MessageBubble: View {
             }
         }
         Button {
-            copy(interaction.copyText)
+            copyMessage(interaction)
         } label: {
             Label(copyActionLabel, systemImage: "doc.on.doc")
         }
@@ -413,7 +414,7 @@ struct MessageBubble: View {
                 openURL: openURL,
                 theme: theme,
                 copyActionLabel: copyActionLabel,
-                onCopy: { copy(interaction.copyText) },
+                onCopy: { copyMessage(interaction) },
                 onSelect: { isSelectingText = true },
                 onFork: onFork,
                 onReact: canReact ? { isReactionPickerPresented = true } : nil,
@@ -464,6 +465,15 @@ struct MessageBubble: View {
         interaction: ChatBubbleInteraction,
         proseLineSpacing: CGFloat
     ) -> some View {
+        mixedAssistantSegments(projection, interaction: interaction, proseLineSpacing: proseLineSpacing)
+            .modifier(ChatCardCopyContextReader(context: cardCopyContext))
+    }
+
+    private func mixedAssistantSegments(
+        _ projection: ChatCardMessageProjection,
+        interaction: ChatBubbleInteraction,
+        proseLineSpacing: CGFloat
+    ) -> some View {
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
             ForEach(Array(projection.segments.enumerated()), id: \.offset) { _, segment in
                 switch segment {
@@ -482,7 +492,7 @@ struct MessageBubble: View {
                             openURL: openURL,
                             theme: theme,
                             copyActionLabel: copyActionLabel,
-                            onCopy: { copy(interaction.copyText) },
+                            onCopy: { copyMessage(interaction) },
                             onSelect: { isSelectingText = true },
                             onFork: onFork,
                             onReact: canReact ? { isReactionPickerPresented = true } : nil
@@ -506,8 +516,8 @@ struct MessageBubble: View {
                                           textColor: isPendingSubmission ? theme.secondaryText : theme.primaryText)
                 case .rule:
                     ChatMarkdownRuleView()
-                case .pendingCard:
-                    ChatPendingCardView()
+                case .pendingCard(let kind):
+                    ChatPendingCardView(kind: kind)
                 case .unavailableCard:
                     Label("This card couldn't be shown.", systemImage: "rectangle.on.rectangle.slash")
                         .bighelpFont(.metadata)
@@ -543,8 +553,33 @@ struct MessageBubble: View {
         contentReference == nil ? "Copy to clipboard" : "Copy preview"
     }
 
+    /// A message with cards copies its words and a picture of each card, in
+    /// order, instead of the cards' code; any other message copies its text.
+    private func copyMessage(_ interaction: ChatBubbleInteraction) {
+        let cards = contentCache.project(text, role: role, isStreaming: isStreaming).cardProjection
+        guard cards.segments.contains(where: { if case .card = $0 { true } else { false } }) else {
+            copy(interaction.copyText)
+            return
+        }
+        let context = cardCopyContext
+        let parts = ChatMessageCopy.parts(cards) { envelope in
+            switch envelope {
+            case .legacy(let card):
+                context.png(GenerativeUICardView(card: card, messageID: messageID), background: theme.canvas)
+            case .card(let card):
+                context.png(BighelpCardView(card: card), background: theme.canvas)
+            }
+        }
+        UIPasteboard.general.setItems(ChatMessageCopy.items(parts))
+        confirmCopied()
+    }
+
     private func copy(_ value: String) {
         UIPasteboard.general.string = value
+        confirmCopied()
+    }
+
+    private func confirmCopied() {
         BighelpHaptics.success()
         if uiV3Enabled {
             // The native menu path has no visible badge; confirm for VoiceOver too.

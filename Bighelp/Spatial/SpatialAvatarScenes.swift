@@ -218,6 +218,9 @@ struct SpatialAvatarVolume: View {
                 Text(name).fontWeight(.semibold)
                 Text("·").foregroundStyle(.secondary)
             }
+            if let connection = HostConnectionStatus(spatial: model.connection) {
+                BighelpConnectionIndicator(phase: connection.phase)
+            }
             Text(model.status(pinch: settings.spatialAvatarPinchAction))
                 .foregroundStyle(.secondary)
         }

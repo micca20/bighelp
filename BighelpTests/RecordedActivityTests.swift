@@ -19,9 +19,10 @@ struct RecordedActivityTests {
         let visual = ChatActivityVisualState(lifecycle: .recorded)
         #expect(visual.tone == .secondary)
         #expect(!visual.shimmers)
-        let summary = ChatWorkTrailSummary(events: [event])
-        #expect(summary.lifecycle == .recorded)
-        #expect(!summary.hasRunningWork)
+        let phase = ChatActivityPresentation.trailPhase(for: [event])
+        #expect(phase == .done(elapsed: nil))
+        #expect(!phase.isLive)
+        #expect(!ChatActivityPresentation.step(for: event).isRunning)
         let record = SessionRecord(id: "recorded-session", kind: .direct, agentIDs: ["default"],
                                    title: "Saved", activityEvents: [event])
         #expect(SessionSubagentDetailPresentation.statusTitle(for: record) == "Saved child session; outcome unavailable")

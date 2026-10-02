@@ -182,6 +182,10 @@ struct ChatDestinationView: View {
 
     var body: some View {
         chatCanvas
+            .modifier(TeamCallEntry(chat: model, rooms: botModeRooms, services: featureStore.teamCallServices,
+                                    agents: agents, userIdentity: userIdentity,
+                                    transcription: settings.voiceTranscription,
+                                    permissionCenter: permissionCenter))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.canvas")
         .chatAttention(client: model.nativeConversationClient,

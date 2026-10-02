@@ -260,6 +260,18 @@ struct ScheduledTaskIdentity: Hashable, Sendable {
     func hash(into hasher: inout Hasher) { hasher.combine(bytes) }
 }
 
+extension ScheduledTask {
+    /// Hermes Desktop files an agent's routines as "[bot:<agent>] <routine>".
+    /// People see the routine's own name; the tag stays on the host.
+    static func routineName(_ name: String) -> String {
+        guard let match = name.firstMatch(of: /^\[bot:[A-Za-z0-9][A-Za-z0-9_-]*\]\s*/) else { return name }
+        let rest = String(name[match.range.upperBound...])
+        return rest.isEmpty ? name : rest
+    }
+
+    var displayName: String { Self.routineName(name) }
+}
+
 struct ScheduledTask: Identifiable, Equatable, Sendable {
     let id: String
     let agentID: String

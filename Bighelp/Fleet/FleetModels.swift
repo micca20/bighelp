@@ -14,6 +14,8 @@ struct FleetSnapshot: Codable, Equatable, Sendable {
     var agents: [FleetAgent] = []
     var chats: [FleetChat] = []
     var tasks: [FleetTask] = []
+    /// Group chats; nil in snapshots saved before groups were listed.
+    var groups: [FleetGroup]? = nil
     var refreshedAt: Date
 }
 
@@ -33,8 +35,26 @@ struct FleetAgent: Codable, Equatable, Sendable, Identifiable {
     var isDefault: Bool
     /// What Hermes says one of its chats is doing right now.
     var activity: FleetActivity?
+    /// Its section and whether it's hidden, as saved on its host.
+    var placement: AgentListPlacement? = nil
 
     var id: String { FleetID.make(hostID, profileID) }
+    var isHidden: Bool { placement?.isHidden == true }
+}
+
+/// A group chat (a Hermes hosted room) on one host.
+struct FleetGroup: Codable, Equatable, Sendable, Identifiable {
+    let hostID: UUID
+    let roomID: String
+    var name: String
+    /// Member names, for the row's second line.
+    var memberNames: [String]
+    var updatedAt: Date
+    var isWorking: Bool
+    var canRename: Bool
+    var canDelete: Bool
+
+    var id: String { FleetID.make(hostID, "group/" + roomID) }
 }
 
 enum FleetActivity: String, Codable, Sendable {
@@ -85,6 +105,9 @@ enum FleetOpen: Equatable, Sendable {
     case chat(profileID: String, storedSessionID: String, appSessionID: String?)
     case task(jobID: String, profileID: String)
     case newChat(profileID: String)
+    case group(roomID: String)
+    /// The agent's routines (its scheduled tasks).
+    case routines(profileID: String)
     case destination(FleetDestination)
 }
 
@@ -113,4 +136,11 @@ enum FleetDestination: String, Equatable, Sendable, Identifiable {
 struct FleetPendingOpen: Equatable, Sendable {
     let hostID: UUID
     let open: FleetOpen
+}
+
+/// What a group chat's row can do from the all-hosts list.
+enum FleetGroupAction: Equatable, Sendable {
+    case open
+    case rename(String)
+    case delete
 }

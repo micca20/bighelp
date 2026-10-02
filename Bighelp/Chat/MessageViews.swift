@@ -138,6 +138,7 @@ struct TimelineItemView: View {
     private var messageColumn: some View {
         VStack(alignment: item.role == .human ? .trailing : .leading,
                spacing: uiV3Enabled ? BighelpTokens.space12 : BighelpTokens.space8) {
+            let pendingFiles = pendingFileState
             if !uiV3Enabled { senderBadge }
             if !item.attachments.isEmpty {
                 if case .message(let text) = item.content, text.isEmpty {
@@ -145,15 +146,25 @@ struct TimelineItemView: View {
                 } else {
                     attachmentGallery
                 }
+            } else if !pendingFiles.fileNames.isEmpty {
+                if pendingFiles.text.isEmpty {
+                    PendingAgentFilesView(fileNames: pendingFiles.fileNames)
+                        .alignmentGuide(.messageContentBottom) { $0[.bottom] }
+                } else {
+                    PendingAgentFilesView(fileNames: pendingFiles.fileNames)
+                }
             }
             switch item.content {
             case .message(let text):
-                if !text.isEmpty || item.attachments.isEmpty {
+                if (!text.isEmpty || item.attachments.isEmpty)
+                    && (pendingFiles.fileNames.isEmpty || !pendingFiles.text.isEmpty) {
                     MessageBubble(
                         messageID: item.id,
                         role: item.role,
                         speakerName: sender.name,
-                        text: DirectHermesGeneratedMediaClient.unresolvedMessageText(text, role: item.role),
+                        text: pendingFiles.fileNames.isEmpty
+                            ? DirectHermesGeneratedMediaClient.unresolvedMessageText(text, role: item.role)
+                            : pendingFiles.text,
                         delivery: item.metadata.delivery,
                         isPendingSubmission: pendingMidSessionBehavior != nil,
                         onFork: onFork.map { callback in { callback(item.id) } },
@@ -200,6 +211,12 @@ struct TimelineItemView: View {
                 TimelineMetadataView(metadata: item.metadata)
             }
         }
+    }
+
+    /// An agent's files still loading show as tiles, not as their file lines.
+    private var pendingFileState: (text: String, fileNames: [String]) {
+        guard item.attachments.isEmpty, case .message(let text) = item.content else { return ("", []) }
+        return DirectHermesGeneratedMediaClient.pendingFiles(text, role: item.role)
     }
 
     private var attachmentGallery: some View {
@@ -387,26 +404,20 @@ struct PendingMessageView: View {
         .accessibilityLabel(presentation.accessibilityLabel)
     }
 
-    @ViewBuilder
+    /// The dots rise in turn on the shared loader clock, so every waiting bubble
+    /// moves in step, and hold still (all lit) when loaders shouldn't move.
     private var typingDots: some View {
-        if reduceMotion {
-            dots(highlighted: nil)
-        } else {
-            PhaseAnimator([0, 1, 2]) { phase in
-                dots(highlighted: phase)
-            } animation: { _ in
-                .easeInOut(duration: 0.36)
-            }
-        }
-    }
-
-    private func dots(highlighted: Int?) -> some View {
-        HStack(spacing: 5) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(theme.secondaryText)
-                    .frame(width: PendingMessagePresentation.dotSize, height: PendingMessagePresentation.dotSize)
-                    .opacity(highlighted == nil || highlighted == index ? 1 : PendingMessagePresentation.restingDotOpacity)
+        let resting = PendingMessagePresentation.restingDotOpacity
+        return BighelpLoaderClock(cadence: .smooth) { time in
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { index in
+                    let lift = BighelpConnectionMotion.bounce(time, index: index)
+                    Circle()
+                        .fill(theme.secondaryText)
+                        .frame(width: PendingMessagePresentation.dotSize, height: PendingMessagePresentation.dotSize)
+                        .offset(y: -2 * lift)
+                        .opacity(time.isStill ? 1 : resting + (1 - resting) * lift)
+                }
             }
         }
     }
@@ -422,7 +433,6 @@ struct PendingMessageView: View {
     }
 
     @BighelpThemeReader private var theme: BighelpTheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
 }

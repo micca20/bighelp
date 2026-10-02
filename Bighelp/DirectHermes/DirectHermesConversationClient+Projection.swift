@@ -143,9 +143,11 @@ extension DirectHermesConversationClient {
     /// couldn't load instead of showing a host path.
     func scheduleMessageMedia() {
         guard connected, let attachmentResolver else { return }
+        markLinkedPicturesShownInReply()
         let owner = generation
         let stored = storedID
-        for item in projection.items {
+        // Newest first: a chat opens at its bottom, where the latest files are.
+        for item in projection.items.reversed() {
             guard attachmentTasks.count < 2 else { break }
             guard item.metadata.delivery != "Streaming", item.attachments.isEmpty,
                   case .message(let text) = item.content,
@@ -158,6 +160,7 @@ extension DirectHermesConversationClient {
                 switch livePictures(for: item, text: text) {
                 case .ready(let resolved, let eventIDs) where applyMessageMedia(resolved, replacing: item):
                     model?.markGeneratedMediaShownInReply(eventIDs: eventIDs)
+                    attachmentAttempts[item.id] = nil
                     continue
                 case .loading where (mediaFailures[item.id + "\0live"] ?? 0) < 5:
                     // The live card is still reading this file. It asks again when it
@@ -187,6 +190,9 @@ extension DirectHermesConversationClient {
                        !result.attachments.isEmpty {
                         applied = self.applyMessageMedia(result, replacing: item)
                     }
+                    // Shown. If a reload brings the row back without its files,
+                    // they're read again (from this device's copy) rather than skipped.
+                    if applied { self.attachmentAttempts[item.id] = nil }
                 } catch is CancellationError {
                     return
                 } catch {
@@ -196,6 +202,32 @@ extension DirectHermesConversationClient {
                 self.retryMessageMedia(item, key: key, owner: owner)
             }
         }
+    }
+
+    /// A hosted image tool's picture lives at the provider's address. When the
+    /// finished reply links it, the reply's preview draws it, so the tool's
+    /// card keeps only its label and the picture shows once.
+    private func markLinkedPicturesShownInReply() {
+        guard let model,
+              UserDefaults.standard.object(forKey: LinkPreviewPreferences.enabledKey) as? Bool ?? true
+        else { return }
+        var cards: [URL: String] = [:]
+        for event in model.activityLedger.allEvents where event.generatedMedia?.state == .ready
+            && event.generatedMedia?.shownInReply == false {
+            guard let kind = GeneratedMediaProjection.kind(for: event) else { continue }
+            for address in DirectHermesGeneratedMediaClient.providerURLs(event.result, kind: kind) {
+                cards[address] = event.id
+            }
+        }
+        guard !cards.isEmpty else { return }
+        var shown: [String] = []
+        for item in projection.items where item.role == .assistant && item.metadata.delivery != "Streaming" {
+            guard case .message(let text) = item.content,
+                  let linked = LinkPreviewCandidate.firstURL(inMarkdown: text).flatMap(LinkPreviewPolicy.loadableURL),
+                  let id = cards[linked] else { continue }
+            shown.append(id)
+        }
+        if !shown.isEmpty { model.markGeneratedMediaShownInReply(eventIDs: shown) }
     }
 
     @discardableResult

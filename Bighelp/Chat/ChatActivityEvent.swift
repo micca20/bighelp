@@ -90,42 +90,73 @@ struct ChatActivityEvent: Identifiable, Codable, Equatable, Sendable {
         return nil
     }
 
+    /// Plain words for the work, from the shared tool catalog: "Running a
+    /// command…" while it runs, "Ran a command" once it ends. A tool the
+    /// catalog doesn't know says "Using tools…" / "Used tools".
     var presentationTitle: String {
-        if kind == .reasoning { return "Thinking" }
-        guard kind == .tool else { return title }
-        let arguments = argumentObject ?? [:]
-        let canonicalToolName = toolName.flatMap(safeCollapsedIdentifier)
-        let discriminator = canonicalToolName?.lowercased()
-            ?? title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch discriminator {
-        case "skill_view", "using skill view":
-            guard
-                let name = nonemptyArgument("name", in: arguments),
-                let identifier = safeCollapsedIdentifier(name)
-            else { return "Tool activity" }
-            return "Skill: \(identifier)"
-        case "terminal", "running a command":
-            guard
-                let command = nonemptyArgument("command", in: arguments),
-                let executable = commandExecutableName(command)
-            else { return canonicalToolName.map { "Command: \($0)" } ?? "Tool activity" }
-            return "Command: \(executable)"
-        case "execute_code", "using execute code":
-            guard
-                let executable = nonemptyArgument("executable", in: arguments)
-                    ?? nonemptyArgument("name", in: arguments),
-                let basename = executableBasename(executable),
-                let identifier = safeCollapsedIdentifier(basename)
-            else { return "Using execute code" }
-            return "Execute: \(identifier)"
-        case "tool_call", "using tool call":
-            guard
-                let name = nonemptyArgument("name", in: arguments),
-                let identifier = safeCollapsedIdentifier(name)
-            else { return canonicalToolName.map { "Tool: \($0)" } ?? "Tool activity" }
-            return "Tool: \(identifier)"
-        default:
-            return canonicalToolName.map { "Tool: \($0)" } ?? "Tool activity"
+        switch kind {
+        case .reasoning: return "Thinking"
+        case .tool, .subagent:
+            let activity = presentationActivity
+            return lifecycle == .running ? activity.label : activity.doneLabel
+        case .botHandoff: return title
+        }
+    }
+
+    /// The catalog entry for this work. A subagent is another agent asked to help.
+    var presentationActivity: BighelpToolActivity {
+        switch kind {
+        case .reasoning: BighelpToolActivityCatalog.thinking
+        case .subagent: BighelpToolActivityCatalog.activity(forTool: "delegate_task")
+        case .tool, .botHandoff: BighelpToolActivityCatalog.activity(forTool: canonicalToolName)
+        }
+    }
+
+    /// The Hermes tool this call ran. `tool_call` only wraps another tool, so
+    /// its nested name wins. Older events carry just Hermes' own title for a
+    /// few tools; any other free-form title is never taken for a name.
+    var canonicalToolName: String? {
+        guard kind == .tool else { return nil }
+        let name = toolName.flatMap(safeCollapsedIdentifier)?.lowercased() ?? Self.toolNamesByTitle[
+            title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
+        guard name == "tool_call" else { return name }
+        return nonemptyArgument("name", in: argumentObject ?? [:]).flatMap(safeCollapsedIdentifier)
+    }
+
+    private static let toolNamesByTitle = [
+        "using skill view": "skill_view",
+        "running a command": "terminal",
+        "using execute code": "execute_code",
+        "using tool call": "tool_call",
+    ]
+
+    /// What the collapsed line may name besides the tool, all from
+    /// authenticated coordinates: the command's executable, the skill or the
+    /// program, a subagent's goal, or the name of a tool the catalog doesn't
+    /// know. Never the arguments, the summary or a free-form server title.
+    var presentationDetail: String? {
+        switch kind {
+        case .subagent:
+            let goal = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return goal.isEmpty ? nil : String(goal.prefix(120))
+        case .tool:
+            // Arguments are parsed only for the tools that name something in them.
+            switch canonicalToolName {
+            case "skill_view":
+                return nonemptyArgument("name", in: argumentObject ?? [:]).flatMap(safeCollapsedIdentifier)
+            case "terminal":
+                return nonemptyArgument("command", in: argumentObject ?? [:]).flatMap(commandExecutableName)
+            case "execute_code":
+                let arguments = argumentObject ?? [:]
+                return (nonemptyArgument("executable", in: arguments) ?? nonemptyArgument("name", in: arguments))
+                    .flatMap(executableBasename).flatMap(safeCollapsedIdentifier)
+            case let name?:
+                return presentationActivity == BighelpToolActivityCatalog.fallback ? name : nil
+            case nil:
+                return nil
+            }
+        case .reasoning, .botHandoff:
+            return nil
         }
     }
 
@@ -133,14 +164,16 @@ struct ChatActivityEvent: Identifiable, Codable, Equatable, Sendable {
         kind == .tool ? nil : summary
     }
 
-    func collapsedAccessibilityLabel(status: String) -> String {
-        [presentationTitle, collapsedPresentationSummary, status]
+    /// The collapsed row as VoiceOver reads it: the words, what they name, and
+    /// an outcome worth hearing ("Failed").
+    func collapsedAccessibilityLabel(status: String?) -> String {
+        [presentationTitle, presentationDetail, collapsedPresentationSummary, status]
             .compactMap { value in
                 guard let value else { return nil }
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 return trimmed.isEmpty ? nil : trimmed
             }
-            .joined(separator: ". ")
+            .joined(separator: ", ")
     }
 
     private var argumentObject: [String: Any]? {
@@ -377,15 +410,5 @@ struct ChatActivityVisualState: Equatable, Sendable {
             tone = .secondary
             shimmers = false
         }
-    }
-}
-
-struct ChatToolActivityVisualState: Equatable, Sendable {
-    let tone: ChatActivityVisualTone
-    let shimmers: Bool
-
-    init(lifecycle: ChatActivityLifecycle) {
-        tone = lifecycle == .failed ? .failure : .neutral
-        shimmers = lifecycle == .running
     }
 }

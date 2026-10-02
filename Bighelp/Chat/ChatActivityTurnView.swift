@@ -119,11 +119,7 @@ struct ChatActivityTurnView: View {
                     GeneratedMediaCard(event: event)
                 case .thinking(let events):
                     // Quiet, like interim messages: the answer is what stands out.
-                    if events.count == 1, let event = events.first {
-                        ChatActivityRow(event: event, onDisclosureChange: onDisclosureChange)
-                    } else {
-                        ChatReasoningGroupRow(events: events, onDisclosureChange: onDisclosureChange)
-                    }
+                    ChatThinkingRow(events: events, onDisclosureChange: onDisclosureChange)
                 case .workTrail(let workTrail):
                     ChatWorkTrailCard(
                         turn: workTrail,

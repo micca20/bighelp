@@ -35,6 +35,7 @@ struct BighelpNotificationSettingsView: View {
     let runtimeSource: @MainActor () -> BighelpNotificationRuntimeSnapshot
     let refreshRuntime: (@MainActor () async throws -> BighelpNotificationRuntimeSnapshot)?
     let sendTest: (@MainActor () async throws -> BighelpNotificationTestReceipt)?
+    let turnOff: BighelpNotificationTurnOff?
     let isCurrent: @MainActor () -> Bool
 
     @State private var preferences: [BighelpBuzzKitPreference] = []
@@ -51,6 +52,10 @@ struct BighelpNotificationSettingsView: View {
     @State private var hasLoadedPreferences = false
     @State private var preferencesAreStale = false
     @State private var operationToken = UUID()
+    @State private var isConfirmingTurnOff = false
+    @State private var turnOffStep: BighelpNotificationTurnOffStep?
+    @State private var turnOffMessage: String?
+    @State private var turnOffFailed = false
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,6 +69,7 @@ struct BighelpNotificationSettingsView: View {
         },
         refreshRuntime: (@MainActor () async throws -> BighelpNotificationRuntimeSnapshot)? = nil,
         sendTest: (@MainActor () async throws -> BighelpNotificationTestReceipt)? = nil,
+        turnOff: BighelpNotificationTurnOff? = nil,
         isCurrent: @escaping @MainActor () -> Bool = { true }
     ) {
         self.permissionCenter = permissionCenter
@@ -73,6 +79,7 @@ struct BighelpNotificationSettingsView: View {
         self.runtimeSource = runtimeSource
         self.refreshRuntime = refreshRuntime
         self.sendTest = sendTest
+        self.turnOff = turnOff
         self.isCurrent = isCurrent
         _runtime = State(initialValue: runtimeSource())
         if let hostRegistry, let host = hostRegistry.selectedHost {
@@ -115,6 +122,7 @@ struct BighelpNotificationSettingsView: View {
                 }
             }
             topicsSection
+            turnOffSection
             Section("Advanced") {
                 DisclosureGroup("Provider details") {
                     providerSection
@@ -129,6 +137,15 @@ struct BighelpNotificationSettingsView: View {
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("settings.notifications")
+        .confirmationDialog("Turn off notifications?", isPresented: $isConfirmingTurnOff, titleVisibility: .visible) {
+            Button("Turn Off Notifications", role: .destructive) {
+                Task { await runTurnOff() }
+            }
+            .accessibilityIdentifier("settings.notifications.turn-off.confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This device stops getting notifications from bighelp. Its notification data is deleted from bighelp's notification service and from every computer that sends it notifications. You can turn them on again later.")
+        }
         .task(id: presentationScope) {
             configureNotificationSetup()
             await reloadAll()
@@ -175,6 +192,90 @@ struct BighelpNotificationSettingsView: View {
             }
             .listRowBackground(theme.surface)
         }
+    }
+
+    @ViewBuilder
+    private var turnOffSection: some View {
+        if let turnOff, turnOffStep != nil || turnOffMessage != nil || turnOff.isAvailable()
+            || !turnOff.hostsAwaitingCleanup().isEmpty {
+            Section {
+                if let turnOffStep {
+                    HStack(spacing: BighelpTokens.space12) {
+                        ProgressView()
+                        Text(Self.progressText(turnOffStep))
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("settings.notifications.turn-off.progress")
+                } else if turnOff.isAvailable() {
+                    Button(role: .destructive) {
+                        isConfirmingTurnOff = true
+                    } label: {
+                        Text("Turn Off Notifications")
+                            .frame(minHeight: BighelpTokens.hitTarget)
+                    }
+                    // Every host and this device, so it doesn't wait on the
+                    // current connection; an offline host is finished later.
+                    .accessibilityIdentifier("settings.notifications.turn-off")
+                }
+                if let message = turnOffMessage ?? awaitingCleanupMessage(turnOff) {
+                    Text(message)
+                        .bighelpFont(.metadata)
+                        .foregroundStyle(turnOffFailed ? theme.warning : theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("settings.notifications.turn-off.result")
+                }
+            } footer: {
+                if turnOffStep == nil, turnOffMessage == nil || turnOffFailed {
+                    Text("Deletes this device's notification data everywhere, as if you never turned notifications on.")
+                }
+            }
+            .listRowBackground(theme.surface)
+        }
+    }
+
+    private static func progressText(_ step: BighelpNotificationTurnOffStep) -> String {
+        switch step {
+        case .hosts: "Removing this device from your computers…"
+        case .service: "Deleting it from the notification service…"
+        case .device: "Deleting notification data on this device…"
+        }
+    }
+
+    private func awaitingCleanupMessage(_ turnOff: BighelpNotificationTurnOff) -> String? {
+        let hosts = turnOff.hostsAwaitingCleanup()
+        guard !hosts.isEmpty else { return nil }
+        return "Notifications are off. \(Self.list(hosts)) still \(hosts.count == 1 ? "has" : "have") a copy of this device's notification data. It can't send you anything, and bighelp removes it the next time it can reach \(hosts.count == 1 ? "it" : "them")."
+    }
+
+    private static func list(_ names: [String]) -> String {
+        names.count < 3 ? names.joined(separator: " and ")
+            : names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+    }
+
+    private func runTurnOff() async {
+        guard let turnOff, turnOffStep == nil else { return }
+        notificationSetup?.cancel()
+        operationToken = UUID()
+        turnOffMessage = nil
+        turnOffFailed = false
+        turnOffStep = .hosts
+        do {
+            let result = try await turnOff.run { step in turnOffStep = step }
+            turnOffStep = nil
+            if result.unreachableHosts.isEmpty {
+                turnOffMessage = "Notifications are off, and this device's notification data was deleted. To stop bighelp asking iOS for alerts too, turn them off in iOS Settings."
+            } else {
+                turnOffMessage = awaitingCleanupMessage(turnOff)
+                    ?? "Notifications are off. Some computers couldn't be reached yet; bighelp will finish there later."
+            }
+        } catch {
+            turnOffStep = nil
+            turnOffFailed = true
+            turnOffMessage = "Couldn't reach the notification service, so notifications aren't fully off yet. Check your connection and try again."
+        }
+        configureNotificationSetup()
+        await reloadAll()
     }
 
     private var notificationAuthorizationSection: some View {

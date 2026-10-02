@@ -90,7 +90,7 @@ final class DirectHermesClient: DirectHermesRPC, DirectHermesAuthenticatedHTTP,
         "config.get", "delegation.status", "spawn_tree.list",
         "profiles.list", "profiles.describe", "profiles.get_asset", "model.options",
         "projects.list", "projects.get", "subagent.list", "subagent.tail", "client.capabilities",
-        "groups.capabilities", "groups.list", "groups.state", "groups.log"
+        "groups.capabilities", "groups.list", "groups.state", "groups.log", "pet.gallery", "pet.thumb"
     ]
 
     static func connect(address: String, auth: DirectHermesAuthInput,

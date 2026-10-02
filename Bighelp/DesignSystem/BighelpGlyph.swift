@@ -4,7 +4,7 @@ import SwiftUI
 /// the brand's dot. Menus and settings keep naming SF Symbols; the ones with a
 /// bighelp drawing show that instead, and any other name falls back to the symbol.
 enum BighelpGlyph: String, CaseIterable, Sendable {
-    case agents, bars, bell, bellDot, book, bookClosed, branch, chats, chatVoice, checklist, chip, compose
+    case agents, bars, bell, bellDot, book, bookClosed, bot, bots, branch, chats, chatVoice, checklist, chip, compose
     case database, doc, docRich, envelope, face, folder, gesture, grid3, group, host, kanban, key, lock
     case notebook, nodes, palette, paw, person, personCard, personCycle, plane, plug, plus, projects
     case puzzle, question, scheduled, server, settings, shield, simple, sliders, sparkles, tabBar

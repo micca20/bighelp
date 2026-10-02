@@ -209,8 +209,10 @@ struct DesignSystemTests {
         #expect(presentation.maximumWidth == 240)
         #expect(presentation.shimmers)
         #expect(!presentation.usesOwnSurface)
-        #expect(BighelpActiveCallShimmerPolicy.isAnimated(isActive: true, reduceMotion: false))
-        #expect(!BighelpActiveCallShimmerPolicy.isAnimated(isActive: true, reduceMotion: true))
+        #expect(BighelpLoaderMotionPolicy.resolve(reduceMotion: false, appIsActive: true, scenePhase: .active,
+                                                  lowPowerMode: false, override: .init()).animates)
+        #expect(!BighelpLoaderMotionPolicy.resolve(reduceMotion: true, appIsActive: true, scenePhase: .active,
+                                                   lowPowerMode: false, override: .init()).animates)
         #expect(ChatHeaderLiveActivityPresentation.resolve(phrase: "Old turn", isActive: false) == nil)
         #expect(ChatHeaderLiveActivityPresentation.resolve(phrase: "   ", isActive: true) == nil)
         #expect(ChatHeaderLiveActivityPresentation.resolve(phrase: nil, isActive: true) == nil)
@@ -338,39 +340,6 @@ struct DesignSystemTests {
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
             #expect((pixel[3] > 0) == paintsSurface)
         }
-    }
-
-    @Test func animatedBighelpMarkRunsOnlyForVisibleActiveWorkWhenMotionIsAllowed() {
-        #expect(BighelpAnimatedMarkPolicy.shouldAnimate(
-            isActive: true,
-            reduceMotion: false,
-            sceneIsActive: true,
-            isVisible: true
-        ))
-        #expect(!BighelpAnimatedMarkPolicy.shouldAnimate(
-            isActive: false,
-            reduceMotion: false,
-            sceneIsActive: true,
-            isVisible: true
-        ))
-        #expect(!BighelpAnimatedMarkPolicy.shouldAnimate(
-            isActive: true,
-            reduceMotion: true,
-            sceneIsActive: true,
-            isVisible: true
-        ))
-        #expect(!BighelpAnimatedMarkPolicy.shouldAnimate(
-            isActive: true,
-            reduceMotion: false,
-            sceneIsActive: false,
-            isVisible: true
-        ))
-        #expect(!BighelpAnimatedMarkPolicy.shouldAnimate(
-            isActive: true,
-            reduceMotion: false,
-            sceneIsActive: true,
-            isVisible: false
-        ))
     }
 
     @Test func conversationBubblesFollowEveryBubbleColor() throws {

@@ -243,7 +243,7 @@ struct ChatCompletedTurnTests {
         let rows = ChatCompletedTurnProjection.rows(from: entries, isSending: false, enabled: true)
         guard case .completed(let turn) = rows[1] else { Issue.record("Missing fold"); return }
         #expect(turn.elapsedSeconds == nil)
-        #expect(turn.label == "Completed turn · duration unavailable")
+        #expect(turn.label == "Done")
         #expect(ChatCompletedTurn(id: "zero", entries: [], elapsedSeconds: 0).label == "Worked for less than a second")
     }
 
@@ -336,10 +336,13 @@ struct ChatCompletedTurnTests {
             return
         }
         #expect(first.map(\.eventID) == ["r1", "r2"])
-        #expect(ChatReasoningGroupRow.title(for: first) == "Thought for 4s")
-        #expect(ChatReasoningGroupRow.title(for: last) == "Thinking…")
-        #expect(ChatReasoningGroupRow.title(for: [event("a", .reasoning), event("b", .reasoning, ms: nil)])
-                == "Thought process")
+        #expect(ChatActivityPresentation.thinkingPhase(for: first) == .thought(elapsed: 4))
+        #expect(BighelpActivitySummary.label(for: ChatActivityPresentation.thinkingPhase(for: first)) == "Thought for 4s")
+        #expect(ChatActivityPresentation.thinkingPhase(for: last) == .thinking)
+        #expect(BighelpActivitySummary.label(for: ChatActivityPresentation.thinkingPhase(for: [
+            event("a", .reasoning), event("b", .reasoning, ms: nil),
+        ])) == "Thought process")
+        #expect(ChatActivityPresentation.thinkingNote(for: first) == "Thought r1\n\nThought r2")
 
         // The timeline draws each group as one row.
         let rows = ChatCanvasTranscriptProjection.rows(from: [.entry(.activity(turn))],

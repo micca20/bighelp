@@ -89,7 +89,9 @@ final class DirectHermesAgentProfileService {
             row: row,
             profile: AgentProfile(
                 id: row.id, name: row.name, role: row.role, summary: row.summary,
-                instructions: try await soul, avatar: avatar, isDefault: row.isDefault
+                instructions: try await soul, avatar: avatar, isDefault: row.isDefault,
+                look: AgentAvatarLook(namespace: row.namespace),
+                placement: AgentListPlacement(namespace: row.namespace)
             )
         )
     }

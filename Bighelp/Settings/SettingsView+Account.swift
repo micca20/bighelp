@@ -184,15 +184,9 @@ extension SettingsView {
     private var bighelpLink: some View {
         let summary = BighelpLinkDeviceSummary(devices: linkDevices.devices)
         let isSignedIn = linkAccount?.state == .ready || linkAccount == nil
-        let statusTitle: String = if !isSignedIn {
-            "Not signed in"
-        } else {
-            switch linkDevices.loadState {
-            case .idle, .loading: "Connecting"
-            case .failed: "Needs attention"
-            case .loaded: summary.title
-            }
-        }
+        let connection = HostConnectionStatus(linkSignedIn: isSignedIn, devices: linkDevices.devices,
+                                              loadState: linkDevices.loadState)
+        let statusTitle = connection.label
 
         return Section {
             Button(action: onOpenBighelpLinkAccount) {
@@ -205,10 +199,8 @@ extension SettingsView {
                 }
                 .accessibilityIdentifier("profile.loopdy-link.account")
             HStack(spacing: BighelpTokens.space12) {
-                Image(systemName: statusTitle == "Connected" ? "link.circle.fill" : "link")
-                    .foregroundStyle(statusTitle == "Connected" ? theme.success : theme.warning)
+                BighelpConnectionIndicator(phase: connection.phase)
                     .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
-                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                     Text(statusTitle)
                         .bighelpFont(.body, weight: .semibold)
@@ -269,13 +261,8 @@ extension SettingsView {
             if let linkConnectionState {
                 let connection = SettingsLinkConnectionPresentation(state: linkConnectionState)
                 HStack(alignment: .top, spacing: BighelpTokens.space12) {
-                    Image(systemName: connection.systemImage)
-                        .reflectiveVisionIcon()
-                        .foregroundStyle(connection.title == "Connected"
-                            ? theme.success
-                            : connection.isTransient ? theme.warning : theme.secondaryText)
+                    BighelpConnectionIndicator(phase: connection.status.phase)
                         .frame(width: 28, height: 28)
-                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                         Text(connection.title)
                             .bighelpFont(.body, weight: .semibold)

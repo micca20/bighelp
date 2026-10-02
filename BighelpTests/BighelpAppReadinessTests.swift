@@ -357,15 +357,13 @@ struct BighelpAppReadinessTests {
     }
 
     @Test func homeConnectionStatusUsesCompactAccessibleConnectedAndRecoveryStates() {
-        let connected = DashboardConnectionPresentation(linkState: .verified)
-        let reconnecting = DashboardConnectionPresentation(linkState: .retrying)
+        let connected = HostConnectionStatus(dashboardIsConnected: true)
+        let reconnecting = HostConnectionStatus(dashboardIsConnected: false)
 
-        #expect(connected.title == "Connected")
-        #expect(connected.systemImage == "checkmark.circle.fill")
-        #expect(connected.isConnected)
-        #expect(reconnecting.title == "Reconnecting")
-        #expect(reconnecting.systemImage == "exclamationmark.circle.fill")
-        #expect(!reconnecting.isConnected)
+        #expect(connected.label == "Connected")
+        #expect(connected.phase == .connected)
+        #expect(reconnecting.label == "Reconnecting")
+        #expect(reconnecting.phase == .reconnecting)
     }
 
     @Test func transientReconnectStatusIsCompactAndSettingsOnlyAfterAdmission() {
@@ -378,10 +376,11 @@ struct BighelpAppReadinessTests {
         #expect(retrying.detail == "bighelp Link is restoring the secure connection in the background.")
         #expect(connecting.title == "Connecting")
         #expect(superseded.title == "Connection moved")
-        #expect(!superseded.isTransient)
+        #expect(superseded.status.phase == .disconnected)
         #expect(verified.title == "Connected")
-        #expect(verified.isTransient == false)
-        #expect(retrying.isTransient)
+        #expect(verified.status.phase == .connected)
+        #expect(retrying.status.phase == .reconnecting)
+        #expect(connecting.status.phase == .connecting)
     }
 
     @Test func anAdmittedWorkspaceSurvivesTransientDeviceRefreshFailure() {

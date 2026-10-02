@@ -264,11 +264,6 @@ struct ChatMessagePresentationTests {
         #expect(ChatActivityDisclosureAccessibility.value(isExpanded: true) == "Expanded")
     }
 
-    @Test func outerWorkTrailDisclosureAnnouncesItsExpandedState() {
-        #expect(ChatWorkTrailDisclosureAccessibility.value(isExpanded: false) == "Collapsed")
-        #expect(ChatWorkTrailDisclosureAccessibility.value(isExpanded: true) == "Expanded")
-    }
-
     @MainActor
     @Test func collaborationTurnsSeparateHandoffsAndThinkingFromOrdinaryWorkTrail() throws {
         let handoff = ChatActivityEvent(
@@ -354,7 +349,8 @@ struct ChatMessagePresentationTests {
             arguments: #"{"name":"email:email-inbox-triage"}"#
         )
 
-        #expect(event.presentationTitle == "Skill: email:email-inbox-triage")
+        #expect(event.presentationTitle == "Reading a skill…")
+        #expect(event.presentationDetail == "email:email-inbox-triage")
     }
 
     @Test func genericCommandActivityUsesOnlyTheAuthenticatedExecutableBasename() {
@@ -372,8 +368,9 @@ struct ChatMessagePresentationTests {
             arguments: #"{"command":"/usr/local/bin/swift test --filter ChatModelTests --token super-secret"}"#
         )
 
-        #expect(event.presentationTitle == "Command: swift")
-        #expect(!event.presentationTitle.contains("super-secret"))
+        #expect(event.presentationTitle == "Running a command…")
+        #expect(event.presentationDetail == "swift")
+        #expect(!event.collapsedAccessibilityLabel(status: nil).contains("super-secret"))
     }
 
     @Test func genericExecuteActivityNeverExposesAuthenticatedCodeInItsCollapsedTitle() {
@@ -391,8 +388,9 @@ struct ChatMessagePresentationTests {
             arguments: #"{"code":"const apiToken = 'super-secret';\ntext(apiToken);"}"#
         )
 
-        #expect(event.presentationTitle == "Using execute code")
-        #expect(!event.presentationTitle.contains("super-secret"))
+        #expect(event.presentationTitle == "Running code…")
+        #expect(event.presentationDetail == nil)
+        #expect(!event.collapsedAccessibilityLabel(status: nil).contains("super-secret"))
     }
 
     @Test func genericToolCallActivityUsesTheAuthenticatedNestedToolName() {
@@ -410,7 +408,9 @@ struct ChatMessagePresentationTests {
             arguments: #"{"name":"loopdy_render_weather_forecast","arguments":{"location":"Kansas City"}}"#
         )
 
-        #expect(event.presentationTitle == "Tool: loopdy_render_weather_forecast")
+        #expect(event.canonicalToolName == "loopdy_render_weather_forecast")
+        #expect(event.presentationTitle == "Making a card…")
+        #expect(!event.collapsedAccessibilityLabel(status: nil).contains("Kansas City"))
     }
 
     @Test func unknownToolActivityNeverExposesAnArbitraryServerTitle() {
@@ -427,10 +427,12 @@ struct ChatMessagePresentationTests {
             toolCallID: "unknown-tool-call"
         )
 
-        #expect(event.presentationTitle == "Tool activity")
+        #expect(event.presentationTitle == "Using tools…")
+        #expect(event.presentationDetail == nil)
         #expect(event.collapsedPresentationSummary == nil)
-        #expect(event.collapsedAccessibilityLabel(status: "Working") == "Tool activity. Working")
-        #expect(!event.collapsedAccessibilityLabel(status: "Working").contains("server-secret"))
+        #expect(event.collapsedAccessibilityLabel(status: "Failed") == "Using tools…, Failed")
+        #expect(!event.collapsedAccessibilityLabel(status: "Failed").contains("server-secret"))
+        #expect(!ChatActivityPresentation.step(for: event).label.contains("server-secret"))
     }
 
     @Test func oneTokenServerTitleNeverReachesCollapsedTextOrVoiceOver() {
@@ -447,9 +449,10 @@ struct ChatMessagePresentationTests {
             toolCallID: "one-token-tool-call"
         )
 
-        #expect(event.presentationTitle == "Tool activity")
-        #expect(event.collapsedAccessibilityLabel(status: "Working") == "Tool activity. Working")
-        #expect(!event.collapsedAccessibilityLabel(status: "Working").contains("server_secret"))
+        #expect(event.presentationTitle == "Using tools…")
+        #expect(event.canonicalToolName == nil)
+        #expect(event.collapsedAccessibilityLabel(status: nil) == "Using tools…")
+        #expect(!event.collapsedAccessibilityLabel(status: nil).contains("server_secret"))
     }
 
     @Test func authenticatedHistoryToolNameIsSanitizedIntoTheCollapsedTitle() {
@@ -467,7 +470,8 @@ struct ChatMessagePresentationTests {
             toolName: "loopdy_render_weather_forecast"
         )
 
-        #expect(event.presentationTitle == "Tool: loopdy_render_weather_forecast")
+        #expect(event.presentationTitle == "Made a card")
+        #expect(event.presentationDetail == nil)
     }
 
     @Test func authenticatedActivityIdentifiersAreBoundedForCollapsedRows() {
@@ -486,7 +490,7 @@ struct ChatMessagePresentationTests {
             arguments: #"{"name":"\#(longIdentifier)"}"#
         )
 
-        #expect(event.presentationTitle == "Skill: " + String(repeating: "a", count: 80))
+        #expect(event.presentationDetail == String(repeating: "a", count: 80))
     }
 
     @Test func humanMessagesUseContentFitTrailingAccentBubbles() {
@@ -543,8 +547,6 @@ struct ChatMessagePresentationTests {
         #expect(ChatActivityVisualState(lifecycle: .failed).tone == .failure)
         #expect(ChatActivityVisualState(lifecycle: .cancelled).tone == .secondary)
         #expect(!ChatActivityVisualState(lifecycle: .succeeded).shimmers)
-        #expect(BighelpActiveCallShimmerPolicy.isAnimated(isActive: true, reduceMotion: false))
-        #expect(!BighelpActiveCallShimmerPolicy.isAnimated(isActive: true, reduceMotion: true))
     }
 
     @Test func contentFitWidthUsesIntrinsicWidthUntilTheRoleLimit() {

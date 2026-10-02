@@ -243,9 +243,7 @@ struct RootShellView: View {
             connectionKeeper.bind { [hostRegistry] in
                 hostRegistry?.isWorkspaceReady == true ? hostRegistry?.selectedWorkspace : nil
             }
-            ConnectionIslandFollower.shared.follow(connectionKeeper) { [hostRegistry] in
-                hostRegistry?.selectedWorkspace?.isConnected == true
-            }
+            ConnectionIslandFollower.shared.follow(connectionKeeper)
             guard scenePhase == .active else { return }
             await nativeWorkspaceStore?.reconnect()
         }
@@ -459,32 +457,29 @@ struct RootShellView: View {
             && (hostRegistry.connectionMode == .independent || !hasConfiguredLinkHost)
     }
 
-    @ViewBuilder
     private var nativeWorkspace: some View {
-        ContentUnavailableView {
-            Label("Hermes workspace", systemImage: "network")
-        } description: {
-            Text(nativeWorkspaceError ?? nativeRuntime?.errorMessage
-                 ?? nativeWorkspaceStore?.status ?? "Connecting to this host.")
-        } actions: {
-            if nativeRuntime?.isRefreshing == true || nativeWorkspaceStore?.isConnecting == true {
-                ProgressView()
-            } else {
-                Button("Reconnect") {
-                    Task {
-                        await nativeWorkspaceStore?.reconnect()
-                        await nativeRuntime?.refresh()
-                    }
-                }
-                if let hostRegistry {
-                    NavigationLink("Instances") {
-                        Form { BighelpConfiguredHostsSection(registry: hostRegistry) }
-                            .navigationTitle("Instances")
-                    }
+        NativeWorkspaceStatusView(
+            status: nativeWorkspaceStatus,
+            message: nativeWorkspaceError ?? nativeRuntime?.errorMessage
+                ?? nativeWorkspaceStore?.status ?? "Connecting to this host.",
+            registry: hostRegistry,
+            reconnect: {
+                Task {
+                    await nativeWorkspaceStore?.reconnect()
+                    await nativeRuntime?.refresh()
                 }
             }
-        }
-        .accessibilityIdentifier("native-workspace.connecting")
+        )
+    }
+
+    /// Opening the workspace counts as connecting until it's open, and so do
+    /// the keeper's quiet retries, as the island says.
+    private var nativeWorkspaceStatus: HostConnectionStatus {
+        let host = HostConnectionStatus(workspace: nativeWorkspaceStore, keeper: connectionKeeper)
+        let isWorking = nativeRuntime?.isRefreshing == true || host.phase == .connecting || host.phase == .reconnecting
+        let failed = nativeWorkspaceError != nil || nativeRuntime?.errorMessage != nil
+        return HostConnectionStatus(isConnected: !isWorking && !failed && host.phase == .connected,
+                                    isConnecting: isWorking, isFirstConnection: !connectionKeeper.hasConnected)
     }
 
     var workspace: some View {
@@ -590,9 +585,9 @@ struct RootShellView: View {
                     Button {
                         isHomeDrawerPresented.toggle()
                     } label: {
-                        Image(systemName: "line.3.horizontal")
+                        Image(systemName: "line.3.horizontal").bighelpToolbarIcon()
                     }
-                    .accessibilityLabel("Chats and menu")
+                    .bighelpIconLabel("Chats and menu", shortcut: "⌃⌘S")
                     .accessibilityIdentifier("home.drawer.open")
                 }
                 // Ember lives only in chrome: the brand bar on root screens.
@@ -741,13 +736,16 @@ struct RootShellView: View {
     }
 
     private var showsBottomNavigation: Bool {
-        // The all-hosts view is just its list; each agent's chat has the rest.
-        appState.path.isEmpty && !isKeyboardVisible && !fleetModeOn
+        // The all-hosts view is just its list. Feed, Ideas and Goals keep the
+        // bar if something opens them, so its Chat tab always leads back.
+        appState.path.isEmpty && !isKeyboardVisible && (!fleetModeOn || appState.selectedTab.isAgentBoard)
     }
 
     /// Vision Pro's tab strip on root screens. The agent's own chat draws its
     /// own: a screen covered by a pushed one doesn't show its ornaments.
-    private var visionTabsVisible: Bool { appState.path.isEmpty && !fleetModeOn }
+    private var visionTabsVisible: Bool {
+        appState.path.isEmpty && (!fleetModeOn || appState.selectedTab.isAgentBoard)
+    }
 
     @ViewBuilder
     private var rootTabs: some View {
@@ -897,8 +895,7 @@ struct RootShellView: View {
     @ViewBuilder
     private var sessionsRootTab: some View {
         if fleetModeOn, let fleet {
-            FleetHomeView(fleet: fleet, onOpen: openFleetAgent, onNewChat: { isFleetNewChatPresented = true },
-                          onSetPinned: setFleetPin)
+            fleetHome(fleet)
         } else if case .sessions(let model)? = featureStore.preparedModel(for: .sessions) {
             SessionsView(
                 model: model,
@@ -988,9 +985,8 @@ struct RootShellView: View {
     var workspaceActivity: some View {
         DashboardView(
             model: featureStore.dashboardModel,
-            connection: nativeRuntime != nil
-                ? DashboardConnectionPresentation(isConnected: currentWorkspaceOwner != nil)
-                : DashboardConnectionPresentation(linkState: linkReadinessState),
+            connection: HostConnectionStatus(dashboardIsConnected: nativeRuntime != nil
+                ? currentWorkspaceOwner != nil : linkReadinessState == .verified),
             permissionCenter: permissionCenter,
             onInboxItemTap: openDashboardInboxItem,
             onAttentionItemTap: openDashboardAttentionItem,
@@ -1016,23 +1012,28 @@ struct RootShellView: View {
                         Button {
                             presentQuickWorkspace()
                         } label: {
-                            Image(systemName: "line.3.horizontal")
+                            Image(systemName: "line.3.horizontal").bighelpToolbarIcon()
                         }
-                        .accessibilityLabel("Menu")
+                        .bighelpIconLabel("Menu")
                         .accessibilityIdentifier("workspace.menu")
                     }
                 }
             }
     }
 
-    /// The menu bar's New Chat (⌘N), Settings (⌘,) and sidebar (⌃⌘S).
+    /// The menu bar's New Chat (⌘N), Settings (⌘,), sidebar (⌃⌘S) and, on the Mac, tabs (⌘1–⌘5).
     private var menuCommandActions: BighelpShellActions {
-        BighelpShellActions(
+        var actions = BighelpShellActions(
             newChat: { startNewChat(explicitAgentID: nil) },
             openSettings: { isUnifiedSettingsPresented = true },
             isSidebarOpen: isHomeDrawerPresented,
             toggleSidebar: { isHomeDrawerPresented.toggle() }
         )
+        if appState.path.isEmpty, !fleetModeOn {
+            let selection = tabSelection
+            actions.selectTab = { tab in selection.wrappedValue = tab }
+        }
+        return actions
     }
 
     func startNewChat(explicitAgentID: String?) {
@@ -1586,5 +1587,34 @@ private struct OpenErrorPresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         root.openErrorPresentations(content)
+    }
+}
+
+/// Before a computer's workspace opens: what the connection is doing, why it
+/// stopped (in the computer's own words), and Reconnect once nothing's running.
+private struct NativeWorkspaceStatusView: View {
+    let status: HostConnectionStatus
+    let message: String
+    let registry: BighelpHostRegistry?
+    let reconnect: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Hermes workspace", systemImage: "network")
+        } description: {
+            Text(message)
+        } actions: {
+            BighelpConnectionPill(phase: status.phase, label: status.label)
+            if status.phase != .connecting {
+                Button("Reconnect", action: reconnect)
+                if let registry {
+                    NavigationLink("Instances") {
+                        Form { BighelpConfiguredHostsSection(registry: registry) }
+                            .navigationTitle("Instances")
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("native-workspace.connecting")
     }
 }

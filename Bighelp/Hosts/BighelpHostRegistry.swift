@@ -402,6 +402,9 @@ final class BighelpHostRegistry {
             DirectHermesAccessCredentialStore.shared.remove(for: host.endpoint)
         }
         try removeDrafts(id: host.id)
+        // Saved files are named by a one-way key, so a removed host's can't be
+        // picked out; clear them all and let other hosts' download again.
+        Task { await AgentAttachmentCache.shared.removeAll() }
         vault.invalidate(); draftStores[host.id]?.invalidate()
         hosts = remaining; selectedHostID = selection
         selectedWorkspace = selectedHost.map { workspace(for: $0) }

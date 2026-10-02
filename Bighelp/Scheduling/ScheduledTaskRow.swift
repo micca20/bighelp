@@ -21,7 +21,7 @@ struct ScheduledTaskRow: View {
             )
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(task.name)
+                Text(task.displayName)
                     .font(.bighelp(.callout).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)

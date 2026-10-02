@@ -368,6 +368,8 @@ struct BighelpApp: App {
                 #if DEBUG && targetEnvironment(simulator)
                 DirectHermesSecurePromptFixture.rootView()
                 #endif
+            } else if BighelpLoaderGallery.isRequested {
+                BighelpLoaderGallery.rootView()
             } else if isCarPlaySessionFixture {
                 #if DEBUG && os(iOS) && targetEnvironment(simulator)
                 CarPlaySessionFixture.rootView()

@@ -53,6 +53,19 @@ struct HermesBotModeRetryJournal: Codable, Equatable, Sendable {
     }
 }
 
+/// A message sent while the room's agents were already working. Persisted
+/// before `groups.send` so a lost answer is retried with the same key.
+struct HermesBotModeFollowUp: Codable, Equatable, Sendable {
+    static let maximumPending = 16
+
+    let eventID: String
+    let threadID: String
+    let text: String
+    var senderSnapshot: TimelineSenderSnapshot?
+    /// Hermes' own event ID from the `groups.send` receipt.
+    var discussionEventID: String?
+}
+
 struct HermesBotModeParticipant: Identifiable, Equatable, Sendable {
     enum Availability: Equatable, Sendable {
         case available

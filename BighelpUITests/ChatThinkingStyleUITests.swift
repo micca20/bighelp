@@ -32,7 +32,7 @@ final class ChatThinkingStyleUITests: BighelpUITestCase {
             let interim = message("Let me pull up your budget file")
             let answer = message("You're on track")
             XCTAssertTrue(answer.waitForExistence(timeout: 10))
-            let worked = app.buttons["Worked for 12s"]
+            let worked = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Worked for 12s")).firstMatch
             if hidingToolCalls, fold == "YES" {
                 // The notes are the thought process here, so they fold with it.
                 app.tables["chat.timeline"].swipeDown()
@@ -44,7 +44,9 @@ final class ChatThinkingStyleUITests: BighelpUITestCase {
             XCTAssertTrue(interim.waitForExistence(timeout: 5))
             // The answer keeps its full-size text; the interim message is smaller.
             XCTAssertLessThan(interim.frame.height, answer.frame.height)
-            let thinking = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Thinking")).firstMatch
+            // "Thinking" while it runs, "Thought for 4s" once it's done.
+            let thinking = app.buttons.matching(NSPredicate(
+                format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Thinking", "Thought")).firstMatch
             XCTAssertTrue(thinking.exists)
             if hidingToolCalls, fold == "YES" {
                 save("thinking-style\(variant)-fold-expanded", app)

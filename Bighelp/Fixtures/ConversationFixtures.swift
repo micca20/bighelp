@@ -1,4 +1,7 @@
 import Foundation
+#if DEBUG
+import UIKit
+#endif
 
 enum ConversationFixtureError: Error {
     case unavailable
@@ -273,6 +276,89 @@ enum ConversationFixtures {
 
     /// `-test-thinking-style`: a finished turn (thinking, two interim messages,
     /// tools, answer) and a turn still in progress with visible thinking.
+    /// `-test-loader-chat`: every chat loader with made-up data. A finished
+    /// turn (folds into "Worked for 14s · 3 steps") with two files still on
+    /// their way, then a live one: thinking
+    /// done, a run of browser steps still going, a picture being made and a
+    /// forecast card streaming in. With `waiting`, the live run is paused on a
+    /// secure input request instead.
+    static func loaderChatPreview(waiting: Bool = false) -> SessionRecord {
+        let sessionID = "demo-finance"
+        let agent = TimelineSender.agent(id: "finance", snapshot: .init(name: "Avery Park"))
+        func human(_ id: String, _ text: String, _ order: Int) -> TimelineItem {
+            TimelineItem(id: id, role: .human, sender: .user(snapshot: .init(name: "You")),
+                         content: .message(text), metadata: .init(sourceOrder: order))
+        }
+        func tool(_ id: String, _ turn: String, _ name: String, _ arguments: String, _ order: Int,
+                  ms: Int? = nil, running: Bool = false) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: sessionID, turnID: turn, kind: .tool,
+                              lifecycle: running ? .running : .succeeded, title: name,
+                              summary: nil, detail: nil, occurredAt: order, durationMilliseconds: ms,
+                              toolCallID: "call-\(id)", toolName: name, arguments: arguments,
+                              result: running ? nil : "Done", sourceOrder: order)
+        }
+        func thought(_ id: String, _ turn: String, _ text: String, _ order: Int, ms: Int) -> ChatActivityEvent {
+            ChatActivityEvent(eventID: id, sessionID: sessionID, turnID: turn, kind: .reasoning,
+                              lifecycle: .succeeded, title: "Reasoning", summary: nil, detail: text,
+                              occurredAt: order, durationMilliseconds: ms, sourceOrder: order)
+        }
+        let card = #"{"card_id":"0f1e2d3c4b5a69788796a5b4c3d2e1f0","component":"weather_forecast","content_hash":"#
+        // A made-up photo the person sent, for touch-and-hold Copy and Save.
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300)).pngData { context in
+            let colors = [UIColor(red: 0.98, green: 0.72, blue: 0.55, alpha: 1).cgColor,
+                          UIColor(red: 0.45, green: 0.36, blue: 0.75, alpha: 1).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: 300), options: [])
+            }
+            UIColor(red: 1, green: 0.9, blue: 0.7, alpha: 1).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 250, y: 80, width: 70, height: 70))
+        }
+        let photoAttachment = (try? ChatAttachment(id: "loader-photo-attachment", fileName: "gion-street.png",
+                                                   mimeType: "image/png", data: photo)).map { [$0] } ?? []
+        let items = [
+            TimelineItem(id: "loader-photo", role: .human, sender: .user(snapshot: .init(name: "You")),
+                         content: .message(""), metadata: .init(sourceOrder: 5), attachments: photoAttachment),
+            human("loader-q1", "Find me a ryokan near Gion for the October trip?", 10),
+            // Files still on their way to the phone show as loading tiles.
+            TimelineItem(id: "loader-files", role: .assistant, sender: agent,
+                         content: .message("Here's the room and your plan.\nMEDIA:/demo/.hermes/cache/images/"
+                                           + "hatanaka-room.png\nMEDIA:/demo/Documents/Kyoto plan.pdf"),
+                         metadata: .init(sourceOrder: 55)),
+            TimelineItem(id: "loader-a1", role: .assistant, sender: agent,
+                         content: .message("Found three near Gion under $400 a night. Hatanaka has your "
+                                           + "October 9 check-in open. Want me to hold it?"),
+                         metadata: .init(sourceOrder: 60, turnDurationMilliseconds: 14_000)),
+            human("loader-q2", "Yes, hold it. Then paint Gion at dusk and add a forecast card.", 70),
+            TimelineItem(id: "loader-a2", role: .assistant, sender: agent,
+                         content: .message("Here's the week in Kyoto:\n\n```loopdy-card\n" + card),
+                         metadata: .init(delivery: "Streaming", sourceOrder: 130)),
+        ]
+        var activity = [
+            thought("loader-r1", "loader-turn-1", "Two nights near Gion, under $400 a night, "
+                    + "checking in after the 4 PM landing.", 20, ms: 2_500),
+            tool("loader-t1", "loader-turn-1", "web_search", #"{"query":"ryokan near Gion"}"#, 30, ms: 1_900),
+            tool("loader-t2", "loader-turn-1", "browser_navigate", #"{"url":"https://stays.example/gion"}"#, 40,
+                 ms: 1_200),
+            tool("loader-t3", "loader-turn-1", "write_file", #"{"path":"Kyoto plan.md"}"#, 50, ms: 600),
+            thought("loader-r2", "loader-turn-2", "Hold the room first, then the picture and the forecast.", 80,
+                    ms: 3_000),
+            tool("loader-t4", "loader-turn-2", "browser_navigate", #"{"url":"https://stays.example/hold"}"#, 90,
+                 ms: 1_400),
+            tool("loader-t5", "loader-turn-2", "browser_click", #"{"element":"Hold room"}"#, 100,
+                 running: !waiting),
+            tool("loader-img", "loader-turn-2", "image_generate", #"{"prompt":"Gion at dusk, watercolor"}"#, 120,
+                 running: true),
+        ]
+        if waiting {
+            activity.insert(tool("loader-t6", "loader-turn-2", "bighelp_request_secure_input",
+                                 #"{"label":"Booking site password"}"#, 110, running: true), at: 7)
+        }
+        return SessionRecord(id: sessionID, kind: .direct, agentIDs: ["finance"], title: "Kyoto trip",
+                             items: items, activityEvents: activity,
+                             activityVisibility: .init(showReasoning: true, showToolCalls: true),
+                             isActive: true, hasAcceptedMessage: true)
+    }
+
     static var thinkingStylePreview: SessionRecord {
         let sessionID = "demo-finance"
         let agent = TimelineSender.agent(id: "finance", snapshot: .init(name: "Avery Park"))

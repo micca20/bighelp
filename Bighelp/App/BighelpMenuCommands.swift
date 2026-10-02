@@ -2,10 +2,17 @@ import SwiftUI
 
 /// The Mac menu bar's New Chat, Settings and text size, also listed when an
 /// iPad's keyboard Command key is held. The shell publishes what they do.
+/// The Mac's app menu also gets Check for Updates… (`BighelpMacUpdates`).
 struct BighelpMenuCommands: Commands {
     @FocusedValue(\.bighelpShellActions) private var actions
 
     var body: some Commands {
+        #if targetEnvironment(macCatalyst)
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { BighelpMacUpdates.shared.checkForUpdates() }
+                .disabled(!BighelpMacUpdates.shared.isAvailable)
+        }
+        #endif
         CommandGroup(replacing: .newItem) {
             Button("New Chat") { actions?.newChat() }
                 .keyboardShortcut("n")
@@ -24,6 +31,17 @@ struct BighelpMenuCommands: Commands {
             Button("Default Text Size") { BighelpInterfaceSize.shared.textSize = .standard }
                 .keyboardShortcut("0")
         }
+        #if targetEnvironment(macCatalyst)
+        // The bottom bar's tabs, like a Mac app's View menu. iPad keeps its own keys.
+        CommandGroup(before: .sidebar) {
+            ForEach(Array(AppTab.allCases.enumerated()), id: \.element) { index, tab in
+                Button(tab.commandTitle) { actions?.selectTab?(tab) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                    .disabled(actions?.selectTab == nil)
+            }
+            Divider()
+        }
+        #endif
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { actions?.openSettings() }
                 .keyboardShortcut(",")
@@ -38,6 +56,27 @@ struct BighelpShellActions {
     /// ☰: the Mac's sidebar.
     let isSidebarOpen: Bool
     let toggleSidebar: @MainActor () -> Void
+    /// The bottom bar's tabs (Mac ⌘1–⌘5), while the bar shows.
+    var selectTab: (@MainActor (AppTab) -> Void)? = nil
+}
+
+extension AppTab {
+    /// The bottom bar's tabs by name, for the menu bar.
+    var commandTitle: String {
+        switch self {
+        case .sessions: "Chat"
+        case .feed: "Feed"
+        case .ideas: "Ideas"
+        case .goals: "Goals"
+        case .apps: "Apps"
+        default: rawValue.capitalized
+        }
+    }
+
+    /// Mac: the tab's key in the View menu ("⌘1"), shown in its tooltip.
+    var macShortcut: String? {
+        AppTab.allCases.firstIndex(of: self).map { "⌘\($0 + 1)" }
+    }
 }
 
 private struct BighelpShellActionsKey: FocusedValueKey {

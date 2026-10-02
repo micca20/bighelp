@@ -159,6 +159,8 @@ protocol VoiceInputLevelSource: AnyObject {
     /// while speaking when speech recognition is available.
     var transcription: VoiceTranscriptionSource { get set }
     var hostTranscriber: (@MainActor (Data) async throws -> String)? { get set }
+    /// The longest pause that still waits for more (Hermes' `voice.silence_duration`).
+    var silenceLimit: Duration? { get set }
     func start(generation: UInt64) async throws
     /// Ends the turn now, as if the speaker had gone quiet.
     func finishNow()
@@ -179,6 +181,10 @@ extension VoiceInputLevelSource {
         set { }
     }
     var hostTranscriber: (@MainActor (Data) async throws -> String)? {
+        get { nil }
+        set { }
+    }
+    var silenceLimit: Duration? {
         get { nil }
         set { }
     }
@@ -210,6 +216,9 @@ final class AVAudioEngineVoiceInputLevelSource: VoiceInputLevelSource {
     var onTranscribing: ((Bool, UInt64) -> Void)?
     var transcription: VoiceTranscriptionSource = .onDevice
     var hostTranscriber: (@MainActor (Data) async throws -> String)?
+    var silenceLimit: Duration? {
+        didSet { endOfSpeechDetector.silenceLimit = silenceLimit }
+    }
 
     private let audioSession: AVAudioSession
     private let sessionCoordinator: VoiceAudioSessionCoordinator

@@ -112,7 +112,16 @@ final class DemoSessionControlMessaging: BighelpLinkSessionControlMessaging {
 }
 
 @MainActor
-final class DemoAgentDirectoryClient: AgentDirectoryClient {
+final class DemoAgentDirectoryClient: AgentDirectoryClient, AgentListPlacementWriting {
+    func setPlacement(_ placement: AgentListPlacement, profileID: String) async throws {
+        var profiles = try repository.load()
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else {
+            throw WorkspaceClientError.rejected(code: "profile_unavailable")
+        }
+        profiles[index].placement = placement
+        try repository.save(profiles)
+    }
+
     /// `-test-long-soul`: a SOUL long enough to scroll inside its editor.
     private static var longSoulFixture: String? {
         guard ProcessInfo.processInfo.arguments.contains("-test-long-soul") else { return nil }
@@ -156,6 +165,18 @@ final class DemoAgentDirectoryClient: AgentDirectoryClient {
         self.repository = repository
     }
 
+    func petGallery() async throws -> [PetdexPet] { PetdexFixtures.pets }
+
+    func petThumbnail(_ pet: PetdexPet) async throws -> Data {
+        guard let data = PetdexFixtures.thumbnail(slug: pet.slug) else { throw PetdexError.invalidImage }
+        return data
+    }
+
+    func petSheet(_ pet: PetdexPet) async throws -> Data {
+        guard let data = PetdexFixtures.sheet(slug: pet.slug) else { throw PetdexError.invalidImage }
+        return data
+    }
+
     func list() async throws -> [AgentProfile] {
         try repository.load()
     }
@@ -169,7 +190,8 @@ final class DemoAgentDirectoryClient: AgentDirectoryClient {
             summary: draft.summary,
             instructions: draft.instructions,
             avatarFileName: draft.avatarFileName,
-            isDefault: draft.isDefault
+            isDefault: draft.isDefault,
+            look: draft.look
         )
         profiles.append(profile)
         try repository.save(profiles)
@@ -186,7 +208,8 @@ final class DemoAgentDirectoryClient: AgentDirectoryClient {
             summary: draft.summary,
             instructions: draft.instructions,
             avatarFileName: draft.avatarFileName,
-            isDefault: draft.isDefault
+            isDefault: draft.isDefault,
+            look: draft.removesAvatar ? nil : draft.look ?? profiles.first { $0.id == id }?.look
         )
         guard let index = profiles.firstIndex(where: { $0.id == id }) else {
             throw CocoaError(.fileNoSuchFile)

@@ -114,6 +114,7 @@ struct HostSetupView: View {
     var body: some View {
         Form {
             header
+            connectionCheck
             switch step {
             case .connected:
                 connectedStep
@@ -178,6 +179,9 @@ struct HostSetupView: View {
             }
         }
         .task {
+            #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
+            if await holdCheckForTesting() { return }
+            #endif
             if firstRunPresentation, connectedHost == nil,
                let onboardingHostID = registry.onboardingHostID,
                let host = registry.hosts.first(where: { $0.id == onboardingHostID }) {
@@ -287,6 +291,35 @@ struct HostSetupView: View {
         if case .signIn = step { true } else { false }
     }
 
+    /// This device and the computer, joined by a line that shows the check
+    /// while it runs and stays, connected, once it's in. A failed check says
+    /// why in the error below instead.
+    @ViewBuilder
+    private var connectionCheck: some View {
+        if let status = HostConnectionStatus(setupIsWorking: isWorking, isConnected: connectedHost != nil) {
+            Section {
+                // Kept to a phone's width so the line doesn't stretch across a Mac window.
+                BighelpConnectionLine(phase: status.phase, hostName: checkedHostName, label: status.label)
+                    .padding(.vertical, BighelpTokens.space8)
+                    .frame(maxWidth: 440)
+                    .frame(maxWidth: .infinity)
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    /// The computer's name, or the address being checked until it has one.
+    private var checkedHostName: String {
+        if let connectedHost { return connectedHost.name }
+        if let hostToAuthenticate { return hostToAuthenticate.name }
+        let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty { return typed }
+        if let discovery { return discovery.endpoint.host }
+        let entered = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        return URLComponents(string: entered.contains("://") ? entered : "https://" + entered)?.host ?? entered
+    }
+
     private var canGoBack: Bool {
         switch step {
         case .protection: true
@@ -389,14 +422,10 @@ struct HostSetupView: View {
     @ViewBuilder
     private var connectedStep: some View {
         if let host = connectedHost, let notifications {
-            Section {
-                Label(host.name, systemImage: "checkmark.circle.fill")
-                    .bighelpFont(.label, weight: .semibold)
-                    .foregroundStyle(theme.primaryText)
-                    .padding(.vertical, 8)
-                if host.endpoint.baseURL.scheme == "http" { plainHTTPNote }
+            if host.endpoint.baseURL.scheme == "http" {
+                Section { plainHTTPNote }
+                    .listRowBackground(theme.surface)
             }
-            .listRowBackground(theme.surface)
             if !firstRunPresentation {
                 Section {
                     primaryAction(completionActionTitle, identifier: "host-setup.continue", disabled: false) { finish() }
@@ -414,7 +443,6 @@ struct HostSetupView: View {
         let button = Button(action: action) {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                if isWorking { ProgressView() }
                 Text(title).bighelpFont(.label, weight: .semibold)
                 Spacer(minLength: 0)
             }
@@ -763,6 +791,32 @@ struct HostSetupView: View {
         )
     }
 }
+
+#if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
+extension HostSetupView {
+    /// "-test-host-setup connecting|connected|check" holds the connection check
+    /// on a made-up computer for screenshots; "check" connects after a moment.
+    fileprivate func holdCheckForTesting() async -> Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-test-host-setup"), arguments.indices.contains(index + 1),
+              let scope = registry.accountScope,
+              let endpoint = try? DirectHermesEndpoint(address: "https://studio.example.com") else { return false }
+        let mode = arguments[index + 1]
+        name = "Studio Mac"
+        if mode != "connected" {
+            isWorking = true
+            guard mode == "check" else { return true }
+            try? await Task.sleep(for: .seconds(3))
+            isWorking = false
+        }
+        let host = BighelpConfiguredHost(id: UUID(), accountScope: scope, accountID: nil, endpoint: endpoint,
+                                         principalIdentity: "demo", name: name)
+        notifications = HostNotificationSetupModel(host: host, registry: registry)
+        connectedHost = host
+        return true
+    }
+}
+#endif
 
 @MainActor
 struct HostNotificationSetupSection: View {

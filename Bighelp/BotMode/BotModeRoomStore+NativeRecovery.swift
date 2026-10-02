@@ -93,6 +93,7 @@ extension BotModeRoomStore {
             expectedOwner: recovered.runOwner.map(BotModeRunOwnerExpectation.owner) ?? .noOwner,
             boundary: boundary
         )
+        try await recoverNativeFollowUpReceipts(roomID: roomID, client: nativeClient, boundary: boundary)
 
         var cursor = recovered.nativeLogCursor
         var noTerminalTaskIDs = recovered.nativeRetryJournal?.terminalTaskIDs ?? []
@@ -174,6 +175,7 @@ extension BotModeRoomStore {
                 unknownFailures = 0
                 guard let refreshed = self.room(id: roomID),
                       refreshed.isRunning || refreshed.nativePendingEventID != nil
+                        || !refreshed.nativeFollowUps.isEmpty
                         || nativeDriverWorkingByRoom[roomID] == true
                         || roomObservers.values.contains(where: { $0.roomID == roomID && $0.owner != nil }) else {
                     return
@@ -323,6 +325,28 @@ extension BotModeRoomStore {
         ) else { throw BotModeRoomError.persistenceConflict }
         replaceStored(saved)
         return saved
+    }
+
+    /// Messages sent while the room worked whose answer was lost are sent
+    /// again with their own key; Hermes returns the original receipt.
+    func recoverNativeFollowUpReceipts(
+        roomID: String,
+        client: any HermesBotModeClient,
+        boundary: Int
+    ) async throws {
+        for followUp in room(id: roomID)?.nativeFollowUps ?? [] where followUp.discussionEventID == nil {
+            let result = try await client.groupsSend(
+                roomID: roomID,
+                eventID: followUp.eventID,
+                payload: HermesBotModeUserPayload(text: followUp.text, threadID: followUp.threadID)
+            )
+            try requireNativeBoundary(boundary)
+            guard result.accepted, result.clientEventID == followUp.eventID else {
+                throw BotModeRoomError.nativeSendRejected
+            }
+            try recordNativeFollowUpReceipt(roomID: roomID, eventID: followUp.eventID,
+                                            discussionEventID: result.event.eventID)
+        }
     }
 
     /// Hermes exposes retry actions in `driver_status.pending_actions` even

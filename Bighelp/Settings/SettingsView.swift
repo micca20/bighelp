@@ -297,8 +297,12 @@ struct SettingsView: View {
         Section("Help & feedback") {
             Link("Report a problem", destination: URL(string: "https://github.com/promptclickrun/bighelp/issues")!)
             Link("Hermes documentation", destination: URL(string: "https://hermes-agent.nousresearch.com/docs")!)
+            #if targetEnvironment(macCatalyst)
+            BighelpMacUpdatesRow()
+            #else
             LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
             LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
+            #endif
         }
     }
 
@@ -424,6 +428,7 @@ struct SettingsView: View {
                 runtimeSource: notificationRuntimeSource,
                 refreshRuntime: notificationContext?.refresh ?? refreshNotificationRuntime,
                 sendTest: notificationContext?.test,
+                turnOff: notificationTurnOff,
                 isCurrent: notificationContext?.isCurrent ?? notificationIsCurrent
             )
         case .permissions:
@@ -435,6 +440,14 @@ struct SettingsView: View {
         case .connectivityAndNotifications:
             hostsPage
         }
+    }
+
+    private var notificationTurnOff: BighelpNotificationTurnOff? {
+        #if DEBUG
+        notificationContext?.turnOff ?? BighelpNotificationTurnOff.demoShared
+        #else
+        notificationContext?.turnOff
+        #endif
     }
 
     private static var bottomMenuNote: String {

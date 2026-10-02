@@ -306,6 +306,59 @@ struct DirectHermesGeneratedMediaTests {
         #expect(transport.requests.isEmpty)
     }
 
+    /// Opening a chat whose earlier reply has a picture: the picture can land
+    /// before the host's saved history does, which still names the file as a
+    /// `MEDIA:` line. Reading that history again keeps the picture on screen
+    /// instead of covering it with a loading tile for good.
+    @Test func savedHistoryReadAgainKeepsThePictureOnScreen() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        transport.result = .object(["data_url": .string("data:image/png;base64," + bytes.base64EncodedString())])
+        let (native, model, saved) = try catalogChat(transport: transport, workspace: workspace, owner: owner,
+            text: "Here it is.\nMEDIA:/host/.hermes/cache/images/puppy.png")
+        defer { native.suspend() }
+        try native.seedWorkspaceHistory(saved)
+        native.publishSnapshot()
+        for _ in 0..<200 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+
+        try native.seedWorkspaceHistory(saved)
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        model.reconcileHydratedSession(saved)
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(model.items.first?.content == .message("Here it is."))
+        native.publishSnapshot()
+        for _ in 0..<20 { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(native.projection.items.first?.attachments.first?.data == bytes)
+        #expect(transport.requests.count == 1)
+    }
+
+    /// A reload that briefly leaves the message out brings it back with only
+    /// its file line. The picture is read again rather than left loading.
+    @Test func aMessageThatComesBackWithoutItsPictureIsReadAgain() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        transport.result = .object(["data_url": .string("data:image/png;base64," + bytes.base64EncodedString())])
+        let (native, model, saved) = try catalogChat(transport: transport, workspace: workspace, owner: owner,
+            text: "Here it is.\nMEDIA:/host/.hermes/cache/images/puppy.png")
+        defer { native.suspend() }
+        try native.seedWorkspaceHistory(saved)
+        native.publishSnapshot()
+        for _ in 0..<200 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+
+        var empty = saved
+        empty.items = []
+        model.reconcileHydratedSession(empty)
+        #expect(model.items.isEmpty)
+        try native.seedWorkspaceHistory(saved)
+        native.publishSnapshot()
+        for _ in 0..<200 where model.items.first?.attachments.isEmpty != false { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.items.first?.attachments.first?.data == bytes)
+        #expect(model.items.first?.content == .message("Here it is."))
+    }
+
     /// When a picture can't be read at all, the message says so in plain words
     /// instead of showing the host's file path.
     @Test func aPictureThatNeverLoadsSaysSoWithoutItsPath() async throws {
@@ -429,6 +482,93 @@ struct DirectHermesGeneratedMediaTests {
         #expect(result.first?.id == "answer")
         #expect(result.first?.text == "Your image.\nKeep this text.")
         #expect(result.first?.attachments.count == 1)
+    }
+
+    /// Nous Portal and FAL report a made picture as the provider's web
+    /// address. It used to read as "unavailable" even though the picture was
+    /// made; now the card shows it.
+    @Test func aHostedPictureLoadsFromTheProvidersAddress() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        let fetched = FetchLog()
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner },
+            remoteFetch: { request, _, _ in
+                await fetched.append(request)
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                                               headerFields: ["Content-Type": "image/png"])!
+                return (bytes, response)
+            })
+        let resolution = try await resolver.resolve(agentID: "default", storedID: "stored", event: generation().updating(
+            lifecycle: .succeeded, summary: nil, detail: nil, occurredAt: 2,
+            result: #"{"success":true,"image":"https://v3.fal.media/files/zebra/puppy.png","modality":"text"}"#))
+        #expect(resolution.state == .ready)
+        #expect(resolution.attachments.first?.data == bytes)
+        #expect(resolution.attachments.first?.fileName == "puppy.png")
+        #expect(await fetched.urls == ["https://v3.fal.media/files/zebra/puppy.png"])
+        #expect(await fetched.cookies == [false])
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func providerAddressesMustBePublicHTTPSAndSuccessful() {
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":true,"image":"https://v3.fal.media/a.png"}"#, kind: .image).count == 1)
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":true,"image":"http://v3.fal.media/a.png"}"#, kind: .image).isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":true,"image":"https://localhost/a.png"}"#, kind: .image).isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":true,"image":"https://192.168.1.4/a.png"}"#, kind: .image).isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":false,"image":"https://v3.fal.media/a.png"}"#, kind: .image).isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.providerURLs(
+            #"{"success":true,"image":"https://v3.fal.media/a.png"}"#, kind: .video).isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.providerFileName(
+            URL(string: "https://v3.fal.media/files/abc")!, mimeType: "image/jpeg") == "image.jpeg")
+    }
+
+    /// The reply links the hosted picture and its preview draws it, so the
+    /// card keeps only its label and the picture shows once.
+    @Test func aLinkedHostedPictureShowsOnceInTheReply() async throws {
+        let (owner, transport, workspace) = try setup()
+        let bytes = image()
+        let address = "https://v3.fal.media/files/zebra/puppy.png"
+        let cardReader = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner },
+            remoteFetch: { request, _, _ in
+                (bytes, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                                        headerFields: ["Content-Type": "image/png"])!)
+            })
+        let (native, model) = try nativeChat(transport: transport, workspace: workspace, owner: owner,
+                                             cardReader: cardReader)
+        native.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
+        let card = ChatActivityEvent(eventID: "image-event", sessionID: native.conversationID, turnID: "turn",
+            kind: .tool, lifecycle: .running, title: "image_generate", summary: nil, detail: nil, occurredAt: 1,
+            toolCallID: "image-call", toolName: "image_generate", sourceOrder: 1)
+        _ = model.acceptActivity(card)
+        _ = model.acceptActivity(card.updating(lifecycle: .succeeded, summary: nil, detail: nil, occurredAt: 2,
+            result: #"{"success":true,"image":"\#(address)"}"#))
+        for _ in 0..<200 where model.activityLedger.event(id: card.id)?.generatedMedia?.state != .ready {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(model.activityLedger.event(id: card.id)?.generatedMedia?.state == .ready)
+        native.receive(.init(type: "message.complete", sessionID: "runtime",
+                             payload: ["text": .string("Here's your puppy: " + address)], sequence: 2))
+        native.receive(.init(type: "session.info", sessionID: "runtime", payload: ["running": .boolean(false)],
+                             sequence: 3))
+        for _ in 0..<200 where model.activityLedger.event(id: card.id)?.generatedMedia?.shownInReply != true {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(model.activityLedger.event(id: card.id)?.generatedMedia?.shownInReply == true)
+    }
+
+    /// A message's files still on their way show as tiles, not as raw lines.
+    @Test func pendingFilesLeaveTheWordsAndNameTheFiles() {
+        let text = "Your report.\nMEDIA:/host/files/report.pdf\nMEDIA:/host/.hermes/cache/images/a.png\nEnjoy."
+        let pending = DirectHermesGeneratedMediaClient.pendingFiles(text, role: .assistant)
+        #expect(pending.text == "Your report.\nEnjoy.")
+        #expect(pending.fileNames == ["report.pdf", "a.png"])
+        #expect(DirectHermesGeneratedMediaClient.pendingFiles("MEDIA:/host/a.png", role: .assistant).text.isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.pendingFiles(text, role: .human).fileNames.isEmpty)
+        #expect(DirectHermesGeneratedMediaClient.pendingFiles("No files.", role: .assistant).fileNames.isEmpty)
     }
 
     @Test func rejectsProviderURLsInputsTraversalAndInvalidImageBytes() throws {
@@ -555,6 +695,29 @@ struct DirectHermesGeneratedMediaTests {
         return (native, model)
     }
 
+    /// A chat opened from the chat list, as the app does: its history comes
+    /// from the host's saved copy, with the reply's file as a `MEDIA:` line.
+    private func catalogChat(transport: MediaTransport, workspace: DirectHermesWorkspaceClient, owner: WorkspaceOwner,
+                             text: String) throws -> (DirectHermesConversationClient, ChatModel, SessionRecord) {
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner })
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let host = WorkspaceOwner(authority: try .direct(endpointIdentity: "https://media.example.test",
+            providerID: "test", userID: "media"), authenticationGeneration: UUID(), connectionGeneration: UUID())
+        let id = try DirectHermesSessionIdentity.appID(owner: host, profileID: "default", anchorID: "stored")
+        let coordinate = try WorkspaceSessionCoordinate(owner: host, profileID: "default", sessionID: id,
+                                                       storedSessionID: "stored", runtimeSessionID: "runtime")
+        let native = try DirectHermesConversationClient(rpc: transport, hostIdentity: host.cacheScopeID,
+            profile: "default", runtimeID: "runtime", storedID: "stored", title: "Media", epoch: "epoch",
+            drafts: DirectHermesDraftStore(root: root), workspaceSession: coordinate, attachmentResolver: resolver)
+        var saved = SessionRecord(id: id, kind: .direct, agentIDs: ["default"], title: "Media", remoteStoredID: "stored")
+        saved.items = [TimelineItem(id: id + ":row:1", role: .assistant,
+            sender: .agent(id: "default", snapshot: .init(name: "Hermes")), content: .message(text),
+            metadata: .init(source: "Direct Hermes", delivery: "Saved", sourceOrder: 1))]
+        let model = ChatModel(conversationID: id, client: native, initialItems: [], sourceSession: saved)
+        native.model = model
+        return (native, model, saved)
+    }
+
     private func finish(_ native: DirectHermesConversationClient, text: String) {
         native.receive(.init(type: "message.start", sessionID: "runtime", payload: [:], sequence: 1))
         native.receive(.init(type: "message.complete", sessionID: "runtime", payload: ["text": .string(text)], sequence: 2))
@@ -669,6 +832,16 @@ private final class DeliveredFileHTTPFixture: @unchecked Sendable {
         listener.stateUpdateHandler = nil
         listener.newConnectionHandler = nil
         listener.cancel()
+    }
+}
+
+/// What a provider fetch was asked for.
+private actor FetchLog {
+    private(set) var urls: [String] = []
+    private(set) var cookies: [Bool] = []
+    func append(_ request: URLRequest) {
+        urls.append(request.url?.absoluteString ?? "")
+        cookies.append(request.httpShouldHandleCookies)
     }
 }
 

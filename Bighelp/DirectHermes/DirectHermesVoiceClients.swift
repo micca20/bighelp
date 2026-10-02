@@ -379,22 +379,29 @@ final class DirectHermesVoiceSpeechOutput: VoiceSpeechOutput {
         // Hermes' public /api/audio/speak contract accepts text only; speed is
         // part of the host's resolved TTS configuration.
         _ = rate
-        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return }
-        let profile = try DirectHermesCoreRequestScope.profile(profileID)
-        try scope.require(.voiceOutput, profile: profile)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         generation &+= 1
         let ownedGeneration = generation
         playback.stop()
+        let audio = try await synthesize(text)
+        guard generation == ownedGeneration else { throw CancellationError() }
+        try await playback.play(audio.data, mimeType: audio.mimeType, onPlayback: onPlayback)
+    }
 
+    /// This profile's voice for `text`, without playing it, so a caller can
+    /// make the next piece while another plays (team calls).
+    func synthesize(_ text: String) async throws -> TeamCallAudio {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { throw VoiceSessionError.emptyResponse }
+        let profile = try DirectHermesCoreRequestScope.profile(profileID)
+        try scope.require(.voiceOutput, profile: profile)
         let value = try await scope.perform(.voiceSpeak, [
             "profile": .string(profile),
             "text": .string(String(normalized.prefix(20_000))),
         ])
         try Task.checkCancellation()
-        guard generation == ownedGeneration else { throw CancellationError() }
         let audio = try Self.audio(value)
-        try await playback.play(audio.data, mimeType: audio.mimeType, onPlayback: onPlayback)
+        return TeamCallAudio(data: audio.data, mimeType: audio.mimeType)
     }
 
     func stop() {

@@ -99,10 +99,12 @@ final class WatchRelay: NSObject {
         // saved history is the truth.
         if let model = workspace.featureStore.preparedChatModel(id: id), model.isSending,
            let record = workspace.catalog.session(id: id) {
-            return WatchRelayProjection.chat(record, items: model.items, isWorking: true, agentNames: names)
+            return WatchRelayProjection.chat(record, items: model.items, isWorking: true,
+                                             activityEvents: model.activityLedger.allEvents, agentNames: names)
         }
         guard let record = try? await workspace.catalog.hydrateSession(id: id) else { throw WatchRelayError.chatGone }
-        return WatchRelayProjection.chat(record, items: record.items, isWorking: record.isActive, agentNames: names)
+        return WatchRelayProjection.chat(record, items: record.items, isWorking: record.isActive,
+                                         activityEvents: record.activityEvents, agentNames: names)
     }
 
     private func send(_ outgoing: WatchOutgoing) async throws -> String {
@@ -300,7 +302,7 @@ extension WatchReply {
         case .chat(let chat):
             return .chat(WatchChat(sessionID: chat.sessionID, title: chat.title, agentName: chat.agentName,
                                    messages: Array(chat.messages.suffix(max(chat.messages.count / 2, 1))),
-                                   isWorking: chat.isWorking))
+                                   isWorking: chat.isWorking, activity: chat.activity))
         case .board(let items):
             return .board(Array(items.prefix(max(items.count / 2, 1))))
         default:

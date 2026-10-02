@@ -34,7 +34,7 @@ struct WatchChatView: View {
                     }
                     if isWorking {
                         WatchThinking(name: chat?.agentName ?? store.agent?.name ?? "Your agent",
-                                      isSending: sessionID == nil).id("thinking")
+                                      activity: chat?.activity, isSending: sessionID == nil).id("thinking")
                     }
                     if let problem = store.problem(in: key) ?? phoneNotice {
                         WatchNotice(text: problem).padding(.top, 4)
@@ -146,15 +146,27 @@ struct WatchBubble: View {
     }
 }
 
-/// "Avery is thinking" with three breathing dots.
+/// "Searching the web…" (the phone's words for the work) or "Avery is
+/// working", with three breathing dots and a soft shimmer across the words,
+/// like the iPhone's activity row. Both rest with Reduce Motion and when the
+/// screen dims.
 struct WatchThinking: View {
     let name: String
+    var activity: String?
     var isSending = false
     @State private var phase = 0.0
+    @State private var sweep = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    private var firstName: String { name.split(separator: " ").first.map(String.init) ?? name }
 
     private var words: String {
-        isSending ? "Sending…" : "\(name.split(separator: " ").first.map(String.init) ?? name) is working"
+        if isSending { return "Sending…" }
+        return activity ?? "\(firstName) is working"
     }
+
+    private var moves: Bool { !reduceMotion && !isLuminanceReduced }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -163,18 +175,34 @@ struct WatchThinking: View {
                     Circle()
                         .fill(WatchDesign.Color.accent)
                         .frame(width: 5, height: 5)
-                        .opacity(0.35 + 0.65 * abs(sin(phase + Double(index) * 0.7)))
+                        .opacity(moves ? 0.35 + 0.65 * abs(sin(phase + Double(index) * 0.7)) : 1)
                 }
             }
             Text(words)
                 .font(.caption2)
                 .foregroundStyle(WatchDesign.Color.secondaryText)
+                .lineLimit(2)
+                .overlay {
+                    if moves {
+                        // One band crossing the words, drawn by the system's
+                        // animation rather than a timer.
+                        GeometryReader { proxy in
+                            LinearGradient(colors: [.clear, WatchDesign.Color.text.opacity(0.9), .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: proxy.size.width * 0.5)
+                                .offset(x: sweep ? proxy.size.width : -proxy.size.width * 0.5)
+                        }
+                        .mask { Text(words).font(.caption2).lineLimit(2) }
+                        .allowsHitTesting(false)
+                    }
+                }
         }
         .padding(.vertical, 4)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { phase = .pi }
+            withAnimation(.linear(duration: 1.9).repeatForever(autoreverses: false)) { sweep = true }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(words)
+        .accessibilityLabel(isSending || activity == nil ? words : "\(firstName): \(words)")
     }
 }

@@ -183,7 +183,9 @@ struct AgentMediaTile: View {
                                 .padding(8)
                         }
                     } else {
-                        Rectangle().fill(theme.incomingMessageBackground).overlay(ProgressView())
+                        // The picture is on the host; its small copy is on the way.
+                        Rectangle().fill(BighelpSkeletonPalette.block(in: theme))
+                            .bighelpSkeleton(isLoading: true, accessibilityLabel: "Loading picture")
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -198,7 +200,9 @@ struct AgentMediaTile: View {
                 }
                 .overlay {
                     if store.openingID == item.id {
-                        ProgressView().tint(.white).padding(10).background(.black.opacity(0.4), in: Circle())
+                        BighelpSpinner(size: 18, lineWidth: 2, color: .white)
+                            .padding(10)
+                            .background(.black.opacity(0.4), in: Circle())
                     }
                 }
                 .clipped()

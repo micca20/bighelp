@@ -86,6 +86,17 @@ struct BighelpAppComposition {
                     for: CompanionStore.agentKey(agentScope: "fixture-account:fixture-host", agentID: parts[0]))
             }
         }
+        // "-test-agent-pet finance:pip": one demo agent wears a petdex pet that plays its moves.
+        if usesFixtures, let index = arguments.firstIndex(of: "-test-agent-pet"), arguments.indices.contains(index + 1) {
+            let parts = arguments[index + 1].split(separator: ":").map(String.init)
+            if parts.count == 2, let pet = PetdexFixtures.pets.first(where: { $0.slug == parts[1] }) {
+                PetAvatarStore.shared.assign(pet, to: CompanionStore.agentKey(agentScope: "fixture-account:fixture-host",
+                                                                               agentID: parts[0])) {
+                    guard let sheet = PetdexFixtures.sheet(slug: pet.slug) else { throw PetdexError.invalidImage }
+                    return sheet
+                }
+            }
+        }
         #endif
         if usesFixtures, arguments.contains("-enable-project-changes") {
             settings.showProjectChanges = true
@@ -285,6 +296,9 @@ struct BighelpAppComposition {
                 previewsExistingGroup: arguments.contains("-preview-agent-groups"),
                 showsStoreScreenshots: arguments.contains(AppStoreScreenshotFixture.launchArgument)
             ))
+        }
+        if usesFixtures, arguments.contains(TeamCallDemoGroupsClient.launchArgument) {
+            botModeRooms.configureNativeClient(TeamCallDemoGroupsClient())
         }
         #endif
         do {
@@ -490,6 +504,9 @@ struct BighelpAppComposition {
             ),
             midSessionBehavior: { settings.midSessionChatBehavior }
         )
+        #if DEBUG
+        if usesFixtures { featureStore.teamCallServices = TeamCallDemoServices() }
+        #endif
         #if DEBUG
         if usesFixtures, arguments.contains("-test-live-voice") {
             featureStore.configureLiveVoiceFactory { session, agent, _ in

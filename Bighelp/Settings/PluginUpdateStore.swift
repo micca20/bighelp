@@ -102,6 +102,8 @@ final class PluginUpdateStore {
 
     var isPending: Bool { pendingOperationID != nil }
     var canStart: Bool { valid && isCurrent() && !isWorking && !isPending && !isUnsupported }
+    /// Hermes restarted for the update and the app is waiting to reach it again.
+    var isReconnecting: Bool { (isPending && message != nil) || status?.phase == .waitingForActivation }
     var title: String {
         if isPending, message != nil { return "Reconnecting" }
         return status?.phase.title ?? (isWorking ? "Checking host" : "bighelp Plugin")

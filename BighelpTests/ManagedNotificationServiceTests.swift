@@ -21,6 +21,103 @@ import UserNotifications
         #expect(fixture.ledger.enrollments.isEmpty)
     }
 
+    @Test func turnOffDeletesHostServiceAndDeviceDataLeavingNothingBehind() async throws {
+        let fixture = try Fixture(notificationDeviceID: UUID().uuidString.lowercased())
+        defer { fixture.cleanup() }
+        fixture.hostAPI.sealedAlerts = true
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let grant = try #require(fixture.account.grant?.grantId)
+        let installation = try fixture.service.credentials(for: fixture.host).deviceID
+        #expect(try fixture.sealedKeys.load() != nil)
+        #expect(try !fixture.sealedSenders.load().isEmpty)
+        #expect(fixture.service.hasNotificationData)
+
+        var steps: [BighelpNotificationTurnOffStep] = []
+        let result = try await fixture.service.turnOffNotifications { steps.append($0) }
+
+        #expect(result.unreachableHosts.isEmpty)
+        #expect(steps == [.hosts, .service, .device])
+        #expect(fixture.hostAPI.removedGrants == [grant], "The host deletes its copy")
+        #expect(fixture.account.grant?.state == "revoked")
+        #expect(fixture.transport.revokedInstallations == [installation],
+                "Revoking the installation makes the Worker delete the BuzzKit subscriber")
+        #expect(fixture.provider.retirements == 1, "BuzzKit's own identity is retired")
+        #expect(fixture.identityVault.value == .none)
+        #expect(fixture.ledger.enrollments.isEmpty && fixture.ledger.activities.isEmpty)
+        #expect(try fixture.sealedKeys.load() == nil, "The sealed-alert key is gone")
+        #expect(try fixture.sealedSenders.load().isEmpty, "Pinned host keys are gone")
+        #expect(fixture.host.notificationBinding == nil)
+        #expect(fixture.host.notificationState == .notConfigured)
+        #expect(!fixture.service.turnOffPending)
+        #expect(!fixture.service.hasNotificationData)
+        #expect(fixture.service.hostsAwaitingCleanup.isEmpty)
+        let reloaded = try BighelpManagedNotificationLedger(root: fixture.root.appending(path: "ledger"))
+        #expect(reloaded.enrollments.isEmpty, "Nothing comes back after relaunch")
+    }
+
+    @Test func turnOffFinishesWithAnOfflineHostAndRemovesItsCopyLater() async throws {
+        let fixture = try Fixture(notificationDeviceID: UUID().uuidString.lowercased())
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        let grant = try #require(fixture.account.grant?.grantId)
+        fixture.hostAPI.offline = true
+
+        let result = try await fixture.service.turnOffNotifications()
+
+        #expect(result.unreachableHosts == ["Host"])
+        #expect(fixture.account.grant?.state == "revoked", "The offline host can't send anything")
+        #expect(fixture.transport.revokedInstallations.count == 1)
+        #expect(fixture.identityVault.value == .none)
+        #expect(fixture.service.hostsAwaitingCleanup == ["Host"])
+        #expect(fixture.service.hasNotificationData)
+
+        fixture.hostAPI.offline = false
+        #expect(await fixture.service.retryPendingHostCleanups().isEmpty)
+        #expect(fixture.hostAPI.removedGrants == [grant])
+        #expect(fixture.service.hostsAwaitingCleanup.isEmpty)
+        #expect(!fixture.service.hasNotificationData)
+    }
+
+    @Test func turnOffThatTheServiceDidNotConfirmNeverReidentifiesAndCanFinish() async throws {
+        let fixture = try Fixture(notificationDeviceID: UUID().uuidString.lowercased())
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        fixture.transport.installationRevokeFails = true
+
+        await #expect(throws: (any Error).self) { try await fixture.service.turnOffNotifications() }
+        #expect(fixture.service.turnOffPending)
+        #expect(fixture.identityVault.value != .none, "Kept to sign the retry")
+        let identifications = fixture.provider.identifiedDeviceIDs.count
+        _ = try await fixture.service.refreshNotificationIdentity()
+        #expect(fixture.provider.identifiedDeviceIDs.count == identifications,
+                "Launch recovery must not identify BuzzKit again mid turn-off")
+
+        fixture.transport.installationRevokeFails = false
+        _ = try await fixture.service.turnOffNotifications()
+        #expect(!fixture.service.turnOffPending)
+        #expect(fixture.identityVault.value == .none)
+        #expect(!fixture.service.hasNotificationData)
+    }
+
+    @Test func notificationsTurnOnAgainFromScratchAfterTurnOff() async throws {
+        let original = UUID().uuidString.lowercased()
+        let fixture = try Fixture(notificationDeviceID: original)
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+        _ = try await fixture.service.turnOffNotifications()
+
+        let result = try await fixture.service.enroll(host: fixture.host, connection: fixture.connection, isCurrent: { true })
+
+        guard case .enabled = result else {
+            Issue.record("Notifications did not turn on again")
+            return
+        }
+        let renewed = try #require(fixture.host.notificationBinding?.deviceID)
+        #expect(renewed != original, "A brand-new notification installation")
+        #expect(fixture.ledger.record(host: fixture.host, profile: "default")?.enabled == true)
+        #expect(fixture.account.grant?.state == "active")
+    }
+
     @Test func localErasureWithoutHostGrantsDoesNotRequireProviderReadiness() async throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
@@ -573,8 +670,18 @@ import UserNotifications
         var sealedAlerts = false
         var recipientKeys: [String] = []
         init(_ account: Account, _ trust: BighelpNotificationHostTrustStore) { self.account=account;self.trust=trust }
+        var offline = false
+        var removedGrants: [String] = []
         func request(_ suffix: String, method: String, body: [String: BighelpJSONValue]?, isCurrent: @escaping @MainActor () -> Bool) async throws -> BighelpJSONValue {
             guard isCurrent() else { throw DirectHermesError.secureStorageChanged }
+            if offline { throw DirectHermesError.notConnected }
+            if method == "DELETE", suffix.hasPrefix("/enrollments/"), !suffix.dropFirst(13).contains("/") {
+                // The plugin's remove(): deletes the grant's subscriptions, pending
+                // alerts, Live Activities, recipient key and avatar keys.
+                let grant = String(suffix.dropFirst(13))
+                removedGrants.append(grant)
+                return .object(["version": .integer(1), "state": .string("removed"), "grantId": .string(grant)])
+            }
             if suffix == "/capabilities" { return .object(["version":.integer(1),"hostKeyId":.string(account.template.hostKeyId),
                 "hostPublicKey":.string(account.template.hostPublicKey),"managedEnrollmentSupported":.boolean(true),
                 "supportedEventTypes":.array(supportedEvents.map(BighelpJSONValue.string)),
@@ -655,6 +762,8 @@ import UserNotifications
     }
     @MainActor private final class NoNetworkTransport: BighelpLinkHTTPTransport {
         private(set) var bindingRequests = 0
+        var installationRevokeFails = false
+        private(set) var revokedInstallations: [String] = []
 
         func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
             if request.httpMethod == "POST",
@@ -706,9 +815,20 @@ import UserNotifications
             }
             if request.httpMethod == "DELETE",
                request.url?.path == BighelpNotificationBrokerClient.currentInstallationPath,
+               installationRevokeFails, let url = request.url,
+               let response = HTTPURLResponse(url: url, statusCode: 503, httpVersion: nil, headerFields: nil) {
+                // The Worker when BuzzKit doesn't confirm deleting the subscriber.
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "version": 2, "error": ["code": "notification_cleanup_unavailable"],
+                ])
+                return (body, response)
+            }
+            if request.httpMethod == "DELETE",
+               request.url?.path == BighelpNotificationBrokerClient.currentInstallationPath,
                let installationID = request.value(forHTTPHeaderField: "x-loopdy-notification-installation"),
                let url = request.url,
                let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) {
+                revokedInstallations.append(installationID)
                 let body = try JSONSerialization.data(withJSONObject: [
                     "version": 2,
                     "installation": ["installationId": installationID, "state": "revoked"],
@@ -729,11 +849,18 @@ import UserNotifications
         let account: Account; let hostAPI: Host
         private let notificationTransport: NoNetworkTransport
         var bindingRequests: Int { notificationTransport.bindingRequests }
+        var transport: NoNetworkTransport { notificationTransport }
+        let defaultsSuite: String
+        let defaults: UserDefaults
+        let identityVault = MemoryIdentityVault()
         let provider = Provider()
         init(approvalSupported: Bool = false, independent: Bool = false, dashboard: Bool = false,
              permissionGranted: Bool = true, notificationDeviceID: String? = nil,
              providerOverride: (any BighelpManagedNotificationProvider)? = nil) throws {
             root=FileManager.default.temporaryDirectory.appending(path:UUID().uuidString)
+            let suite = "bighelp.test.notifications." + UUID().uuidString
+            defaultsSuite = suite
+            defaults = UserDefaults(suiteName: suite)!
             let vault=BighelpLinkMemoryCredentialVault()
             let credentials=BighelpLinkRuntimeCredentials(deviceID:"fixture-mobile",authorizationEpoch:1,signingPrivateKey:P256.Signing.PrivateKey(),accountKey:Data(repeating:8,count:32))
             try vault.save(credentials)
@@ -780,7 +907,6 @@ import UserNotifications
                 ),
                 transport: noNetwork
             )
-            let identityVault = MemoryIdentityVault()
             identityVault.value = .current(.active(.init(
                 authority: .notificationOnly,
                 deviceID: notificationDeviceID ?? credentials.deviceID,
@@ -790,8 +916,8 @@ import UserNotifications
             let identity = BighelpNotificationIdentityCoordinator(vault: identityVault, legacyVault: vault, broker: broker)
             service=BighelpManagedNotificationService(identity:identity,api:account,requestPermission:{permissionGranted},registry:registry,ledger:ledger,
                 activityKeys:BighelpManagedActivityKeychain(service:"app.loopdy.test.activities."+UUID().uuidString),hostClient:{_ in hostClient},now:{Date(timeIntervalSince1970:1_800_000_100)},buzzKit:providerOverride ?? provider,
-                sealedRecipientKeys:sealedKeys,sealedSenders:sealedSenders)
+                sealedRecipientKeys:sealedKeys,sealedSenders:sealedSenders,defaults:defaults)
         }
-        func cleanup(){ try? trust.removeAll(); try? sealedKeys.remove(); try? sealedSenders.removeAll(); registry.bind(deviceID:nil,authorizationEpoch:nil); try? FileManager.default.removeItem(at:root) }
+        func cleanup(){ defaults.removePersistentDomain(forName: defaultsSuite); try? trust.removeAll(); try? sealedKeys.remove(); try? sealedSenders.removeAll(); registry.bind(deviceID:nil,authorizationEpoch:nil); try? FileManager.default.removeItem(at:root) }
     }
 }

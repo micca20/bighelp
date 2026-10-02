@@ -73,7 +73,7 @@ enum WatchRelayProjection {
     }
 
     static func chat(_ record: SessionRecord, items: [TimelineItem], isWorking: Bool,
-                     agentNames: [String: String]) -> WatchChat {
+                     activityEvents: [ChatActivityEvent] = [], agentNames: [String: String]) -> WatchChat {
         let agentID = record.agentIDs.first
         let messages: [WatchMessage] = items.compactMap { item in
             guard case .message(let raw) = item.content else { return nil }
@@ -94,7 +94,9 @@ enum WatchRelayProjection {
             title: WatchWire.bounded(record.title.isEmpty ? "New chat" : record.title, bytes: WatchLimits.title),
             agentName: WatchWire.bounded(agentID.flatMap { agentNames[$0] } ?? "bighelp", bytes: WatchLimits.name),
             messages: Array(unique.suffix(WatchLimits.messages)),
-            isWorking: isWorking
+            isWorking: isWorking,
+            activity: isWorking ? ChatActivityPresentation.liveLabel(for: activityEvents)
+                .map { WatchWire.bounded($0, bytes: WatchLimits.name) } : nil
         )
     }
 

@@ -43,6 +43,14 @@ struct FleetStoreTests {
             pinChanges.append((pinned ? "pin " : "unpin ") + profileID)
             return true
         }
+
+        private(set) var placements: [String: AgentListPlacement] = [:]
+        var placementFailure: (any Error)?
+
+        func setPlacement(_ placement: AgentListPlacement, hostID: UUID, profileID: String) async throws {
+            if let placementFailure { throw placementFailure }
+            placements[profileID] = placement
+        }
     }
 
     private func directory() -> URL {
@@ -57,8 +65,160 @@ struct FleetStoreTests {
         ].prefix(count).map { $0 })
     }
 
-    private func agent(_ host: UUID, _ id: String, _ name: String, pinned: Bool = false) -> FleetAgent {
-        FleetAgent(hostID: host, profileID: id, name: name, role: "", isPinned: pinned, isDefault: false)
+    private func agent(_ host: UUID, _ id: String, _ name: String, pinned: Bool = false,
+                       placement: AgentListPlacement? = nil) -> FleetAgent {
+        FleetAgent(hostID: host, profileID: id, name: name, role: "", isPinned: pinned, isDefault: false,
+                   placement: placement)
+    }
+
+    private func names(_ block: FleetSectionBlock) -> [String] {
+        block.items.map { item in
+            switch item {
+            case .agent(let agent): agent.name
+            case .group(let group): group.name
+            }
+        }
+    }
+
+    private func blocks(_ fleet: FleetStore) -> [FleetSectionBlock] {
+        FleetSectioning.blocks(fleet.agents().map(FleetListItem.agent) + fleet.groups().map(FleetListItem.group),
+                               sections: fleet.sections, groupSections: fleet.groupSectionIDs)
+    }
+
+    // MARK: Hidden agents and sections
+
+    /// Hiding only changes the list, and it's saved on the agent's own host.
+    @Test func hidingAnAgentSavesItOnItsHost() async throws {
+        let reader = reader()
+        reader.snapshots[studio] = FleetSnapshot(agents: [agent(studio, "rio", "Rio")], refreshedAt: Date())
+        let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)
+        fleet.refresh()
+        await fleet.waitForReads()
+        let rio = try #require(fleet.agent(hostID: studio, profileID: "rio"))
+
+        try await fleet.setHidden(rio, true)
+        #expect(reader.placements["rio"]?.isHidden == true)
+        #expect(fleet.agent(hostID: studio, profileID: "rio")?.isHidden == true)
+        #expect(fleet.hiddenAgentCount == 1)
+
+        // A read that started before the save doesn't bring it back.
+        fleet.refresh(force: true)
+        await fleet.waitForReads()
+        #expect(fleet.agent(hostID: studio, profileID: "rio")?.isHidden == true)
+
+        try await fleet.setHidden(try #require(fleet.agent(hostID: studio, profileID: "rio")), false)
+        #expect(reader.placements["rio"]?.isHidden == false)
+        #expect(fleet.hiddenAgentCount == 0)
+    }
+
+    /// A host that can't save puts the agent back and says to update Hermes.
+    @Test func placementTheHostRefusesIsUndoneWithAPlainReason() async throws {
+        let reader = reader()
+        reader.snapshots[studio] = FleetSnapshot(agents: [agent(studio, "rio", "Rio")], refreshedAt: Date())
+        reader.placementFailure = WorkspaceClientError.unavailable(.unsupportedHost)
+        let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)
+        fleet.refresh()
+        await fleet.waitForReads()
+        let rio = try #require(fleet.agent(hostID: studio, profileID: "rio"))
+        await #expect(throws: WorkspaceClientError.self) { try await fleet.setHidden(rio, true) }
+        #expect(fleet.agent(hostID: studio, profileID: "rio")?.isHidden == false)
+        #expect(fleet.placementError == "Update Hermes on Studio to keep sections and hidden agents there.")
+    }
+
+    /// Agents on both hosts file into one section; the selected host saves
+    /// through its own agent list. Deleting the section never deletes them,
+    /// and Undo files them back.
+    @Test func deletingASectionOnlyUnfilesItsAgentsAndUndoPutsThemBack() async throws {
+        let reader = reader()
+        reader.snapshots[studio] = FleetSnapshot(agents: [agent(studio, "rio", "Rio")], refreshedAt: Date())
+        let folder = directory()
+        let fleet = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        var homeWrites: [String: AgentListPlacement] = [:]
+        fleet.selectedHostPlacementWriter = { placement, profileID in homeWrites[profileID] = placement }
+        fleet.recordLive(FleetSnapshot(agents: [agent(home, "ava", "Ava")], refreshedAt: Date()), hostID: home)
+        fleet.refresh()
+        await fleet.waitForReads()
+
+        let work = try #require(fleet.createSection(named: "  Work  "))
+        #expect(work.name == "Work")
+        #expect(work.id.hasPrefix("sec-"))
+        try await fleet.file(try #require(fleet.agent(hostID: home, profileID: "ava")), in: work.id)
+        try await fleet.file(try #require(fleet.agent(hostID: studio, profileID: "rio")), in: work.id)
+        #expect(homeWrites["ava"] == AgentListPlacement(sectionID: work.id, sectionName: "Work"))
+        #expect(reader.placements["rio"] == AgentListPlacement(sectionID: work.id, sectionName: "Work"))
+        #expect(blocks(fleet).map(names) == [["Ava", "Rio"].sorted(), []])
+
+        let deletion = try #require(fleet.deleteSection(work.id))
+        #expect(fleet.sections.isEmpty)
+        #expect(blocks(fleet).map(names) == [["Ava", "Rio"].sorted()])
+        for _ in 0..<100 where reader.placements["rio"]?.sectionID != nil { await Task.yield() }
+        #expect(reader.placements["rio"]?.sectionID == nil)
+        #expect(homeWrites["ava"]?.sectionID == nil)
+        #expect(fleet.agents().count == 2)
+
+        fleet.undoDeleteSection(deletion)
+        for _ in 0..<100 where reader.placements["rio"]?.sectionID == nil { await Task.yield() }
+        #expect(fleet.sections == [work])
+        #expect(reader.placements["rio"]?.sectionID == work.id)
+        #expect(blocks(fleet).first.map(names) == ["Ava", "Rio"].sorted())
+
+        // The section list (order, empty ones) stays on this device.
+        let later = try #require(fleet.createSection(named: "Later"))
+        fleet.moveSection(later.id, by: -1)
+        let relaunched = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        #expect(relaunched.sections == [later, work])
+    }
+
+    /// Sections made on another device are rebuilt from the names their
+    /// agents carry, and same-named sections on different hosts show as one.
+    @Test func sectionsFromOtherDevicesAreRebuiltAndSameNamesGroupTogether() async throws {
+        let reader = reader(3)
+        reader.snapshots[studio] = FleetSnapshot(agents: [
+            agent(studio, "rio", "Rio", placement: AgentListPlacement(sectionID: "sec-a", sectionName: "Work")),
+        ], refreshedAt: Date())
+        reader.snapshots[office] = FleetSnapshot(agents: [
+            agent(office, "sam", "Sam", placement: AgentListPlacement(sectionID: "sec-b", sectionName: "work")),
+            agent(office, "kim", "Kim", placement: AgentListPlacement(sectionID: "sec-c", sectionName: "Personal",
+                                                                      isHidden: true)),
+        ], refreshedAt: Date())
+        let fleet = FleetStore(reader: reader, directory: directory(), saveDelay: .zero)
+        fleet.refresh()
+        await fleet.waitForReads()
+
+        #expect(Set(fleet.sections.map(\.name)) == ["Personal", "Work"])
+        #expect(fleet.sections.count == 2)
+        let work = try #require(fleet.sections.first { FleetSection.nameKey($0.name) == "work" })
+        let workBlock = try #require(blocks(fleet).first { $0.section?.id == work.id })
+        #expect(Set(names(workBlock)) == ["Rio", "Sam"])
+        #expect(fleet.hiddenAgentCount == 1)
+    }
+
+    /// Hermes Desktop names an agent's routines "[bot:<agent>] <routine>";
+    /// people see the routine's own name.
+    @Test func desktopRoutineTagIsNotShown() {
+        #expect(ScheduledTask.routineName("[bot:research] Morning digest") == "Morning digest")
+        #expect(ScheduledTask.routineName("[bot:Ops_2]   Weekly report") == "Weekly report")
+        #expect(ScheduledTask.routineName("Morning digest") == "Morning digest")
+        #expect(ScheduledTask.routineName("[bot:research] ") == "[bot:research] ")
+        #expect(ScheduledTask.routineName("[bot:-bad] Odd") == "[bot:-bad] Odd")
+    }
+
+    /// A group chat's section is kept on this device, like Hermes Desktop.
+    @Test func groupChatsFileIntoSectionsOnThisDevice() async throws {
+        let reader = reader()
+        let folder = directory()
+        let fleet = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        let group = FleetGroup(hostID: home, roomID: "room-1", name: "Launch crew", memberNames: ["Ava", "Rio"],
+                               updatedAt: Date(), isWorking: false, canRename: true, canDelete: true)
+        fleet.recordLive(FleetSnapshot(agents: [agent(home, "ava", "Ava")], groups: [group], refreshedAt: Date()),
+                         hostID: home)
+        let team = try #require(fleet.createSection(named: "Team"))
+        fleet.file(group, in: team.id)
+        #expect(blocks(fleet).map(names) == [["Launch crew"], ["Ava"]])
+        let relaunched = FleetStore(reader: reader, directory: folder, saveDelay: .zero)
+        #expect(relaunched.groupSectionIDs[group.id] == team.id)
+        _ = fleet.deleteSection(team.id)
+        #expect(blocks(fleet).map(names) == [["Ava", "Launch crew"]])
     }
 
     private func chat(_ host: UUID, _ profile: String, _ id: String, minutesAgo: Double) -> FleetChat {

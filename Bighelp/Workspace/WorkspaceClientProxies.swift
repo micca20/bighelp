@@ -69,15 +69,24 @@ final class WorkspaceOwnedClientBox<Client> {
 }
 
 @MainActor
-final class WorkspaceAgentDirectoryProxy: AgentDirectoryClient {
+final class WorkspaceAgentDirectoryProxy: AgentDirectoryClient, AgentListPlacementWriting {
     let box: WorkspaceOwnedClientBox<any AgentDirectoryClient>
     init(box: WorkspaceOwnedClientBox<any AgentDirectoryClient>) { self.box = box }
+    func setPlacement(_ placement: AgentListPlacement, profileID: String) async throws {
+        guard let writer = try box.value() as? any AgentListPlacementWriting else {
+            throw WorkspaceClientError.unavailable(.unsupportedHost)
+        }
+        try await writer.setPlacement(placement, profileID: profileID)
+    }
     func list() async throws -> [AgentProfile] { try await box.value().list() }
     func create(_ draft: AgentDraft) async throws -> AgentProfile { try await box.value().create(draft) }
     func update(id: String, draft: AgentDraft) async throws -> AgentProfile {
         try await box.value().update(id: id, draft: draft)
     }
     func resetForAccountBoundary() { box.reset() }
+    func petGallery() async throws -> [PetdexPet] { try await box.value().petGallery() }
+    func petThumbnail(_ pet: PetdexPet) async throws -> Data { try await box.value().petThumbnail(pet) }
+    func petSheet(_ pet: PetdexPet) async throws -> Data { try await box.value().petSheet(pet) }
 }
 
 @MainActor

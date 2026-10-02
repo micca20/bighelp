@@ -135,13 +135,13 @@ struct DirectHermesAttentionView: View {
     var body: some View {
         NavigationStack {
             List {
-                if client.prompts.isEmpty {
-                    // The connection closed while bighelp was away. Hermes sends
-                    // what's still waiting again once it's back.
+                // The connection closed while bighelp was away. Hermes sends
+                // what's still waiting again once it's back.
+                if client.prompts.isEmpty, let status = HostConnectionStatus(chat: .reconnecting) {
                     Section {
                         HStack(spacing: BighelpTokens.space12) {
-                            ProgressView()
-                            Text("Reconnecting to your computer…")
+                            BighelpConnectionIndicator(phase: status.phase)
+                            Text(status.label)
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("direct-hermes.attention.reconnecting")

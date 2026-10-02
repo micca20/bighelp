@@ -127,7 +127,7 @@ struct ChatConversationIdentityLabel: View {
             Text(subtitle)
                 .bighelpFont(.metadata)
                 .foregroundStyle(theme.secondaryText)
-                .bighelpActiveCallShimmer(isActive: subtitleShimmers, color: .white)
+                .bighelpShimmer(isActive: subtitleShimmers)
         } else if let liveState {
             AgentLiveStateLabel(state: liveState, font: .caption)
                 .foregroundStyle(theme.secondaryText)

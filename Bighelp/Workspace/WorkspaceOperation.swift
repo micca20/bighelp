@@ -13,6 +13,9 @@ enum WorkspaceOperation: String, CaseIterable, Sendable {
     case profilesCreate = "profiles.create"
     case profilesConfigure = "profiles.configure"
     case profilesClone = "profiles.clone"
+    /// The petdex gallery and a pet's first frame, for avatars (Hermes desktop gateway).
+    case petGallery = "pet.gallery"
+    case petThumb = "pet.thumb"
     case sessionsList = "sessions.list"
     case nativeSessionList = "session.list"
     case nativeSessionActiveList = "session.active_list"

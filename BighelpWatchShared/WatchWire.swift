@@ -101,6 +101,9 @@ struct WatchChat: Codable, Equatable, Sendable {
     let agentName: String
     let messages: [WatchMessage]
     let isWorking: Bool
+    /// What the agent is doing right now, in the app's own words ("Searching
+    /// the web…"). Nil when the phone doesn't know; older phones never send it.
+    var activity: String? = nil
 }
 
 enum WatchDecision: String, Codable, CaseIterable, Equatable, Sendable {

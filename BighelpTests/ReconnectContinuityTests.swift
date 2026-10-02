@@ -79,9 +79,12 @@ struct ConnectionIslandRulesTests {
         #expect(away.after == nil)
     }
 
-    @Test func eachStatusHasItsOwnIconAndWords() {
+    @Test func eachStatusHasItsOwnMarkAndWords() {
         let shown: [ConnectionIslandPhase] = [.connecting, .reconnecting, .connected, .disconnected, .noInternet]
-        #expect(Set(shown.map(\.systemImage)).count == shown.count)
-        #expect(shown.map(\.title) == ["Connecting…", "Reconnecting…", "Connected!", "Disconnected", "No internet"])
+        let statuses = shown.compactMap { HostConnectionStatus(island: $0) }
+        #expect(statuses.map(\.label) == ["Connecting…", "Reconnecting…", "Connected!", "Not connected", "No internet"])
+        // The shared indicator: dots, an arc, a dot that pings once, a still ring.
+        #expect(statuses.map(\.phase) == [.connecting, .reconnecting, .connected, .disconnected, .disconnected])
+        #expect(Set(shown.map(\.spokenStatus)).count == shown.count)
     }
 }

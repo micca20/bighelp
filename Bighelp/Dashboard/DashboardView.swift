@@ -85,7 +85,7 @@ struct DashboardView: View {
     @State private var knownAttentionIDs: Set<String>?
     @State private var companionReaction: CompanionReaction = .idle
     @State private var companionReactionTask: Task<Void, Never>?
-    let connection: DashboardConnectionPresentation
+    let connection: HostConnectionStatus
     let permissionCenter: PermissionCenter?
     let onInboxItemTap: (DashboardInboxItem) -> Void
     let onAttentionItemTap: (DashboardAttentionItem) -> Void
@@ -93,7 +93,7 @@ struct DashboardView: View {
 
     init(
         model: DashboardModel,
-        connection: DashboardConnectionPresentation = .init(linkState: .verified),
+        connection: HostConnectionStatus = .init(dashboardIsConnected: true),
         permissionCenter: PermissionCenter? = nil,
         onInboxItemTap: @escaping (DashboardInboxItem) -> Void = { _ in },
         onAttentionItemTap: @escaping (DashboardAttentionItem) -> Void = { _ in },
@@ -217,7 +217,7 @@ struct DashboardView: View {
                 : prepareDeviceWeatherIfNeeded()
             await weatherPreparation
         }
-        .task(id: connection.isConnected) {
+        .task(id: connection.phase) {
             if model.state == .idle { await model.load() }
         }
         .task(id: model.nextAttentionExpiry) {
@@ -362,8 +362,12 @@ struct DashboardView: View {
     }
 
     private var v3ConnectionLabel: some View {
-        Label(connection.title, systemImage: connection.systemImage)
-            .foregroundStyle(connection.isConnected ? theme.secondaryText : theme.warning)
+        Label {
+            Text(connection.label)
+        } icon: {
+            BighelpConnectionIndicator(phase: connection.phase)
+        }
+            .foregroundStyle(connection.phase == .connected ? theme.secondaryText : theme.warning)
             .accessibilityIdentifier("dashboard.connection-status")
     }
 
@@ -959,7 +963,7 @@ struct DashboardView: View {
                                     .foregroundStyle(theme.primaryText)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                Text(connection.isConnected ? item.subtitle : "Reconnecting")
+                                Text(connection.phase == .connected ? item.subtitle : connection.label)
                                     .bighelpFont(.body)
                                     .foregroundStyle(theme.secondaryText)
                                     .lineLimit(1)
@@ -971,7 +975,7 @@ struct DashboardView: View {
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(item.title). \(connection.isConnected ? item.subtitle : "Reconnecting")")
+                    .accessibilityLabel("\(item.title). \(connection.phase == .connected ? item.subtitle : connection.label)")
                     .accessibilityHint("Opens this conversation")
                     .accessibilityIdentifier("dashboard.work.row.\(item.id)")
                     if index < items.count - 1 {

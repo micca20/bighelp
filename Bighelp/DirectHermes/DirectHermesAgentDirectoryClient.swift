@@ -13,7 +13,7 @@ final class DirectHermesAgentReadCache {
 
 
 @MainActor
-final class DirectHermesAgentDirectoryClient: AgentDirectoryClient {
+final class DirectHermesAgentDirectoryClient: AgentDirectoryClient, AgentListPlacementWriting {
     private let readCache: DirectHermesAgentReadCache
     private let service: DirectHermesAgentProfileService
     private var baselines: [String: DirectHermesAgentProfileSnapshot] = [:]
@@ -50,6 +50,34 @@ final class DirectHermesAgentDirectoryClient: AgentDirectoryClient {
         baselines = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.profile.id, $0) })
         uncertainCreationID = nil
         return snapshots.map(\.profile)
+    }
+
+    /// Writes the section and hidden keys with Hermes' per-key revision check.
+    /// When another device changed the agent meanwhile, it reads again and
+    /// tries once more, keeping that device's other settings.
+    func setPlacement(_ placement: AgentListPlacement, profileID: String) async throws {
+        _ = try DirectHermesAgentProfileService.profileIdentifier(profileID)
+        for attempt in 0..<2 {
+            guard let row = try await service.rows().first(where: { $0.id == profileID }) else {
+                throw WorkspaceClientError.rejected(code: "profile_unavailable")
+            }
+            guard let revision = row.namespaceRevision else { throw WorkspaceClientError.unavailable(.unsupportedHost) }
+            let namespace = placement.applied(to: row.namespace)
+            guard namespace != row.namespace else { return }
+            guard try JSONEncoder().encode(BighelpJSONValue.object(namespace)).count <= 65_536 else {
+                throw WorkspaceClientError.capacityExceeded
+            }
+            let response = try await service.request(.profilesConfigure, [
+                "name": .string(profileID),
+                "ui_meta": .object(["hermes-bots": .object(namespace)]),
+                "ui_meta_expected_revisions": .object(["hermes-bots": .integer(revision)]),
+            ], capability: .profilesEdit, profileID: profileID)
+            guard let applied = response["applied"]?.object else { throw WorkspaceClientError.invalidResponse }
+            readCache.clear()
+            if applied["ui_meta"]?.boolean == true { return }
+            guard applied["ui_meta_conflicts"] != nil, attempt == 0 else { break }
+        }
+        throw WorkspaceClientError.conflict
     }
 
     func canonicalSession(profileID: String) throws -> DirectHermesCanonicalAgentSession? {
@@ -192,6 +220,10 @@ final class DirectHermesAgentDirectoryClient: AgentDirectoryClient {
             }
             if pending.contains(.avatar) {
                 try await service.writeAvatar(draft.removesAvatar ? nil : draft.avatar, profileID: id)
+                // The picture is what every app shows; the look only tells Hermes
+                // Desktop how to draw it, so a host that can't take it keeps the picture.
+                if !draft.removesAvatar, let look = draft.look { try? await writeLook(look, profileID: id) }
+                try service.requireOwner()
                 current = try await service.snapshot(id: id)
                 pending.remove(.avatar)
             }
@@ -209,6 +241,39 @@ final class DirectHermesAgentDirectoryClient: AgentDirectoryClient {
         var profile = current.profile
         if profile.avatar == draft.avatar, !draft.removesAvatar { profile.avatarFileName = draft.avatarFileName }
         return profile
+    }
+
+    func petGallery() async throws -> [PetdexPet] {
+        PetdexPolicy.pets(fromHost: try await service.request(.petGallery, [:], capability: .profilesRead))
+    }
+
+    func petThumbnail(_ pet: PetdexPet) async throws -> Data {
+        var payload: [String: BighelpJSONValue] = ["slug": .string(pet.slug)]
+        if let url = pet.spritesheetURL { payload["url"] = .string(url.absoluteString) }
+        let response = try await service.request(.petThumb, payload, capability: .profilesRead)
+        guard response["ok"]?.boolean == true, let uri = response["dataUri"]?.string else { throw PetdexError.unsupported }
+        return try PetdexSprite.thumbnail(fromDataURI: uri)
+    }
+
+    /// Records the look in Bot Mode's metadata so Hermes Desktop draws the same
+    /// face. A host without metadata revisions skips this, and a stale revision
+    /// gets one fresh retry.
+    private func writeLook(_ look: AgentAvatarLook, profileID: String) async throws {
+        for _ in 0..<2 {
+            guard let row = try await service.rows().first(where: { $0.id == profileID }),
+                  let revision = row.namespaceRevision else { return }
+            let namespace = look.applied(to: row.namespace, profileID: profileID)
+            guard namespace != row.namespace else { return }
+            guard try JSONEncoder().encode(BighelpJSONValue.object(namespace)).count <= 65_536 else { return }
+            let response = try await service.request(.profilesConfigure, [
+                "name": .string(profileID),
+                "ui_meta": .object(["hermes-bots": .object(namespace)]),
+                "ui_meta_expected_revisions": .object(["hermes-bots": .integer(revision)])
+            ], capability: .profilesEdit, profileID: profileID)
+            let applied = response["applied"]?.object
+            if applied?["ui_meta"]?.boolean == true { return }
+            guard applied?["ui_meta_conflicts"] != nil else { return }
+        }
     }
 
     private static func changedFields(_ draft: AgentDraft, comparedTo profile: AgentProfile) -> Set<AgentDirectoryPartialMutationError.Field> {

@@ -150,6 +150,12 @@ change in both repos.
     plugin. An install that may still be running on the host is finished with the commit it asked for.
   - When the app needs a newer plugin feature, gate it on `/native/context` and say "update the plugin".
   - CI tests against the plugin's `main`.
+- **Files agents send** (`MEDIA:` lines, generated pictures): the plugin's `attachments/resolve` + `attachments/fetch`
+  routes serve them in ~3 MB pieces. After the first piece the rest download three at a time, and a dropped piece is
+  asked for again from its offset. Finished files are kept on the phone (`AgentAttachmentCache`, Caches, 512 MB, least
+  recently opened go first), so a reopened chat shows them at once. Until a file lands, its message shows a loading
+  tile (`PendingAgentFilesView`), never the raw line. Hosted image tools (Nous Portal, FAL) report the picture's
+  https address instead of a host file; the card reads it from there (public hosts only, no cookies, bounded).
 - **Supported Hermes versions:** 0.21.2 to 0.21.5.
   - Hosts differ, so parse leniently: ignore unknown keys and treat most parts as optional.
   - A missing part should hide one row, not break a screen.
@@ -213,6 +219,10 @@ sections can crash only on devices ("Thread stack size exceeded").
   through App Store Connect. It shares the iPhone app's ID (`app.loopdy.mobile`) because pushes are addressed to
   it; never upload a Mac build. It runs sandboxed (`BighelpCatalyst.entitlements`; `network.server` is for the
   127.0.0.1 browser sign-in callback) and embeds the notification extension for sealed alerts.
+- Updates come from Sparkle 2, which is AppKit-only: it lives in a macOS bundle (`BighelpMacUpdater/`) embedded in
+  `Contents/PlugIns` and loaded at runtime by `BighelpMacUpdates`. Never link Sparkle into the app target. Each
+  public Mac release carries a signed `appcast.xml`; `-bighelp.mac.update-feed-url` points a test copy at a local
+  feed.
 - `os(iOS)` is true on the Mac, and `canImport(ActivityKit)` and `canImport(AppKit)` are too, though ActivityKit's
   types are unavailable there. Fence with `!targetEnvironment(macCatalyst)` or `BighelpPlatform.isMac`. The Mac has
   no Watch relay, Live Activities, widgets, Siri tips, haptics or edge swipes. `horizontalSizeClass` is always
@@ -229,9 +239,16 @@ sections can crash only on devices ("Thread stack size exceeded").
 - Keys: Return sends (Settings › Chat › Return sends), Shift-Return adds a line, Command-Return shows the send
   choices while the agent works. ⌘N starts a chat and ⌘, opens Settings (`BighelpMenuCommands`).
 - `BighelpMac` (`BighelpMac/`) is a separate, fixture-only desktop prototype. It isn't the shipping Mac app.
+- Mouse and keyboard: plain buttons take clicks only where they draw, toolbar icons only on their glyph and form
+  fields only on their line of text. Use the helpers in DESIGN.md › Mac pointer and keyboard.
+- Running it: `Scripts/mac-dev-run.sh --name <you>` builds the Debug app and runs it on the demo data as
+  `app.loopdy.mobile.dev-<you>` (its own sandbox data, signed ad hoc, so no keychain, pushes or app group);
+  `--clean` deletes that copy's build and data.
 - Driving the Mac app by hand (`cua-driver`): background key presses don't reach a Catalyst window, and a first
   click on an inactive window only activates it. Use a desktop-scope session and click twice. Sheets are separate
-  windows. `.dynamicTypeSize` has no effect on the Mac.
+  windows. `.dynamicTypeSize` has no effect on the Mac. A sheet's controls appear in the main window's accessibility
+  tree. A Catalyst button's accessibility frame shows its click area (unless a `.contentShape` sits outside the
+  Button). Hover needs `move_cursor` with `"scope":"desktop"` while bighelp is in front.
 
 ### Vision Pro
 
@@ -399,6 +416,11 @@ New code uses Bighelp names. Don't "finish" the rename on this list.
   which the app draws natively.
 - Only first-party or permissively licensed art can ship in this Apache-2.0 repo.
 - The maintainer approves new character art before it ships.
+- An agent's face (`AgentLiveAvatar`) draws, in order: its saved character (`CompanionStore` override), its
+  petdex pet's moves (`PetAvatarStore`), then its picture. Both stores live on the device, so saving any other
+  kind of avatar must clear them (`AgentEditorModel.applySavedLook`), or chats keep the old one.
+- A petdex pet saves its first frame as the agent's picture (what Hermes Desktop and other devices show). Its
+  sheet is fetched from petdex and cut into one strip per move; hatched-on-host pets have no sheet and stay still.
 
 ### Secrets and access
 

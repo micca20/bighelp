@@ -27,6 +27,48 @@ extension ChatModel {
         return botModeRoomStore?.executionEnabled == true
     }
 
+    /// Hermes queues a message sent while members work behind the room's
+    /// drive, so a running hosted room still takes new messages.
+    var acceptsBotModeFollowUp: Bool {
+        guard !referenceOwnerRetired, !isStopping, let room = botModeRoom, room.isNativeWorking,
+              botModeRoomStore?.nativeClient != nil, botModeExecutionEnabled,
+              room.nativePendingCancelID == nil, room.nativeRetryJournal == nil,
+              room.nativeFollowUps.count < HermesBotModeFollowUp.maximumPending else { return false }
+        return true
+    }
+
+    /// Sends the draft to a room whose agents are still working. The running
+    /// turn keeps its own state; Stop still stops everything.
+    func sendBotModeFollowUp() async {
+        guard let roomID = botModeRoomID, let botModeRoomStore, acceptsBotModeFollowUp else { return }
+        let message = draft
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard orderedDraftAttachments.isEmpty else {
+            failureMessage = "This Hermes room accepts text only. Remove the attachments before sending."
+            return
+        }
+        draft = ""
+        failureMessage = nil
+        do {
+            try await botModeRoomStore.send(text: message, roomID: roomID, senderSnapshot: currentUserSnapshot)
+        } catch is CancellationError {
+            if draft.isEmpty { draft = message }
+        } catch {
+            let unconfirmed = botModeRoomStore.room(id: roomID)?.nativeFollowUps.contains {
+                $0.text == message && $0.discussionEventID == nil
+            } == true
+            if unconfirmed {
+                // The room's recovery sends it again under the same key, so
+                // the draft stays empty: sending it by hand could double it.
+                failureMessage = "Delivery is unconfirmed. bighelp will retry this same message."
+            } else {
+                if draft.isEmpty { draft = message }
+                failureMessage = "Message could not be delivered. Try again."
+            }
+        }
+        flushPersistence()
+    }
+
     var canEditBotModeMembership: Bool {
         botModeExecutionEnabled && (botModeRoom?.canEditMembership ?? true)
     }
@@ -113,7 +155,8 @@ extension ChatModel {
         if botModeRoom?.nativePendingCancelID != nil {
             return "The stop request is unconfirmed. Check this room before continuing."
         }
-        return isSending || botModeRoom?.isRunning == true ? "Agents are collaborating" : nil
+        return isSending || botModeRoom?.isRunning == true || botModeRoom?.nativeFollowUps.isEmpty == false
+            ? "Agents are collaborating" : nil
     }
 
     var pendingBotModeApprovals: [HermesBotModePendingApproval] {

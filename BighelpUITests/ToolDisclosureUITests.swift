@@ -11,7 +11,8 @@ final class ToolDisclosureUITests: BighelpUITestCase {
         app.launch()
         let timeline = app.tables["chat.timeline"]
         // One fold per turn: work on both sides of the answer shares it.
-        let fold = app.buttons["Worked for 10s"]
+        // Its label adds the step count after the time.
+        let fold = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Worked for 10s")).firstMatch
         func message(_ text: String) -> XCUIElement {
             app.textViews.matching(NSPredicate(format: "value CONTAINS %@", text)).firstMatch
         }

@@ -48,6 +48,26 @@
 	<string>https://link.loopdy.app</string>
 	<key>BighelpNotificationKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)app.loopdy.mobile.notification</string>
+    <!-- Mac updates (Sparkle, BighelpMacUpdater): offered, never installed silently. The feed and each
+         update are signed with bighelp's EdDSA key. Only the Mac reads these. -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/promptclickrun/bighelp/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>qu2m6ZcLXhQlwWJVbGJYXDMTQF8/IVjNKLkyYic43bc=</string>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>21600</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <!-- Plain HTTP only reaches private networks (home Wi-Fi, VPN, Tailscale); see DirectHermesEndpoint.isPrivateNetworkHost. -->

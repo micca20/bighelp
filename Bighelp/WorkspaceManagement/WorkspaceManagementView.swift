@@ -78,8 +78,11 @@ struct WorkspaceManagementView: View {
         .refreshable { await store.refresh() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Refresh", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
-                    .disabled(store.isLoading || store.isSaving)
+                Button { Task { await store.refresh() } } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise").bighelpToolbarIcon()
+                }
+                .bighelpHelp("Refresh")
+                .disabled(store.isLoading || store.isSaving)
             }
         }
     }

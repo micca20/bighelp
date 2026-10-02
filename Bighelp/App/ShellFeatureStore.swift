@@ -58,6 +58,8 @@ final class ShellFeatureStore {
     private let midSessionBehavior: @MainActor () -> MidSessionChatBehavior
     private let recentModelHistory: RecentModelHistoryStore
     let scheduledTasks: ScheduledTasksStore?
+    /// Voices and microphone for group chats' team calls; nil hides the call.
+    var teamCallServices: (any TeamCallServices)?
     private var chatModels: [String: ChatModel] = [:]
     private let navigationWorkspaceOwner: (@MainActor () -> WorkspaceOwner?)?
     private let nativeWarmSessionIsCurrent: @MainActor (SessionRecord, ChatModel) -> Bool

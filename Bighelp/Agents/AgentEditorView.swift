@@ -246,8 +246,17 @@ struct AgentEditorView: View {
             preparePhotoAvatar(selection)
         }
         .sheet(isPresented: $isAvatarCreatorPresented) {
-            AvatarCreatorView(appearance: creatorStartLook, agentName: heroTitle) { look in
-                prepareCompanionAvatar(look)
+            AvatarCreatorView(
+                appearance: creatorStartLook, look: creatorStartHermesLook, agentName: heroTitle,
+                faceName: model.faceName,
+                petSource: PetdexSource(store: model.store, cacheScope: "\(ObjectIdentifier(model.store))")
+            ) { result in
+                switch result {
+                case .companion(let look): prepareCompanionAvatar(look)
+                case .look(let look): prepareLookAvatar(look)
+                case .pet(let pet, let avatar): preparePetAvatar(pet, data: avatar)
+                case .photo(let item): photoSelection = item
+                }
             }
             .presentationDragIndicator(.visible)
             #if os(visionOS)
@@ -588,6 +597,55 @@ struct AgentEditorView: View {
         return surpriseLook
     }
 
+    /// The Hermes face or shape the creator opens on, if that's the current look.
+    private var creatorStartHermesLook: AgentAvatarLook? {
+        if let look = model.pendingLook { return look }
+        guard !model.draft.removesAvatar, model.pendingAvatar == nil else { return nil }
+        return model.editedProfile?.look
+    }
+
+    private func prepareLookAvatar(_ look: AgentAvatarLook) {
+        photoSelection = nil
+        let requestID = beginAvatarPreparation(label: "Preparing avatar")
+        avatarPreparationTask = Task { @MainActor in
+            defer { finishAvatarPreparation(requestID) }
+            do {
+                guard let data = HermesLookRenderer.png(look: look, name: model.faceName) else {
+                    throw AgentCompanionAvatarRenderer.RenderError.emptyImage
+                }
+                try Task.checkCancellation()
+                guard ownsAvatarPreparation(requestID) else { return }
+                try await model.importLookAvatar(data: data, look: look)
+            } catch is CancellationError {
+                return
+            } catch is AvatarImageProcessor.Error {
+                // The model already exposed a format or size-specific recovery message.
+            } catch {
+                guard ownsAvatarPreparation(requestID) else { return }
+                model.reportCompanionAvatarRenderFailure()
+            }
+        }
+    }
+
+    private func preparePetAvatar(_ pet: PetdexPet, data: Data) {
+        photoSelection = nil
+        let requestID = beginAvatarPreparation(label: "Preparing \(pet.displayName) avatar")
+        avatarPreparationTask = Task { @MainActor in
+            defer { finishAvatarPreparation(requestID) }
+            do {
+                guard ownsAvatarPreparation(requestID) else { return }
+                try await model.importPetAvatar(data: data, pet: pet)
+            } catch is CancellationError {
+                return
+            } catch is AvatarImageProcessor.Error {
+                // The model already exposed a format or size-specific recovery message.
+            } catch {
+                guard ownsAvatarPreparation(requestID) else { return }
+                model.reportCompanionAvatarRenderFailure()
+            }
+        }
+    }
+
     private func companionBackdrop(_ look: CompanionAppearance) -> Color {
         let hex = look.matchesTheme
             ? CompanionAppearance.validatedColorHex(theme.actionHex) ?? CompanionAppearance.fallbackColorHex
@@ -597,9 +655,9 @@ struct AgentEditorView: View {
 
     /// The creator's look also becomes this agent's animated chat companion.
     private func applyCompanionLook(to profile: AgentProfile) {
-        guard let look = model.selectedCompanionAppearance, let store = companionStore,
-              !companionAgentScope.isEmpty else { return }
-        store.setOverride(look, for: CompanionStore.agentKey(agentScope: companionAgentScope, agentID: profile.id))
+        guard let store = companionStore, !companionAgentScope.isEmpty else { return }
+        model.applySavedLook(companions: store, pets: .shared,
+            key: CompanionStore.agentKey(agentScope: companionAgentScope, agentID: profile.id))
     }
 
     private func prepareCompanionAvatar(_ look: CompanionAppearance) {
@@ -642,6 +700,10 @@ struct AgentEditorView: View {
                     CompanionAvatar(appearance: look, reaction: .idle, isAnimating: true)
                         .frame(width: size * 0.8, height: size * 0.8)
                 }
+                .frame(width: size, height: size)
+        } else if model.pendingAvatar != nil, let look = model.pendingLook, look.style != .photo {
+            // A Hermes face stays sharp at any size, as Hermes Desktop draws it.
+            HermesLookView(look: look, name: model.faceName)
                 .frame(width: size, height: size)
         } else if let pending = model.pendingAvatar, let image = UIImage(data: pending.data) {
             Image(uiImage: image)

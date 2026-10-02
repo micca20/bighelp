@@ -27,7 +27,7 @@ final class WatchDemoPhone: WatchPhoneTalking {
             ], isWorking: false),
             "demo-sink": WatchChat(sessionID: "demo-sink", title: "Kitchen sink", agentName: "Jordan Lee", messages: [
                 WatchMessage(id: "s1", isYou: true, text: "Book a plumber this week.", at: ago(300)),
-            ], isWorking: true),
+            ], isWorking: true, activity: "Searching the web…"),
         ]
         needs = [
             WatchNeed(id: "need-publish", kind: .approval, title: "Run a command",

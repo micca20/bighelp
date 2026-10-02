@@ -88,6 +88,34 @@ extension RootShellView {
         openFleet(.newChat(profileID: agent.profileID), on: agent.hostID)
     }
 
+    /// A group chat's actions from the all-hosts list. Renaming and deleting
+    /// act on the selected host, the way the Agents screen does them.
+    func performFleetGroupAction(_ group: FleetGroup, _ action: FleetGroupAction) {
+        guard case .open = action else {
+            guard group.hostID == fleet?.selectedHostID, let owner = currentWorkspaceOwner else { return }
+            switch action {
+            case .rename(let name):
+                handleAgentWorkspaceAction(.init(owner: owner, action: .renameGroup(roomID: group.roomID, name: name)))
+            case .delete:
+                handleAgentWorkspaceAction(.init(owner: owner, action: .deleteGroup(roomID: group.roomID)))
+            case .open: break
+            }
+            return
+        }
+        openFleet(.group(roomID: group.roomID), on: group.hostID)
+    }
+
+    /// New group chat from the all-hosts list: on the selected host, or ask which.
+    func startFleetGroup() { fleetGate(.newGroup) }
+
+    func fleetHome(_ fleet: FleetStore) -> FleetHomeView {
+        let newGroup: (() -> Void)? = menuDestinations.onNewGroup == nil ? nil : { startFleetGroup() }
+        return FleetHomeView(fleet: fleet, onOpen: { openFleetAgent($0) }, onNewChat: { isFleetNewChatPresented = true },
+                             onSetPinned: { setFleetPin($0, $1) }, onGroupAction: { performFleetGroupAction($0, $1) },
+                             onNewGroup: newGroup,
+                             onOpenRoutines: { openFleet(.routines(profileID: $0.profileID), on: $0.hostID) })
+    }
+
     /// Settings, Projects and other one-host screens: with several hosts, ask
     /// which one first; with one, just open it.
     func fleetGate(_ destination: FleetDestination) {
@@ -192,6 +220,11 @@ extension RootShellView {
                     }
                 }
             }
+        case .group(let roomID):
+            guard let owner = currentWorkspaceOwner else { return }
+            handleAgentWorkspaceAction(.init(owner: owner, action: .openGroup(roomID: roomID)))
+        case .routines(let profileID):
+            openScheduledTasks(filteredTo: profileID)
         case .task(let jobID, let profileID):
             if appState.selectedTab != .scheduledTasks { appState.select(.scheduledTasks) }
             openPrepared(.scheduledTask(id: jobID, agentID: profileID))
@@ -223,6 +256,7 @@ extension RootShellView {
         let pinned: [String]
         let chats: [SessionSummary]
         let tasks: [ScheduledTask]
+        let groups: [HermesBotModeRoomSummary]
     }
 
     var liveFleetKey: LiveFleetKey? {
@@ -231,7 +265,8 @@ extension RootShellView {
             hostID: hostID, agents: agents.profiles, pinned: agents.pinnedAgentIDs,
             chats: Array(sessionCatalog.recentSummaries(includeCronSessions: false)
                 .filter { $0.kind == .direct }.prefix(80)),
-            tasks: featureStore.scheduledTasks?.tasks ?? []
+            tasks: featureStore.scheduledTasks?.tasks ?? [],
+            groups: botModeRooms.catalogRooms
         )
     }
 
@@ -259,11 +294,23 @@ extension RootShellView {
             FleetAgent(hostID: key.hostID, profileID: profile.id, name: profile.name, role: profile.role,
                        avatarFile: fleet.liveAvatarFile(from: agents.avatarURL(for: profile)),
                        isPinned: key.pinned.contains(profile.id), isDefault: profile.isDefault,
-                       activity: chats.contains { $0.profileID == profile.id && $0.isActive } ? .working : nil)
+                       activity: chats.contains { $0.profileID == profile.id && $0.isActive } ? .working : nil,
+                       placement: profile.placement)
+        }
+        let names = Dictionary(key.agents.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let canDelete = botModeRooms.nativeCapabilities?.supports("groups.disband") == true
+        let groups = key.groups.filter(\.canOpen).map { room in
+            FleetGroup(hostID: key.hostID, roomID: room.roomID, name: room.name,
+                       memberNames: room.members.map { names[$0.profile] ?? $0.handle },
+                       updatedAt: room.updatedAt, isWorking: botModeRooms.room(id: room.roomID)?.isNativeWorking == true,
+                       canRename: room.canRename, canDelete: canDelete)
+        }
+        fleet.selectedHostPlacementWriter = { [agents] placement, profileID in
+            try await agents.setPlacement(placement, profileID: profileID)
         }
         fleet.recordLive(FleetSnapshot(agents: agentRows, chats: chats,
                                        tasks: key.tasks.map { FleetTask(hostID: key.hostID, scheduledTask: $0) },
-                                       refreshedAt: Date()),
+                                       groups: groups, refreshedAt: Date()),
                          hostID: key.hostID)
     }
 }
@@ -315,12 +362,18 @@ extension RootShellView {
     @ToolbarContentBuilder
     var fleetToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
+            // One bot: a tap goes back to one host.
             Button { setAllHostsMode(false) } label: {
-                Image(systemName: "square.stack.3d.up.fill").foregroundStyle(Color.accentColor)
+                Image(BighelpGlyph.bot.assetName)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .foregroundStyle(Color.accentColor)
+                    .bighelpToolbarIcon()
             }
-                .accessibilityLabel("All hosts")
-                .accessibilityValue("On")
-                .accessibilityHint("Shows one host again.")
+                .bighelpIconLabel("Show one host")
+                .accessibilityHint("Shows the selected host's agents and chats again.")
                 .accessibilityIdentifier("fleet.toggle")
         }
     }

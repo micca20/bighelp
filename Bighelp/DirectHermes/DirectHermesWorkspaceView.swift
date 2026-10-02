@@ -26,7 +26,10 @@ struct DirectHermesWorkspaceView: View {
                             .accessibilityIdentifier("hosts.sign-in")
                     }
                 }
-                if store.isConnecting { ProgressView("Connecting to Hermes") }
+                if store.isConnecting {
+                    let connection = HostConnectionStatus(workspace: store)
+                    BighelpConnectionPill(phase: connection.phase, label: connection.label)
+                }
             } header: { Text("Connection") }
             Section(showsProfiles ? "Your agents" : "Chat with") {
                 if showsProfiles {

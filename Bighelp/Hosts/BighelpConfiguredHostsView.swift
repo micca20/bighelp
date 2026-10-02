@@ -38,6 +38,7 @@ private struct HostRowLabel: View {
 
     var body: some View {
         let inUse = host.id == registry.selectedHostID
+        let connection = HostStatus.connection(for: host, registry: registry)
         HStack(spacing: BighelpTokens.space12) {
             HostIcon(inUse: inUse, size: 36)
             VStack(alignment: .leading, spacing: 2) {
@@ -45,10 +46,14 @@ private struct HostRowLabel: View {
                     .font(.bighelp(.body).weight(.semibold))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
-                Text(HostStatus.line(for: host, registry: registry))
-                    .font(.bighelp(.footnote))
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    if let connection { BighelpConnectionIndicator(phase: connection.phase) }
+                    Text(HostStatus.line(connection, host: host))
+                        .font(.bighelp(.footnote))
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                }
                 if let attention = HostPluginUpdateModel.existingModel(for: host.id)?.attentionTitle {
                     Text(attention)
                         .font(.bighelp(.footnote).weight(.medium))
@@ -88,10 +93,16 @@ private struct HostIcon: View {
 }
 
 enum HostStatus {
+    /// The computer in use is the one connected; the others have no status.
+    @MainActor static func connection(for host: BighelpConfiguredHost,
+                                      registry: BighelpHostRegistry) -> HostConnectionStatus? {
+        guard host.id == registry.selectedHostID else { return nil }
+        return HostConnectionStatus(workspace: registry.selectedWorkspace, keeper: WorkspaceConnectionKeeper.current)
+    }
+
     /// "In use · Connected" for the computer in use; otherwise where it is.
-    @MainActor static func line(for host: BighelpConfiguredHost, registry: BighelpHostRegistry) -> String {
-        guard host.id == registry.selectedHostID else { return host.endpoint.host }
-        return registry.selectedWorkspace?.isConnected == true ? "In use · Connected" : "In use · Not connected"
+    static func line(_ connection: HostConnectionStatus?, host: BighelpConfiguredHost) -> String {
+        connection.map { "In use · \($0.label)" } ?? host.endpoint.host
     }
 }
 
@@ -163,6 +174,18 @@ struct BighelpConfiguredHostView: View {
         }
     }
 
+    /// The computer in use: how its connection is doing. Another: where it is.
+    @ViewBuilder
+    private func connectionHeader(_ host: BighelpConfiguredHost) -> some View {
+        if let connection = HostStatus.connection(for: host, registry: registry) {
+            BighelpConnectionPill(phase: connection.phase, label: HostStatus.line(connection, host: host))
+        } else {
+            Text(HostStatus.line(nil, host: host))
+                .font(.bighelp(.subheadline))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     /// The plugin is there: its version and updates. Not yet: the install step.
     private var pluginIsInstalled: Bool {
         if let updateModel, updateModel.state != .notInstalled, updateModel.state != .idle { return true }
@@ -179,9 +202,7 @@ struct BighelpConfiguredHostView: View {
                             .font(.bighelp(.title2).weight(.bold))
                             .multilineTextAlignment(.center)
                             .accessibilityAddTraits(.isHeader)
-                        Text(HostStatus.line(for: host, registry: registry))
-                            .font(.bighelp(.subheadline))
-                            .foregroundStyle(.secondary)
+                        connectionHeader(host)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, BighelpTokens.space8)

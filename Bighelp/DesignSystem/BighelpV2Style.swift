@@ -60,10 +60,8 @@ struct BighelpV2ButtonStyle: ButtonStyle {
                 }
             }
             .contentShape(.capsule)
-            .opacity(!isEnabled ? 0.48 : configuration.isPressed ? 0.80 : 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: BighelpTokens.pressDuration),
-                       value: configuration.isPressed)
+            .opacity(!isEnabled ? 0.48 : 1)
+            .bighelpPressFeedback(isPressed: configuration.isPressed)
     }
 }
 
@@ -169,6 +167,11 @@ private struct BighelpV3ButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func makeBody(configuration: Configuration) -> some View {
+        styled(configuration).bighelpPressFeedback(isPressed: configuration.isPressed)
+    }
+
+    @ViewBuilder
+    private func styled(_ configuration: Configuration) -> some View {
         let theme = BighelpTheme.resolve(appearance: appearance, colorScheme: colorScheme, contrast: contrast)
         let filled = emphasis == .primary && configuration.role != .destructive
         let quiet = emphasis == .quiet
@@ -180,7 +183,7 @@ private struct BighelpV3ButtonStyle: ButtonStyle {
             .padding(.vertical, BighelpTokens.space8)
             .frame(minWidth: BighelpTokens.hitTarget, minHeight: BighelpTokens.hitTarget)
             .contentShape(.rect(cornerRadius: BighelpTokens.radius12))
-            .opacity(!isEnabled ? 0.48 : configuration.isPressed ? 0.8 : 1)
+            .opacity(!isEnabled ? 0.48 : 1)
 
         if quiet {
             label

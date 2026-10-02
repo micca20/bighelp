@@ -29,6 +29,94 @@ struct DirectHermesNativeAttachmentTests {
         #expect(!http.requests.contains { $0.path == "/api/media" || $0.path == "/api/files/read" })
     }
 
+    /// A piece lost to a timeout is asked for again from where it was,
+    /// instead of failing the file and starting it all over.
+    @Test func aDroppedPieceIsAskedForAgainWhereItStopped() async throws {
+        let owner = try makeOwner()
+        let http = AttachmentHTTP(features: ["native-agent-attachments-v1"])
+        let pdf = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 10, height: 10)).pdfData { $0.beginPage() }
+        http.file = pdf
+        http.chunk = 40
+        http.failOnce = [80]
+        let workspace = DirectHermesWorkspaceClient(rpc: NoRPC(), http: http, owner: owner,
+                                                    capabilities: .init(owner: owner), currentOwner: { owner })
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner })
+        let result = try #require(try await resolver.resolve(agentID: "default", storedID: "stored",
+            items: [.init(id: "m1", text: "MEDIA:/Users/me/Downloads/Report.pdf")]).first)
+        #expect(result.attachments.first?.data == pdf)
+        #expect(http.fetchedOffsets.filter { $0 == 80 }.count == 2)
+        #expect(http.fetchedOffsets.filter { $0 == 40 }.count == 1)
+        #expect(http.requests.filter { $0.path.hasSuffix("/resolve") }.count == 1)
+    }
+
+    /// After the first piece, the rest download a few at a time.
+    @Test func piecesDownloadSideBySide() async throws {
+        let owner = try makeOwner()
+        let http = AttachmentHTTP(features: ["native-agent-attachments-v1"])
+        let pdf = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 10, height: 10)).pdfData { $0.beginPage() }
+        http.file = pdf
+        http.chunk = 40
+        http.fetchDelay = .milliseconds(15)
+        let workspace = DirectHermesWorkspaceClient(rpc: NoRPC(), http: http, owner: owner,
+                                                    capabilities: .init(owner: owner), currentOwner: { owner })
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner })
+        let result = try #require(try await resolver.resolve(agentID: "default", storedID: "stored",
+            items: [.init(id: "m1", text: "MEDIA:/Users/me/Downloads/Report.pdf")]).first)
+        #expect(result.attachments.first?.data == pdf)
+        #expect(http.mostAtOnce > 1)
+        #expect(http.mostAtOnce <= DirectHermesGeneratedMediaClient.parallelChunks)
+    }
+
+    /// A chat opened again shows its files from this phone, without asking the host.
+    @Test func aFileOpenedAgainComesFromThisPhone() async throws {
+        let owner = try makeOwner()
+        let http = AttachmentHTTP(features: ["native-agent-attachments-v1"])
+        let pdf = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 10, height: 10)).pdfData { $0.beginPage() }
+        http.file = pdf
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = AgentAttachmentCache(directory: directory)
+        let workspace = DirectHermesWorkspaceClient(rpc: NoRPC(), http: http, owner: owner,
+                                                    capabilities: .init(owner: owner), currentOwner: { owner })
+        let resolver = DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: { owner },
+                                                        cache: cache)
+        let text = "Here is the report. MEDIA://Users/me/Downloads/Report.pdf"
+        let first = try #require(try await resolver.resolve(agentID: "default", storedID: "stored",
+                                                            items: [.init(id: "m1", text: text)]).first)
+        let asked = http.requests.count
+        let again = try #require(try await resolver.resolve(agentID: "default", storedID: "stored",
+                                                            items: [.init(id: "m1", text: text)]).first)
+        #expect(again.attachments == first.attachments)
+        #expect(again.text == "Here is the report.")
+        #expect(http.requests.count == asked)
+        // Another chat with the same words isn't the same file.
+        _ = try await resolver.resolve(agentID: "default", storedID: "other", items: [.init(id: "m1", text: text)])
+        #expect(http.requests.count > asked)
+    }
+
+    @Test func theCacheDropsTheLeastRecentlyOpenedFilesFirst() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = AgentAttachmentCache(directory: directory, maximumBytes: 30_000)
+        func entry(_ byte: UInt8) throws -> AgentAttachmentCache.Entry {
+            .init(text: "", attachments: [try .agentArtifact(id: "native_media_" + String(repeating: "a", count: 16),
+                fileName: "a.bin", mimeType: "application/octet-stream", data: Data(repeating: byte, count: 7_000))])
+        }
+        for (index, name) in ["one", "two", "three"].enumerated() {
+            await cache.store(try entry(UInt8(index)), for: name)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await cache.entry(for: "one") != nil)
+        try await Task.sleep(for: .milliseconds(20))
+        await cache.store(try entry(4), for: "four")
+        try await Task.sleep(for: .milliseconds(20))
+        await cache.store(try entry(5), for: "five")
+        #expect(await cache.entry(for: "two") == nil)
+        #expect(await cache.entry(for: "three") == nil)
+        #expect(await cache.entry(for: "one") != nil)
+        #expect(await cache.entry(for: "five") != nil)
+    }
+
     @Test func refusedResolutionKeepsTheOriginalTextReadable() async throws {
         let owner = try makeOwner()
         let http = AttachmentHTTP(features: ["native-agent-attachments-v1"])
@@ -83,6 +171,12 @@ private final class AttachmentHTTP: DirectHermesAuthenticatedHTTP, DirectHermesN
     var file: Data?
     var chunk = 1_024
     var requests: [DirectHermesHTTPRequest] = []
+    /// Offsets whose first request times out.
+    var failOnce: Set<Int> = []
+    var fetchDelay: Duration?
+    private(set) var fetchedOffsets: [Int] = []
+    private(set) var mostAtOnce = 0
+    private var inFlight = 0
     init(features: [String]) { self.features = features }
 
     func request(_ request: DirectHermesHTTPRequest) async throws -> BighelpJSONValue {
@@ -116,6 +210,12 @@ private final class AttachmentHTTP: DirectHermesAuthenticatedHTTP, DirectHermesN
             } else {
                 let data = try #require(file)
                 let offset = try #require(body["offset"]?.integer)
+                fetchedOffsets.append(offset)
+                if failOnce.remove(offset) != nil { throw WorkspaceClientError.transportUnavailable }
+                inFlight += 1
+                mostAtOnce = max(mostAtOnce, inFlight)
+                if let fetchDelay { try await Task.sleep(for: fetchDelay) }
+                inFlight -= 1
                 let end = min(data.count, offset + chunk)
                 object = ["attachmentId": body["attachmentId"]!, "offset": .integer(offset), "byteCount": .integer(data.count),
                           "mimeType": .string("application/pdf"),

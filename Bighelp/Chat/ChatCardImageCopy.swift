@@ -60,6 +60,78 @@ enum ChatCardImage {
     }
 }
 
+/// A message with cards on the clipboard: its words and a picture of each
+/// card, in the order they appear, never a card's code. Each part is its own
+/// clipboard item, so Messages and Notes paste the text and the pictures.
+@MainActor
+enum ChatMessageCopy {
+    enum Part: Equatable {
+        case text(String)
+        case image(Data)
+    }
+
+    static func parts(_ projection: ChatCardMessageProjection,
+                      image: (BighelpCardEnvelope) -> Data?) -> [Part] {
+        var parts: [Part] = []
+        func add(_ text: String) {
+            let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            if case .text(let previous) = parts.last {
+                parts[parts.count - 1] = .text(previous + "\n\n" + text)
+            } else {
+                parts.append(.text(text))
+            }
+        }
+        for segment in projection.segments {
+            switch segment {
+            case .markdown(let document): add(document.visiblePlainText)
+            case .table(let table): add(ChatTableCopy.markdown(table))
+            case .card(let envelope):
+                // A card that couldn't be drawn still says what it was.
+                if let png = image(envelope) { parts.append(.image(png)) } else { add(envelope.title) }
+            case .rule, .pendingCard, .unavailableCard: break
+            }
+        }
+        return parts
+    }
+
+    static func items(_ parts: [Part]) -> [[String: Any]] {
+        parts.map { part in
+            switch part {
+            case .text(let text): [UTType.utf8PlainText.identifier: text]
+            case .image(let png): [UTType.png.identifier: png]
+            }
+        }
+    }
+}
+
+/// What a message's cards need to be drawn for the clipboard: its width and
+/// environment, read only by messages that have cards.
+@MainActor
+final class ChatCardCopyContext {
+    var environment = EnvironmentValues()
+    var width: CGFloat = 0
+    var scale: CGFloat = 2
+
+    func png<Card: View>(_ card: Card, background: Color) -> Data? {
+        ChatCardImage.png(card, width: width > 0 ? width : 360, scale: scale, background: background,
+                          environment: environment)
+    }
+}
+
+struct ChatCardCopyContextReader: ViewModifier {
+    let context: ChatCardCopyContext
+    @Environment(\.self) private var environment
+    @Environment(\.displayScale) private var displayScale
+
+    func body(content: Content) -> some View {
+        let _ = context.environment = environment
+        let _ = context.scale = displayScale
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { context.width = $0 }
+    }
+}
+
 extension EnvironmentValues {
     /// True while a card is drawn for Copy as Image. An image can't scroll, and
     /// ImageRenderer leaves scroll views blank, so sideways rows lay out flat (#17).

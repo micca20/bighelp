@@ -509,6 +509,7 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
         case nativePendingCreation
         case nativeRetryJournal
         case nativePendingCancelID
+        case nativeFollowUps
     }
 
     let id: String
@@ -552,6 +553,10 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
     private(set) var nativePendingCreation: HermesBotModeCreationIntent?
     private(set) var nativeRetryJournal: HermesBotModeRetryJournal?
     private(set) var nativePendingCancelID: String?
+    /// Messages sent while the room was already working. Hermes queues each
+    /// behind the active drive; each keeps its own idempotency key until its
+    /// discussion settles.
+    private(set) var nativeFollowUps: [HermesBotModeFollowUp]
 
     init(
         id: String,
@@ -580,7 +585,8 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
         nativePendingRename: HermesBotModeRenameIntent? = nil,
         nativePendingCreation: HermesBotModeCreationIntent? = nil,
         nativeRetryJournal: HermesBotModeRetryJournal? = nil,
-        nativePendingCancelID: String? = nil
+        nativePendingCancelID: String? = nil,
+        nativeFollowUps: [HermesBotModeFollowUp] = []
     ) throws {
         let memberIDs = members.map(\.id)
         guard !id.isEmpty, !memberIDs.isEmpty,
@@ -644,6 +650,7 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
         self.nativePendingCreation = nativePendingCreation
         self.nativeRetryJournal = nativeRetryJournal
         self.nativePendingCancelID = nativePendingCancelID
+        self.nativeFollowUps = nativeRoomID == nil ? [] : Array(nativeFollowUps.prefix(HermesBotModeFollowUp.maximumPending))
     }
 
     init(from decoder: any Decoder) throws {
@@ -696,7 +703,8 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
             nativePendingRename: try container.decodeIfPresent(HermesBotModeRenameIntent.self, forKey: .nativePendingRename),
             nativePendingCreation: try container.decodeIfPresent(HermesBotModeCreationIntent.self, forKey: .nativePendingCreation),
             nativeRetryJournal: try container.decodeIfPresent(HermesBotModeRetryJournal.self, forKey: .nativeRetryJournal),
-            nativePendingCancelID: try container.decodeIfPresent(String.self, forKey: .nativePendingCancelID)
+            nativePendingCancelID: try container.decodeIfPresent(String.self, forKey: .nativePendingCancelID),
+            nativeFollowUps: try container.decodeIfPresent([HermesBotModeFollowUp].self, forKey: .nativeFollowUps) ?? []
         )
     }
 
@@ -927,6 +935,58 @@ struct BotModeRoom: Identifiable, Codable, Equatable, Sendable {
         if nativeCompletedDiscussionEventIDs.count > 128 {
             nativeCompletedDiscussionEventIDs.removeFirst(nativeCompletedDiscussionEventIDs.count - 128)
         }
+    }
+
+    mutating func queueNativeFollowUp(_ followUp: HermesBotModeFollowUp) {
+        guard !nativeFollowUps.contains(where: { $0.eventID == followUp.eventID }) else { return }
+        nativeFollowUps.append(followUp)
+    }
+
+    /// Records Hermes' receipt. A discussion that already settled needs no tracking.
+    mutating func markNativeFollowUpReceipt(eventID: String, discussionEventID: String) {
+        guard let index = nativeFollowUps.firstIndex(where: { $0.eventID == eventID }) else { return }
+        if let snapshot = nativeFollowUps[index].senderSnapshot {
+            nativeOwnEventSenders[discussionEventID] = snapshot
+        }
+        nativeFollowUps[index].discussionEventID = discussionEventID
+        if nativeCompletedDiscussionEventIDs.contains(discussionEventID) {
+            settleNativeFollowUps(completedDiscussionID: discussionEventID)
+        }
+    }
+
+    /// A settled follow-up also ends every message sent before it: Hermes
+    /// supersedes older discussions in the thread. One still waiting for its
+    /// receipt keeps its key for recovery. False when it isn't a follow-up.
+    @discardableResult
+    mutating func settleNativeFollowUps(completedDiscussionID: String) -> Bool {
+        guard let index = nativeFollowUps.firstIndex(where: { $0.discussionEventID == completedDiscussionID }) else {
+            return false
+        }
+        nativeFollowUps = nativeFollowUps[...index].filter { $0.discussionEventID == nil }
+            + nativeFollowUps[(index + 1)...]
+        return true
+    }
+
+    @discardableResult
+    mutating func removeNativeFollowUp(eventID: String) -> Bool {
+        let before = nativeFollowUps.count
+        nativeFollowUps.removeAll { $0.eventID == eventID }
+        return nativeFollowUps.count != before
+    }
+
+    /// Hermes is still working on something this phone sent: a running
+    /// turn, or messages sent while it ran.
+    var isNativeWorking: Bool {
+        hasNativeRoom && (isRunning || !nativeFollowUps.isEmpty)
+    }
+
+    mutating func clearNativeFollowUps() {
+        nativeFollowUps.removeAll()
+    }
+
+    /// Follow-ups Hermes accepted whose discussions are still running.
+    var hasUnsettledNativeFollowUps: Bool {
+        nativeFollowUps.contains { $0.discussionEventID != nil }
     }
 
     mutating func clearNativeTurn() {

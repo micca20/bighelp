@@ -192,6 +192,34 @@ Long instructions (an agent's SOUL, a personality) have an expand icon that open
 form. Present that editor from the form's root: a full-screen cover hung on a list section header never got the
 keyboard.
 
+## Mac pointer and keyboard
+
+The Mac app is used with a mouse and keyboard. These helpers (`BighelpPointer.swift`) change only the Mac;
+iPhone, iPad and Vision Pro stay exactly as they are.
+
+- **Click areas.** On the Mac a plain button takes clicks only where its label draws: a glyph's pixels, a line
+  of text. Write `.bighelpPlainButtonStyle()` instead of `.buttonStyle(.plain)` (or
+  `.bighelpPointerButtonStyle(.borderless)` and the like for other styles): the label's whole frame takes the
+  click, grown to at least 28 points each way (`BighelpPointer.minimumTarget`, which follows the Button size), and
+  lights up under the pointer. Inside a label or before `.onTapGesture`, `.bighelpPointer()` does the same. A
+  `.contentShape` outside a Button changes what VoiceOver measures, not what takes the click.
+- **Names.** Icon-only controls use `.bighelpIconLabel("New chat", shortcut: "⌘N")`: VoiceOver everywhere, a
+  tooltip on the Mac. `.bighelpHelp` adds just the tooltip.
+- **Toolbars.** An icon toolbar button takes clicks only on its glyph inside the glass: put
+  `.bighelpToolbarIcon()` on the label's image.
+- **Fields.** Form text fields take clicks only on their line of text. `.bighelpMacField()` on the `TextField`
+  lets its row height take the click (the caret goes to the end) and uses bighelp's text size;
+  `.bighelpMacFieldArea()` does it for a container with one field, like a search capsule.
+- **Return and Esc.** Sheets close on Esc by themselves. A sheet's or dialog's main button gets
+  `.bighelpDefaultAction()` so Return presses it (`.confirmationAction` placement doesn't); a Cancel that does
+  more than close, and every full-screen cover, gets `.bighelpCancelAction()`.
+- **Menus.** Every menu's label is at least 28 points each way (`BighelpMacMenuStyle`), so don't set another
+  `menuStyle`. Actions behind a long press or a swipe also need a `.contextMenu` (right-click).
+- **Hover.** The highlight shows in plain SwiftUI layouts: the tab bar, headers, cards, chips. List and Form
+  rows, menus, toolbar items and views with a `.contextMenu` are UIKit on the Mac and don't report hover; they
+  rely on their click area.
+- **Keys.** ⌘N new chat, ⌘, Settings, ⌃⌘S sidebar, ⌘1–⌘5 the bottom bar's tabs (`BighelpMenuCommands`).
+
 ## Protected behavior
 
 The [Chat interaction contract](docs/CHAT_INTERACTION_CONTRACT.md) remains authoritative. Preserve the native recycling canvas, canonical ordering, retained draft and editor ownership, reader-controlled scrolling, live/history reconciliation, prepared model, grouped activity and explicit media/voice controls. Do not replace backend clients, authentication, notification delivery, profile ownership or saved data as a styling shortcut.

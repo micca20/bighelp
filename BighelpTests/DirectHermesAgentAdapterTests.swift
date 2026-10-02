@@ -72,6 +72,67 @@ struct DirectHermesAgentAdapterTests {
         #expect(meta?["groups"] == .array([.string("desktop-section")]))
     }
 
+    /// Sections and hidden agents use Hermes Desktop's keys in the agent's
+    /// `hermes-bots` display settings, written whole with its revision.
+    @Test func listPlacementWritesDesktopKeysAndKeepsOtherSettings() async throws {
+        let workspace = try AgentNativeWorkspace()
+        let client = directory(workspace)
+        _ = try await client.list()
+        try await client.setPlacement(AgentListPlacement(sectionID: "sec-1", sectionName: "Work", isHidden: true),
+                                      profileID: "studio")
+        let call = try #require(workspace.calls.first { $0.operation == .profilesConfigure })
+        #expect(call.payload["ui_meta_expected_revisions"] == .object(["hermes-bots": .integer(7)]))
+        let meta = try #require(call.payload["ui_meta"]?.object?["hermes-bots"]?.object)
+        #expect(meta["sectionId"] == .string("sec-1"))
+        #expect(meta["sectionName"] == .string("Work"))
+        #expect(meta["hidden"] == .boolean(true))
+        #expect(meta["title"] == .string("Studio Display"))
+        #expect(meta["pinned"] == .boolean(true))
+
+        let listed = try #require(try await client.list().first)
+        #expect(listed.placement == AgentListPlacement(sectionID: "sec-1", sectionName: "Work", isHidden: true))
+
+        try await client.setPlacement(AgentListPlacement(), profileID: "studio")
+        let cleared = try #require(workspace.calls.last { $0.operation == .profilesConfigure })
+        let clearedMeta = try #require(cleared.payload["ui_meta"]?.object?["hermes-bots"]?.object)
+        #expect(clearedMeta["sectionId"] == .null)
+        #expect(clearedMeta["sectionName"] == .null)
+        #expect(clearedMeta["hidden"] == .boolean(false))
+    }
+
+    /// Another device changed the agent meanwhile: read again, try once
+    /// more, and keep what that device saved.
+    @Test func listPlacementConflictReloadsAndRetriesOnce() async throws {
+        let workspace = try AgentNativeWorkspace()
+        let client = directory(workspace)
+        _ = try await client.list()
+        workspace.otherDeviceEditsOnce = true
+        try await client.setPlacement(AgentListPlacement(isHidden: true), profileID: "studio")
+        let configures = workspace.calls.filter { $0.operation == .profilesConfigure }
+        #expect(configures.count == 2)
+        #expect(configures.last?.payload["ui_meta_expected_revisions"] == .object(["hermes-bots": .integer(8)]))
+        let meta = configures.last?.payload["ui_meta"]?.object?["hermes-bots"]?.object
+        #expect(meta?["color"] == .string("teal"))
+        #expect(meta?["hidden"] == .boolean(true))
+
+        workspace.rejectMetadata = true
+        await #expect(throws: WorkspaceClientError.conflict) {
+            try await client.setPlacement(AgentListPlacement(isHidden: false), profileID: "studio")
+        }
+        #expect(workspace.calls.filter { $0.operation == .profilesConfigure }.count == 4)
+    }
+
+    /// A host too old to keep revisions can't save placements: "update Hermes".
+    @Test func listPlacementNeedsAHostWithRevisions() async throws {
+        let workspace = try AgentNativeWorkspace()
+        workspace.rows["studio"]?["ui_meta_revisions"] = nil
+        let client = directory(workspace)
+        await #expect(throws: WorkspaceClientError.unavailable(.unsupportedHost)) {
+            try await client.setPlacement(AgentListPlacement(isHidden: true), profileID: "studio")
+        }
+        #expect(!workspace.calls.contains { $0.operation == .profilesConfigure })
+    }
+
     @Test func metadataConflictReportsOnlyUnappliedFieldsAfterReadback() async throws {
         let workspace = try AgentNativeWorkspace()
         let client = directory(workspace)
@@ -138,6 +199,96 @@ struct DirectHermesAgentAdapterTests {
         let cleared = try await client.update(id: profile.id, draft: draft)
         #expect(cleared.avatar == nil)
         #expect(workspace.calls.contains { $0.operation == .profilesSetAsset && $0.payload["clear"] == .boolean(true) })
+    }
+
+    @Test func faceAvatarAlsoTellsHermesDesktopHowToDrawIt() async throws {
+        let workspace = try AgentNativeWorkspace()
+        let client = directory(workspace)
+        let profile = try #require(try await client.list().first)
+        var draft = draft(profile)
+        draft.avatar = workspace.image
+        draft.look = AgentAvatarLook(style: .face, shape: "blobatar::sun", faceSeed: "studio")
+        let saved = try await client.update(id: profile.id, draft: draft)
+        #expect(saved.avatar == workspace.image)
+        #expect(saved.look == AgentAvatarLook(style: .face, shape: "blobatar::sun"))
+        let call = try #require(workspace.calls.first { $0.operation == .profilesConfigure })
+        #expect(call.payload["ui_meta_expected_revisions"] == .object(["hermes-bots": .integer(7)]))
+        let meta = try #require(call.payload["ui_meta"]?.object?["hermes-bots"]?.object)
+        #expect(meta["shape"] == .string("blobatar::sun"))
+        #expect(meta["imageKind"] == .string("shape"))
+        #expect(meta["custom"] == .boolean(true))
+        #expect(meta["image"] == nil)
+        #expect(meta["title"] == .string("Studio Display"))
+        #expect(meta["pinned"] == .boolean(true))
+    }
+
+    @Test func photoAvatarMarksAPictureAndKeepsDesktopsShape() async throws {
+        let workspace = try AgentNativeWorkspace()
+        workspace.rows["studio"]?["ui_meta"] = .object(["hermes-bots": .object([
+            "title": .string("Studio Display"), "shape": .string("hexagon"), "color": .string("#2e3238")
+        ])])
+        let client = directory(workspace)
+        let profile = try #require(try await client.list().first)
+        #expect(profile.look == AgentAvatarLook(style: .shape, shape: "hexagon", color: "#2e3238"))
+        var draft = draft(profile)
+        draft.avatar = workspace.image
+        draft.look = .photo
+        let saved = try await client.update(id: profile.id, draft: draft)
+        #expect(saved.look == .photo)
+        let meta = try #require(workspace.calls.first { $0.operation == .profilesConfigure }?
+            .payload["ui_meta"]?.object?["hermes-bots"]?.object)
+        #expect(meta["imageKind"] == .string("photo"))
+        #expect(meta["shape"] == .string("hexagon"))
+        #expect(meta["color"] == .string("#2e3238"))
+    }
+
+    @Test func aLookTheHostRefusesStillSavesThePicture() async throws {
+        let workspace = try AgentNativeWorkspace()
+        let client = directory(workspace)
+        let profile = try #require(try await client.list().first)
+        var draft = draft(profile)
+        draft.avatar = workspace.image
+        draft.look = AgentAvatarLook(style: .shape, shape: "cloud", color: "hsl(30 68% 58%)")
+        workspace.rejectMetadata = true
+        let saved = try await client.update(id: profile.id, draft: draft)
+        #expect(saved.avatar == workspace.image)
+        #expect(saved.look == nil)
+        // One fresh retry after a stale revision, then the picture stands alone.
+        #expect(workspace.calls.filter { $0.operation == .profilesConfigure }.count == 2)
+    }
+
+    @Test func petsAndTheirFirstFramesComeFromTheHost() async throws {
+        let workspace = try AgentNativeWorkspace()
+        workspace.petRows = [
+            .object(["slug": .string("boba"), "displayName": .string("Boba"), "installed": .boolean(true),
+                     "spritesheetUrl": .string("https://assets.petdex.dev/curated/boba/sprite-v2.webp"),
+                     "generated": .boolean(false), "futureKey": .integer(3)]),
+            .object(["slug": .string("hatched"), "displayName": .string("Hatched"), "spritesheetUrl": .string("")]),
+            .object(["slug": .string("elsewhere"), "spritesheetUrl": .string("https://cdn.example.com/sheet.webp")]),
+            .object(["slug": .string("boba"), "displayName": .string("Second Boba")]),
+            .object(["displayName": .string("No slug")]),
+            .string("not a pet"),
+        ]
+        let client = directory(workspace)
+        let pets = try await client.petGallery()
+        #expect(pets.map(\.slug) == ["boba", "hatched", "elsewhere"])
+        #expect(pets[0].installed && pets[0].curated)
+        #expect(pets[1].spritesheetURL == nil)
+        #expect(pets[2].displayName == "elsewhere")
+        #expect(pets[2].spritesheetURL == nil, "Only petdex's own addresses are passed on")
+
+        let frame = try await client.petThumbnail(pets[0])
+        #expect(frame == PetdexFixtures.thumbnail(slug: "pip"))
+        let thumb = try #require(workspace.calls.last { $0.operation == .petThumb })
+        #expect(thumb.payload == ["slug": .string("boba"),
+                                  "url": .string("https://assets.petdex.dev/curated/boba/sprite-v2.webp")])
+        _ = try await client.petThumbnail(pets[1])
+        #expect(workspace.calls.last { $0.operation == .petThumb }?.payload == ["slug": .string("hatched")])
+
+        workspace.petThumbURI = "data:image/jpeg;base64,/9j/4AAQ"
+        await #expect(throws: PetdexError.invalidImage) { _ = try await client.petThumbnail(pets[0]) }
+        workspace.petThumbURI = nil
+        await #expect(throws: PetdexError.unsupported) { _ = try await client.petThumbnail(pets[0]) }
     }
 
     @Test func freshCreateDoesNotMirrorCredentialsOrInstallAnAlias() async throws {
@@ -499,6 +650,10 @@ private final class AgentNativeWorkspace: WorkspaceOperationPerforming {
     var souls: [String: String] = ["studio": "Exact instructions.\n"]
     var avatars: [String: AgentAvatar] = [:]
     var rejectMetadata = false
+    var petRows: [BighelpJSONValue] = []
+    var petThumbURI: String? = "data:image/png;base64," + (PetdexFixtures.thumbnail(slug: "pip")?.base64EncodedString() ?? "")
+    /// Another device saves the agent's display settings just before the next configure.
+    var otherDeviceEditsOnce = false
     var failSoulRead = false
     var measureSoulConcurrency = false
     var concurrentSoulReads = 0
@@ -593,6 +748,13 @@ private final class AgentNativeWorkspace: WorkspaceOperationPerforming {
                     ])]
         case .profilesConfigure:
             var applied: [String: BighelpJSONValue] = [:]
+            if otherDeviceEditsOnce, var namespace = rows[id]?["ui_meta"]?.object?["hermes-bots"]?.object {
+                otherDeviceEditsOnce = false
+                namespace["color"] = .string("teal")
+                let revision = rows[id]?["ui_meta_revisions"]?.object?["hermes-bots"]?.integer ?? 0
+                rows[id]?["ui_meta"] = .object(["hermes-bots": .object(namespace)])
+                rows[id]?["ui_meta_revisions"] = .object(["hermes-bots": .integer(revision + 1)])
+            }
             if let incoming = payload["ui_meta"]?.object?["hermes-bots"] {
                 let revision = rows[id]?["ui_meta_revisions"]?.object?["hermes-bots"]?.integer ?? 0
                 if rejectMetadata || payload["ui_meta_expected_revisions"]?.object?["hermes-bots"] != .integer(revision) {
@@ -615,6 +777,11 @@ private final class AgentNativeWorkspace: WorkspaceOperationPerforming {
                 applied["model"] = .boolean(true)
             }
             return ["ok": .boolean(true), "applied": .object(applied)]
+        case .petGallery:
+            return ["enabled": .boolean(false), "active": .string(""), "pets": .array(petRows)]
+        case .petThumb:
+            guard let uri = petThumbURI else { return ["ok": .boolean(false), "slug": payload["slug"] ?? .null] }
+            return ["ok": .boolean(true), "slug": payload["slug"] ?? .null, "dataUri": .string(uri)]
         case .profilesDescribe:
             return ["name": .string(id), "model": .object(["provider": .string("native-provider"), "default": .string(mainModel)])]
         case .modelOptions:

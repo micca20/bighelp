@@ -28,9 +28,10 @@ struct DirectHermesHistoryProjectionTests {
         let visual = ChatActivityVisualState(lifecycle: .recorded)
         #expect(visual.tone == .secondary)
         #expect(!visual.shimmers)
-        let summary = ChatWorkTrailSummary(events: [recordedEvent])
-        #expect(summary.lifecycle == .recorded)
-        #expect(!summary.hasRunningWork)
+        let phase = ChatActivityPresentation.trailPhase(for: [recordedEvent])
+        #expect(phase == .done(elapsed: nil))
+        #expect(!phase.isLive)
+        #expect(!ChatActivityPresentation.step(for: recordedEvent).isRunning)
         let record = SessionRecord(id: "recorded-session", kind: .direct, agentIDs: ["default"],
                                    title: "Saved", activityEvents: [recordedEvent])
         #expect(SessionSubagentDetailPresentation.statusTitle(for: record) == "Saved child session; outcome unavailable")

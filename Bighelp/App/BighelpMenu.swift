@@ -142,7 +142,9 @@ struct BighelpMenu<Recent: View>: View {
             Button { choose(destinations.onNewChat) } label: {
                 BighelpMenuRowLabel(title: destinations.newChatTitle, symbol: "square.and.pencil", trailing: .none)
             }
-            .buttonStyle(.borderless)
+            .bighelpPointerButtonStyle(.borderless, outline: .rounded(BighelpTokens.radius12),
+                                       padding: BighelpTokens.space4)
+            .bighelpHelp(destinations.newChatTitle, shortcut: "⌘N")
             .accessibilityIdentifier("menu.new-chat")
             if let onNewGroup = destinations.onNewGroup {
                 Button { choose(onNewGroup) } label: {
@@ -153,7 +155,7 @@ struct BighelpMenu<Recent: View>: View {
                         .background(theme.action.opacity(0.12), in: .capsule)
                         .contentShape(.capsule)
                 }
-                .buttonStyle(.borderless)
+                .bighelpPointerButtonStyle(.borderless, outline: .capsule)
                 .foregroundStyle(theme.action)
                 .accessibilityLabel("New group chat")
                 .accessibilityIdentifier("menu.new-group")
@@ -206,18 +208,23 @@ struct BighelpMenu<Recent: View>: View {
     /// Shows every agent on every host in one list, or just this host's.
     private func allHostsToggle(_ allHosts: BighelpMenuHosts.AllHosts) -> some View {
         Button { choose(allHosts.toggle) } label: {
-            Image(systemName: allHosts.isOn ? "square.stack.3d.up.fill" : "square.stack.3d.up")
-                .font(.bighelp(.subheadline).weight(.semibold))
+            // What a tap shows: every host's bots, or back to one host's.
+            Image((allHosts.isOn ? BighelpGlyph.bot : .bots).assetName)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: 20, height: 20)
                 .foregroundStyle(allHosts.isOn ? theme.actionForeground : theme.primaryText)
                 .frame(width: 34, height: 34)
                 .background(allHosts.isOn ? theme.action : theme.surface, in: .circle)
                 .contentShape(.circle)
         }
-        .buttonStyle(.borderless)
+        .bighelpPointerButtonStyle(.borderless, outline: .circle)
         .textCase(nil)
-        .accessibilityLabel("All hosts")
-        .accessibilityValue(allHosts.isOn ? "On" : "Off")
-        .accessibilityHint("Shows every agent on every host in one list.")
+        .bighelpIconLabel(allHosts.isOn ? "Show one host" : "Show all hosts")
+        .accessibilityHint(allHosts.isOn
+            ? "Shows the selected host's agents and chats again."
+            : "Shows every agent on every host in one list.")
         .accessibilityAddTraits(allHosts.isOn ? .isSelected : [])
         .accessibilityIdentifier("menu.all-hosts")
     }
@@ -288,7 +295,7 @@ struct BighelpMenu<Recent: View>: View {
         Button { choose(action) } label: {
             BighelpMenuRowLabel(title: title, detail: detail, symbol: symbol, trailing: .none)
         }
-        .buttonStyle(.plain)
+        .bighelpPlainButtonStyle(.rounded(BighelpTokens.radius12), padding: BighelpTokens.space4)
         .listRowInsets(Self.rowInsets)
         .accessibilityIdentifier(id)
     }

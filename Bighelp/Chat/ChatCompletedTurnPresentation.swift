@@ -7,6 +7,8 @@ struct ChatCompletedTurn: Identifiable {
     /// The folded activity entries, in order.
     let entries: [ChatTranscriptEntry]
     let elapsedSeconds: TimeInterval?
+    /// The tool calls and helper agents the turn ran, shown or hidden.
+    var stepCount = 0
 
     /// The fold's content in order. Work on either side of a message left
     /// outside the fold reads as one run; notes folded with the work (tool
@@ -27,16 +29,9 @@ struct ChatCompletedTurn: Identifiable {
         entries.contains { if case .message = $0 { true } else { false } }
     }
 
+    /// "Worked for 14s" from the turn's recorded time, or "Done" without one.
     var label: String {
-        guard let elapsedSeconds, elapsedSeconds.isFinite,
-              elapsedSeconds >= 0, elapsedSeconds < 31_536_000 else {
-            return "Completed turn · duration unavailable"
-        }
-        let seconds = Int(elapsedSeconds.rounded())
-        if seconds < 1 { return "Worked for less than a second" }
-        if seconds < 60 { return "Worked for \(seconds)s" }
-        if seconds < 3_600 { return "Worked for \(seconds / 60)m \(seconds % 60)s" }
-        return "Worked for \(seconds / 3_600)h \((seconds % 3_600) / 60)m"
+        BighelpActivitySummary.doneLabel(elapsed: elapsedSeconds)
     }
 }
 
@@ -143,7 +138,9 @@ enum ChatCompletedTurnProjection {
                     id: "completed-turn:\(first.id)",
                     entries: folded,
                     elapsedSeconds: elapsed(work, startedAt: startedAt, startOrder: startOrder,
-                                            endOrder: endOrder, activityEvents: activityEvents)
+                                            endOrder: endOrder, activityEvents: activityEvents),
+                    stepCount: stepCount(folded, startOrder: startOrder, endOrder: endOrder,
+                                         activityEvents: activityEvents)
                 )), at: foldPosition)
             }
             rows.append(contentsOf: turnRows)
@@ -162,6 +159,34 @@ enum ChatCompletedTurnProjection {
         // Never fold the turn being delivered, including gaps between batches.
         flush(isActive: isSending)
         return rows
+    }
+
+    /// Steps the fold stands for: its own tool calls and helper agents, plus
+    /// the turn's work the chat hides (Show tool calls off), from the ledger by
+    /// turn or by order. Generated pictures stay outside the fold and the count.
+    private static func stepCount(
+        _ folded: [ChatTranscriptEntry], startOrder: Int?, endOrder: Int?, activityEvents: [ChatActivityEvent]
+    ) -> Int {
+        func isStep(_ event: ChatActivityEvent) -> Bool {
+            (event.kind == .tool || event.kind == .subagent) && GeneratedMediaProjection.kind(for: event) == nil
+        }
+        var steps = Set<String>()
+        var turnIDs = Set<String>()
+        for entry in folded {
+            guard case .activity(let turn) = entry else { continue }
+            for event in turn.events {
+                turnIDs.insert(event.turnID)
+                if isStep(event) { steps.insert(event.id) }
+            }
+        }
+        for event in activityEvents where isStep(event) {
+            var inOrder = false
+            if let startOrder, let order = event.sourceOrder {
+                inOrder = order >= startOrder && endOrder.map { order < $0 } != false
+            }
+            if turnIDs.contains(event.turnID) || inOrder { steps.insert(event.id) }
+        }
+        return steps.count
     }
 
     private static func elapsed(
@@ -214,28 +239,18 @@ struct ChatCompletedTurnView<Content: View>: View {
     private var isExpanded: Bool { disclosures.isCompletedTurnExpanded(turn.id) }
 
     var body: some View {
+        let disclosures = disclosures
+        let id = turn.id
         VStack(alignment: .leading, spacing: BighelpTokens.space12) {
-            Button {
-                onDisclosureChange()
-                disclosures.setCompletedTurnExpanded(!isExpanded, id: turn.id)
-            } label: {
-                HStack(spacing: BighelpTokens.space8) {
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    Text(turn.label)
-                    Spacer(minLength: 0)
-                }
-                .bighelpFont(.metadata, weight: .semibold)
-                .foregroundStyle(.secondary)
-                .frame(minHeight: BighelpTokens.hitTarget, alignment: .leading)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(turn.label)
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Hides the completed work."
-                : turn.foldsMessages ? "Shows the agent's thinking and notes." : "Shows thinking and tool calls. Assistant messages stay visible.")
-            .accessibilityIdentifier("chat.\(turn.id)")
+            BighelpActivityRow(
+                phase: .done(elapsed: turn.elapsedSeconds),
+                stepCount: turn.stepCount,
+                detailsBelow: true,
+                isExpanded: Binding(get: { disclosures.isCompletedTurnExpanded(id) },
+                                    set: { disclosures.setCompletedTurnExpanded($0, id: id) }),
+                onDisclosureChange: onDisclosureChange,
+                accessibilityIdentifier: "chat.\(turn.id)"
+            )
 
             if isExpanded {
                 ForEach(turn.expandedEntries) { entry in

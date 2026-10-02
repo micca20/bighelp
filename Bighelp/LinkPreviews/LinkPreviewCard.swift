@@ -56,6 +56,14 @@ struct LinkPreviewCard: View {
             } label: {
                 Label("Copy Link", systemImage: "doc.on.doc")
             }
+            if let png = picture?.pngData() {
+                Button {
+                    UIPasteboard.general.setItems(ChatPictureClipboard.items(data: png, mimeType: "image/png"))
+                    BighelpHaptics.success()
+                } label: {
+                    Label("Copy Picture", systemImage: "photo.on.rectangle")
+                }
+            }
             ShareLink(item: url) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }

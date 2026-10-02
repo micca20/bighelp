@@ -17,7 +17,7 @@ final class AllHostsUITests: BighelpUITestCase {
         menu.tap()
         let toggle = app.buttons["menu.all-hosts"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        XCTAssertEqual(toggle.value as? String, "Off")
+        XCTAssertEqual(toggle.label, "Show all hosts", "Several bots: a tap shows every host")
         toggle.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["fleet.home"].waitForExistence(timeout: 5))
@@ -55,7 +55,7 @@ final class AllHostsUITests: BighelpUITestCase {
 
         // Settings belongs to one host: pick which.
         menu.tap()
-        XCTAssertEqual(app.buttons["menu.all-hosts"].value as? String, "On")
+        XCTAssertEqual(app.buttons["menu.all-hosts"].label, "Show one host", "One bot: a tap goes back to one host")
         app.buttons["menu.settings"].tap()
         let pickHome = app.buttons["fleet.gate.host.Home Hermes"]
         XCTAssertTrue(pickHome.waitForExistence(timeout: 5))
@@ -70,9 +70,51 @@ final class AllHostsUITests: BighelpUITestCase {
         XCTAssertTrue(app.navigationBars["All agents"].waitForExistence(timeout: 5))
 
         // Off again: one host, its own chat list.
+        XCTAssertEqual(app.buttons["fleet.toggle"].label, "Show one host")
         app.buttons["fleet.toggle"].tap()
         XCTAssertTrue(app.navigationBars["Chats"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["fleet.home"].exists)
+    }
+
+    /// Switching agents from a chat's header keeps the all-hosts view: the new
+    /// agent's chat has Back to All agents and no one-host tab bar (Feed,
+    /// Ideas, Goals), so nothing strands you on one host's screens.
+    @MainActor
+    func testSwitchingAgentFromChatStaysInAllHosts() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-bighelp.hosts.all-hosts", "NO"]
+        app.launch()
+        let menu = app.buttons["home.drawer.open"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        XCTAssertTrue(app.buttons["menu.all-hosts"].waitForExistence(timeout: 5))
+        save("menu-one-host", app)
+        app.buttons["menu.all-hosts"].tap()
+        let mina = app.buttons["fleet.agent.Mina Shah"]
+        XCTAssertTrue(mina.waitForExistence(timeout: 5))
+        save("list-with-one-bot-switch", app)
+        mina.tap()
+        XCTAssertTrue(app.textViews["chat.composer.text"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["tab.feed"].exists, "An all-hosts chat has no tab bar")
+
+        app.buttons["agent.hero.name"].tap()
+        let other = app.buttons["agent.switcher.agent.finance"]
+        XCTAssertTrue(other.waitForExistence(timeout: 5))
+        other.tap()
+        XCTAssertTrue(app.textViews["chat.composer.text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat.back"].firstMatch.waitForExistence(timeout: 5),
+                      "The switched-to chat has Back to All agents")
+        XCTAssertFalse(app.buttons["tab.feed"].waitForExistence(timeout: 2),
+                       "Switching agents must not bring back one host's Feed, Ideas and Goals bar")
+        XCTAssertFalse(app.buttons["tab.ideas"].exists)
+        save("switched-agent", app)
+
+        app.buttons["chat.back"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["All agents"].waitForExistence(timeout: 5), "Back returns to All agents")
+        XCTAssertTrue(mina.waitForExistence(timeout: 5))
+        menu.tap()
+        XCTAssertTrue(app.buttons["menu.all-hosts"].waitForExistence(timeout: 5))
+        save("menu-all-hosts", app)
     }
 
     /// Hold a pinned agent and let go to unpin it; long-press any agent's row to pin it.
@@ -132,8 +174,74 @@ final class AllHostsUITests: BighelpUITestCase {
         let tileTop = tile.frame.minY
 
         swipeUp(from: tile, in: app)
-        XCTAssertLessThan(tile.frame.minY, tileTop - 40, "A swipe that starts on a pinned agent scrolls the list")
+        // A list long enough scrolls the tiles out of view altogether.
+        XCTAssertTrue(!tile.exists || tile.frame.minY < tileTop - 40,
+                      "A swipe that starts on a pinned agent scrolls the list")
+        swipeDown(in: app)
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
         XCTAssertEqual(pinned.allElementsBoundByIndex.map(\.identifier), order, "A swipe doesn't rearrange them")
+    }
+
+    /// Hide an agent and show it again; file it into a new section; delete
+    /// the section (the agent stays) and Undo. Demo hosts keep it on screen.
+    @MainActor
+    func testAgentsHideAndFileIntoSections() throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-bighelp.hosts.all-hosts", "YES"]
+        app.launch()
+
+        let mina = app.buttons["fleet.agent.Mina Shah"]
+        XCTAssertTrue(mina.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["fleet.group.Launch crew"].exists,
+                      "Group chats list beside agents")
+        shot("list", app)
+
+        mina.press(forDuration: 1.0)
+        XCTAssertTrue(app.buttons["Hide from list"].waitForExistence(timeout: 5))
+        shot("agent-menu", app)
+        app.buttons["Hide from list"].tap()
+        XCTAssertTrue(mina.waitForNonExistence(timeout: 5), "A hidden agent leaves the list")
+
+        app.buttons["fleet.organize"].tap()
+        let showHidden = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "Show hidden agents (1)")).firstMatch
+        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
+        shot("organize-menu", app)
+        showHidden.tap()
+        XCTAssertTrue(mina.waitForExistence(timeout: 5), "Shown again, dimmed, to unhide")
+        XCTAssertEqual(mina.value as? String, "Hidden")
+        shot("hidden-shown", app)
+        mina.press(forDuration: 1.0)
+        app.buttons["Show in list"].tap()
+
+        mina.press(forDuration: 1.0)
+        app.buttons["Move to section"].tap()
+        app.buttons["New section"].tap()
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        shot("new-section", app)
+        field.typeText("Trips")
+        app.alerts.buttons["Create"].firstMatch.tap()
+        let trips = app.descendants(matching: .any)["fleet.section.Trips"]
+        XCTAssertTrue(trips.waitForExistence(timeout: 5))
+        shot("filed", app)
+
+        app.buttons["fleet.section.menu.Trips"].tap()
+        app.buttons["Delete section"].tap()
+        XCTAssertTrue(trips.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(mina.exists, "Deleting a section never deletes its agents")
+        let undo = app.buttons["fleet.section.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        shot("undo", app)
+        undo.tap()
+        XCTAssertTrue(trips.waitForExistence(timeout: 5))
+    }
+
+    /// Saves a screenshot into TEST_RUNNER_BIGHELP_FLEET_SHOTS when set.
+    @MainActor
+    private func shot(_ name: String, _ app: XCUIApplication) {
+        guard let folder = ProcessInfo.processInfo.environment["BIGHELP_FLEET_SHOTS"] else { return }
+        try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
     }
 
     @MainActor

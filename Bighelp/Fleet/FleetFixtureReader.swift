@@ -3,7 +3,8 @@ import Foundation
 #if DEBUG
 /// Demo hosts for the all-hosts view. "Home Hermes" is the demo's own agents
 /// (live, like a selected host); "Studio Mac" has made-up agents to list but
-/// not open; "Office Linux" can't be reached.
+/// not open (with `-test-fleet-loading` it's still being read, for
+/// screenshots); "Office Linux" can't be reached.
 @MainActor
 final class FleetFixtureReader: FleetHostReading {
     static let homeID = UUID(uuidString: "0D0D0D0D-0000-4000-8000-000000000001")!
@@ -21,16 +22,28 @@ final class FleetFixtureReader: FleetHostReading {
     /// Demo hosts keep pins on screen only.
     func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool { true }
 
+    /// Sections and hidden agents saved on the demo host, like a real one's
+    /// profiles. None until the person files or hides one.
+    private var placements: [String: AgentListPlacement] = [:]
+
+    func setPlacement(_ placement: AgentListPlacement, hostID: UUID, profileID: String) async throws {
+        guard hostID == Self.studioID else { throw WorkspaceClientError.unavailable(.unsupportedHost) }
+        placements[profileID] = placement
+    }
+
     func read(_ hostID: UUID, avatars: FleetAvatarFolder) async throws -> FleetSnapshot {
         guard hostID == Self.studioID else { throw FleetReadError(message: "Couldn't reach this host.") }
+        if ProcessInfo.processInfo.arguments.contains("-test-fleet-loading") {
+            try await Task.sleep(for: .seconds(3_600))
+        }
         let id = Self.studioID
         let now = Date()
         return FleetSnapshot(
             agents: [
                 FleetAgent(hostID: id, profileID: "research", name: "Rio Tanaka", role: "Research agent",
-                           isPinned: true, isDefault: true),
+                           isPinned: true, isDefault: true, placement: placements["research"]),
                 FleetAgent(hostID: id, profileID: "reviewer", name: "Sage Ortiz", role: "Code reviewer",
-                           isPinned: false, isDefault: false, activity: .working),
+                           isPinned: false, isDefault: false, activity: .working, placement: placements["reviewer"]),
             ],
             chats: [
                 FleetChat(hostID: id, profileID: "research", storedSessionID: "studio-1", title: "Market scan",
@@ -48,6 +61,11 @@ final class FleetFixtureReader: FleetHostReading {
                           status: .active),
                 FleetTask(hostID: id, jobID: "health", profileID: "reviewer", name: "Weekly code health",
                           schedule: "Mondays at 9:00 AM", nextRun: nil, status: .paused),
+            ],
+            groups: [
+                FleetGroup(hostID: id, roomID: "studio-launch", name: "Launch crew",
+                           memberNames: ["Rio Tanaka", "Sage Ortiz"], updatedAt: now.addingTimeInterval(-50 * 60),
+                           isWorking: false, canRename: false, canDelete: false),
             ],
             refreshedAt: now
         )

@@ -1,6 +1,7 @@
 import SwiftUI
 import Testing
 import UIKit
+import UniformTypeIdentifiers
 @testable import Bighelp
 
 /// Copying a whole table, and a card as a picture.
@@ -29,6 +30,65 @@ struct ChatCopyTests {
         let html = ChatTableCopy.html(table)
         #expect(html.hasPrefix("<table><thead><tr><th>Item</th><th>Cost</th></tr></thead>"))
         #expect(html.contains("<td>Plumber &lt;visit&gt;</td>"), "Cell text is escaped")
+    }
+
+    private var fence: String {
+        "```loopdy-card\n{\"schema\":\"loopdy.generative_ui\",\"version\":1,\"component\":\"summary\","
+            + "\"title\":\"Trip budget\",\"body\":\"Under $400 a night\"}\n```"
+    }
+
+    /// Copying a message with a card gives its words and a picture of the
+    /// card, in order, never the card's code.
+    @Test func aMessageWithACardCopiesItsWordsAndAPictureOfTheCard() throws {
+        let projection = ChatCardMessageProjection(source: "Here's the plan.\n\n" + fence + "\n\nWant changes?",
+                                                   role: .assistant)
+        var drawn: [String] = []
+        let parts = ChatMessageCopy.parts(projection) { envelope in
+            drawn.append(envelope.title)
+            return Data([0x89, 0x50])
+        }
+        #expect(drawn == ["Trip budget"])
+        #expect(parts == [.text("Here's the plan."), .image(Data([0x89, 0x50])), .text("Want changes?")])
+        let items = ChatMessageCopy.items(parts)
+        #expect(items.count == 3)
+        #expect(items[0][UTType.utf8PlainText.identifier] as? String == "Here's the plan.")
+        #expect(items[1][UTType.png.identifier] as? Data == Data([0x89, 0x50]))
+        #expect(items[2].keys.sorted() == [UTType.utf8PlainText.identifier])
+    }
+
+    @Test func aCardThatCantBeDrawnStillSaysWhatItWas() {
+        let projection = ChatCardMessageProjection(source: "Before\n\n" + fence + "\n\nAfter", role: .assistant)
+        let parts = ChatMessageCopy.parts(projection) { _ in nil }
+        #expect(parts == [.text("Before\n\nTrip budget\n\nAfter")])
+        #expect(!parts.contains { if case .text(let text) = $0 { text.contains("schema") } else { false } })
+    }
+
+    @Test func aRealCardInAMessageDrawsToAPicture() throws {
+        let projection = ChatCardMessageProjection(source: "Plan:\n\n" + fence, role: .assistant)
+        let context = ChatCardCopyContext()
+        context.width = 320
+        let parts = ChatMessageCopy.parts(projection) { envelope in
+            guard case .legacy(let card) = envelope else { return nil }
+            return context.png(GenerativeUICardView(card: card, messageID: "m"), background: .white)
+        }
+        #expect(parts.count == 2)
+        guard case .image(let png)? = parts.last else { Issue.record("No picture"); return }
+        #expect(UIImage(data: png) != nil)
+    }
+
+    /// Touch and hold a picture to copy it: its own format, plus a PNG when
+    /// that format isn't one every app pastes.
+    @Test func aPictureCopiesInItsOwnFormat() throws {
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).pngData { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let plain = ChatPictureClipboard.items(data: png, mimeType: "image/png")
+        #expect(plain.count == 1)
+        #expect(plain[0].keys.sorted() == [UTType.png.identifier])
+        let heic = ChatPictureClipboard.items(data: png, mimeType: "image/heic")
+        #expect(Set(heic[0].keys) == [UTType.heic.identifier, UTType.png.identifier])
+        #expect(ChatPictureClipboard.items(data: Data("text".utf8), mimeType: "text/plain").isEmpty)
     }
 
     @Test func aCardCopiesAsASharpPicture() throws {

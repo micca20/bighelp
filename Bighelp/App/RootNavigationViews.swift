@@ -91,9 +91,9 @@ struct RootComposeButton: View {
                 .contentShape(.circle)
                 .modifier(ComposeSurface(tint: theme.action, reduceTransparency: reduceTransparency))
         }
-        .buttonStyle(BighelpPressFeedbackStyle())
+        .bighelpPointerButtonStyle(BighelpPressFeedbackStyle(), outline: .circle)
         .sensoryFeedback(.impact(weight: .light), trigger: taps)
-        .accessibilityLabel("New chat")
+        .bighelpIconLabel("New chat", shortcut: "⌘N")
         .accessibilityIdentifier(identifier)
     }
 

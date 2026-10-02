@@ -24,7 +24,8 @@ extension BotModeRoomStore {
         // survive the same transition and therefore cannot be the only place
         // that starts this store-owned recovery loop.
         if client != nil {
-            for room in rooms where room.hasNativeRoom && (room.isRunning || room.nativePendingEventID != nil) {
+            for room in rooms where room.hasNativeRoom
+                && (room.isRunning || room.nativePendingEventID != nil || !room.nativeFollowUps.isEmpty) {
                 beginNativeRoomObservation(roomID: room.id)
             }
         }
@@ -381,6 +382,7 @@ extension BotModeRoomStore {
         guard var current = self.room(id: roomID) else { return }
         let expectedOwner = current.runOwner.map(BotModeRunOwnerExpectation.owner) ?? .noOwner
         current.clearNativeTurn()
+        current.clearNativeFollowUps()
         current.setNativeRetryJournal(nil)
         current.setNativeCancelIntent(nil)
         current.settleRun()

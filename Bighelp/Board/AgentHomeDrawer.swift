@@ -74,7 +74,7 @@ struct AgentHomeDrawer: View {
             } label: {
                 BighelpMenuChatRow(chat: chat, agent: agent)
             }
-            .buttonStyle(.plain)
+            .bighelpPlainButtonStyle(.rounded(BighelpTokens.radius12), padding: BighelpTokens.space4)
             .accessibilityIdentifier("menu.chat.\(chat.id)")
         }
     }

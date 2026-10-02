@@ -52,7 +52,7 @@ enum ChatCanvasRow: Identifiable, Equatable {
         switch (lhs, rhs) {
         case (.transcript(.entry(let a)), .transcript(.entry(let b))): a == b
         case (.transcript(.completed(let a)), .transcript(.completed(let b))):
-            a.id == b.id && a.entries == b.entries && a.elapsedSeconds == b.elapsedSeconds
+            a.id == b.id && a.entries == b.entries && a.elapsedSeconds == b.elapsedSeconds && a.stepCount == b.stepCount
         case (.workTrailHeader(let a), .workTrailHeader(let b)): a == b
         case (.activityDetail(let a), .activityDetail(let b)): a == b
         case (.workTrailEnd(let a), .workTrailEnd(let b)): a == b
@@ -110,7 +110,8 @@ enum ChatCanvasTranscriptProjection {
             case .completed(let turn):
                 // Keep the existing accessible disclosure control, with its
                 // expanded content projected as sibling native rows.
-                let header = ChatCompletedTurn(id: turn.id, entries: [], elapsedSeconds: turn.elapsedSeconds)
+                let header = ChatCompletedTurn(id: turn.id, entries: [], elapsedSeconds: turn.elapsedSeconds,
+                                               stepCount: turn.stepCount)
                 result.append(.transcript(.completed(header)))
                 if disclosures.isCompletedTurnExpanded(turn.id) {
                     turn.expandedEntries.forEach(append)
@@ -419,11 +420,14 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
                     .transformEnvironment(\.self) { Self.applyHostedEnvironment(from: environment, to: &$0) }
                     .buttonStyle(.plain)
             }.margins(.all, 0)
-            // The bottom spacer is shorter than a list row's default minimum height.
-            if case .bottom = row {
+            // The bottom spacer, and activity lines (which set their own touch
+            // height), are shorter than a list row's default minimum height.
+            // An unfolded trail's steps must sit flush so their line is unbroken.
+            switch row {
+            case .bottom, .workTrailEnd, .workTrailHeader, .activityDetail, .transcript(.completed),
+                 .transcript(.entry(.activity)):
                 cell.contentConfiguration = configuration.minSize(height: 0)
-            } else {
-                cell.contentConfiguration = configuration
+            default: cell.contentConfiguration = configuration
             }
         }
 
@@ -537,7 +541,7 @@ struct NativeChatTimeline<Content: View>: UIViewRepresentable {
             // the actual content before display.
             switch rowsByID[id] {
             case .bottom: return ChatBottomAnchorVisibility.contentBottomPadding + ChatBottomAnchorVisibility.anchorHeight
-            case .workTrailEnd: return BighelpTokens.space16 + 1
+            case .workTrailEnd: return BighelpTokens.space4
             case .workTrailHeader: return BighelpTokens.hitTarget + BighelpTokens.space8
             case .activityDetail: return 180
             case .transcript(.completed): return BighelpTokens.hitTarget + BighelpTokens.space16

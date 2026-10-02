@@ -6,32 +6,53 @@ import PDFKit
 import UniformTypeIdentifiers
 
 /// Resolves explicit deliveries through the authenticated host's existing media
-/// or managed-file policy. Never falls back after policy refusal, opens provider
-/// URLs, or reads the phone's filesystem.
+/// or managed-file policy. Never falls back after policy refusal or reads the
+/// phone's filesystem. The one outside read is a hosted image tool's own
+/// picture address, which the tool reports in place of a host file.
 @MainActor
 final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAttachmentResolving {
+    /// Chunks after the first download side by side; a slow link spends its
+    /// time on bytes instead of waiting on each round trip in turn.
+    static let parallelChunks = 3
+    static let chunkRetryDelays: [Duration] = [.seconds(1), .seconds(3)]
+
     private let workspace: DirectHermesWorkspaceClient
     private let owner: WorkspaceOwner
     private let currentOwner: @MainActor () -> WorkspaceOwner?
+    private let cache: AgentAttachmentCache?
+    private let remoteFetch: LinkPreviewLoader.Fetch?
 
     init(workspace: DirectHermesWorkspaceClient, owner: WorkspaceOwner,
-         currentOwner: @escaping @MainActor () -> WorkspaceOwner?) {
+         currentOwner: @escaping @MainActor () -> WorkspaceOwner?,
+         cache: AgentAttachmentCache? = nil, remoteFetch: LinkPreviewLoader.Fetch? = nil) {
         self.workspace = workspace
         self.owner = owner
         self.currentOwner = currentOwner
+        self.cache = cache
+        self.remoteFetch = remoteFetch
     }
 
     func resolve(agentID: String, storedID: String, event: ChatActivityEvent) async throws -> GeneratedMediaResolution {
         try checkOwner()
         guard let kind = GeneratedMediaProjection.kind(for: event),
-              event.lifecycle == .succeeded, event.toolCallID != nil else {
+              event.lifecycle == .succeeded, let toolCallID = event.toolCallID else {
             return .init(state: .unavailable)
         }
         let paths = Self.outputPaths(event.result).filter { kind == .image ? Self.isImagePath($0) : Self.isVideoPath($0) }
-        guard !paths.isEmpty else { return .init(state: .unavailable) }
-        let attachments = try await fetch(paths, agentID: agentID, storedID: storedID)
+        let addresses = paths.isEmpty ? Self.providerURLs(event.result, kind: kind) : []
+        guard !paths.isEmpty || (!addresses.isEmpty && remoteFetch != nil) else { return .init(state: .unavailable) }
+        let key = AgentAttachmentCache.key(owner.cacheScopeID, agentID, storedID, "tool", toolCallID, event.result ?? "")
+        if let cached = await cache?.entry(for: key) {
+            try checkOwner()
+            return .init(state: .ready, attachments: cached.attachments)
+        }
+        let attachments = paths.isEmpty
+            ? try await fetchProvider(addresses, kind: kind, scope: agentID + "\0" + storedID)
+            : try await fetch(paths, agentID: agentID, storedID: storedID)
+        guard !attachments.isEmpty else { return .init(state: .unavailable) }
+        await cache?.store(.init(text: "", attachments: attachments), for: key)
         return .init(state: .ready, attachments: attachments,
-                     omittedCount: max(0, paths.count - attachments.count))
+                     omittedCount: max(0, max(paths.count, addresses.count) - attachments.count))
     }
 
     func resolve(agentID: String, storedID: String,
@@ -39,8 +60,17 @@ final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAtta
         try checkOwner()
         var resolved: [ResolvedAgentAttachmentItem] = []
         for item in items {
+            let key = AgentAttachmentCache.key(owner.cacheScopeID, agentID, storedID, item.role.rawValue, item.text)
+            if let cached = await cache?.entry(for: key) {
+                try checkOwner()
+                resolved.append(.init(id: item.id, text: cached.text, attachments: cached.attachments))
+                continue
+            }
             if item.role == .assistant, item.text.contains("MEDIA:"),
                let native = try await resolveNatively(item, agentID: agentID, storedID: storedID) {
+                if !native.attachments.isEmpty {
+                    await cache?.store(.init(text: native.text, attachments: native.attachments), for: key)
+                }
                 resolved.append(native)
                 continue
             }
@@ -58,9 +88,74 @@ final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAtta
             let paths = Set(unique.prefix(attachments.count).map { Data($0.path.utf8) })
             let delivered = Set(markers.filter { paths.contains(Data($0.path.utf8)) }.map { Data($0.line.utf8) })
             let remaining = item.text.components(separatedBy: "\n").filter { !delivered.contains(Data($0.utf8)) }
-            resolved.append(.init(id: item.id, text: remaining.joined(separator: "\n"), attachments: attachments))
+            let text = remaining.joined(separator: "\n")
+            if !attachments.isEmpty {
+                await cache?.store(.init(text: text, attachments: attachments), for: key)
+            }
+            resolved.append(.init(id: item.id, text: text, attachments: attachments))
         }
         return resolved
+    }
+
+    /// A hosted tool's picture, read from the provider's own address: https
+    /// only, public hosts only, no cookies, bounded, and checked to be the kind
+    /// of media the tool made.
+    private func fetchProvider(_ addresses: [URL], kind: GeneratedMediaKind, scope: String) async throws -> [ChatAttachment] {
+        guard let remoteFetch else { return [] }
+        var attachments: [ChatAttachment] = []
+        var total = 0
+        for address in addresses.prefix(GeneratedMediaResolution.maximumArtifactCount) {
+            try checkOwner()
+            let request = LinkPreviewLoader.request(address, accept: kind == .image ? "image/*" : "video/*")
+            let (data, response) = try await remoteFetch(request, ChatAttachment.maximumAgentBytes + 1, false)
+            try checkOwner()
+            let mime = response.mimeType?.lowercased() ?? ""
+            guard (200..<300).contains(response.statusCode), !data.isEmpty,
+                  data.count <= ChatAttachment.maximumAgentBytes,
+                  mime.hasPrefix(kind == .image ? "image/" : "video/") else { throw WorkspaceClientError.invalidResponse }
+            if kind == .image {
+                guard let image = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(image) > 0,
+                      CGImageSourceCreateImageAtIndex(image, 0, [kCGImageSourceShouldCache: false] as CFDictionary) != nil
+                else { throw WorkspaceClientError.invalidResponse }
+            }
+            let digest = SHA256.hash(data: Data((scope + "\0" + address.absoluteString).utf8))
+                .map { String(format: "%02x", $0) }.joined()
+            let attachment = try ChatAttachment.agentArtifact(
+                id: "native_media_" + digest, fileName: Self.providerFileName(address, mimeType: mime),
+                mimeType: mime, data: data)
+            if kind == .video { try await Self.validateVideo(attachment) }
+            let sum = total.addingReportingOverflow(data.count)
+            guard !sum.overflow, sum.partialValue <= GeneratedMediaResolution.maximumTotalBytes else {
+                throw ChatAttachmentError.invalidSize
+            }
+            total = sum.partialValue
+            attachments.append(attachment)
+        }
+        return attachments
+    }
+
+    /// The address's own file name when it has a sensible one.
+    static func providerFileName(_ address: URL, mimeType: String) -> String {
+        let name = address.lastPathComponent
+        let usable = (1...120).contains(name.count) && !name.hasPrefix(".")
+            && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }
+            && !URL(fileURLWithPath: name).pathExtension.isEmpty
+        if usable { return name }
+        let ext = UTType(mimeType: mimeType)?.preferredFilenameExtension ?? (mimeType.hasPrefix("video/") ? "mp4" : "png")
+        return (mimeType.hasPrefix("video/") ? "video." : "image.") + ext
+    }
+
+    /// Hosted image tools (Nous Portal and FAL among them) report the picture
+    /// as the provider's web address instead of a file on the host.
+    static func providerURLs(_ result: String?, kind: GeneratedMediaKind) -> [URL] {
+        guard let result, result.utf8.count <= 65_536, let data = result.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["success"] as? Bool == true,
+              let raw = object[kind == .image ? "image" : "video"] as? String,
+              raw.utf8.count <= 2_048, raw.lowercased().hasPrefix("https://"),
+              let address = URL(string: raw),
+              let loadable = LinkPreviewPolicy.loadableURL(address) else { return [] }
+        return [loadable]
     }
 
     private func fetch(_ paths: [String], agentID: String, storedID: String,
@@ -129,25 +224,77 @@ final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAtta
         return .init(id: item.id, text: attachments.isEmpty ? item.text : text, attachments: attachments)
     }
 
+    /// The first chunk tells how big each piece is; the rest download a few
+    /// at a time. A piece that fails is asked for again from where it was,
+    /// so one dropped request doesn't start the whole file over.
     private func fetchNative(_ id: String, agentID: String, size: Int) async throws -> Data {
-        var data = Data()
-        var offset = 0
+        let first = try await fetchChunk(id, agentID: agentID, size: size, offset: 0, length: nil)
+        guard let next = first.nextOffset else { return first.bytes }
+        let length = next
+        var pieces: [Int: Data] = [0: first.bytes]
+        var offsets = stride(from: length, to: size, by: length).makeIterator()
+        try await withThrowingTaskGroup(of: (Int, Data).self) { group in
+            func start(_ offset: Int) {
+                let expected = min(length, size - offset)
+                group.addTask { [self] in
+                    let piece = try await fetchChunk(id, agentID: agentID, size: size, offset: offset, length: expected)
+                    return (offset, piece.bytes)
+                }
+            }
+            for _ in 0..<Self.parallelChunks {
+                guard let offset = offsets.next() else { break }
+                start(offset)
+            }
+            while let (offset, bytes) = try await group.next() {
+                pieces[offset] = bytes
+                if let offset = offsets.next() { start(offset) }
+            }
+        }
+        var data = Data(capacity: size)
+        for offset in pieces.keys.sorted() {
+            guard offset == data.count, let bytes = pieces[offset] else { throw WorkspaceClientError.invalidResponse }
+            data.append(bytes)
+        }
+        guard data.count == size else { throw WorkspaceClientError.invalidResponse }
+        return data
+    }
+
+    private func fetchChunk(_ id: String, agentID: String, size: Int, offset: Int,
+                            length: Int?) async throws -> (bytes: Data, nextOffset: Int?) {
+        var retries = Self.chunkRetryDelays[...]
         while true {
             try checkOwner()
-            let chunk = try await workspace.perform(.attachmentsFetch, payload: [
-                "agentId": .string(agentID), "attachmentId": .string(id), "offset": .integer(offset)
-            ], owner: owner)
-            guard chunk["attachmentId"]?.string == id, chunk["offset"]?.integer == offset,
-                  chunk["byteCount"]?.integer == size, let encoded = chunk["data"]?.string,
-                  let bytes = Data(base64Encoded: encoded), !bytes.isEmpty,
-                  data.count + bytes.count <= size else { throw WorkspaceClientError.invalidResponse }
-            data.append(bytes)
-            offset = data.count
-            if chunk["nextOffset"] == nil || chunk["nextOffset"] == .null {
-                guard data.count == size else { throw WorkspaceClientError.invalidResponse }
-                return data
+            do {
+                let chunk = try await workspace.perform(.attachmentsFetch, payload: [
+                    "agentId": .string(agentID), "attachmentId": .string(id), "offset": .integer(offset)
+                ], owner: owner)
+                try checkOwner()
+                guard chunk["attachmentId"]?.string == id, chunk["offset"]?.integer == offset,
+                      chunk["byteCount"]?.integer == size, let encoded = chunk["data"]?.string,
+                      let bytes = Data(base64Encoded: encoded), !bytes.isEmpty,
+                      offset + bytes.count <= size, length.map({ $0 == bytes.count }) ?? true
+                else { throw WorkspaceClientError.invalidResponse }
+                let end = offset + bytes.count
+                if chunk["nextOffset"] == nil || chunk["nextOffset"] == .null {
+                    guard end == size else { throw WorkspaceClientError.invalidResponse }
+                    return (bytes, nil)
+                }
+                guard chunk["nextOffset"]?.integer == end, end < size else { throw WorkspaceClientError.invalidResponse }
+                return (bytes, end)
+            } catch let error where Self.retriesChunk(after: error) && !retries.isEmpty {
+                try await Task.sleep(for: retries.removeFirst())
             }
-            guard chunk["nextOffset"]?.integer == offset else { throw WorkspaceClientError.invalidResponse }
+        }
+    }
+
+    /// A timeout or dropped connection is worth asking again; a refusal, a bad
+    /// answer or a changed connection isn't.
+    private static func retriesChunk(after error: any Error) -> Bool {
+        switch error {
+        case is CancellationError: false
+        case WorkspaceClientError.ownerChanged, WorkspaceClientError.invalidResponse,
+             WorkspaceClientError.invalidRequest, WorkspaceClientError.unavailable: false
+        default: true
         }
     }
 
@@ -213,6 +360,18 @@ final class DirectHermesGeneratedMediaClient: GeneratedMediaResolving, AgentAtta
                   image ? isImagePath(path) : isDeliveredFilePath(path) else { return nil }
             return (line, path)
         }
+    }
+
+    /// The files a finished message names that haven't reached this device
+    /// yet, and its words without them: the files show as loading tiles.
+    static func pendingFiles(_ text: String, role: TimelineRole) -> (text: String, fileNames: [String]) {
+        guard role == .assistant else { return (text, []) }
+        let markers = mediaMarkers(text)
+        guard !markers.isEmpty else { return (text, []) }
+        let lines = Set(markers.map { Data($0.line.utf8) })
+        let remaining = text.components(separatedBy: "\n").filter { !lines.contains(Data($0.utf8)) }
+        return (remaining.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                markers.map { URL(fileURLWithPath: $0.path).lastPathComponent })
     }
 
     /// Preserve raw references for retry and canonical reconciliation, but do not

@@ -769,6 +769,22 @@ final class BighelpBuzzKitRuntime {
         await sdk.retireIdentityForLocalErasure()
     }
 
+    /// Turn off notifications: forget this device's push token, here and in
+    /// BuzzKit's saved settings. Turning notifications on asks iOS for a new one.
+    func forgetPushToken() {
+        currentTokenData = nil
+        currentToken = nil
+        currentTokenHash = nil
+        registrationProof = nil
+        providerReadiness = nil
+        let shared = UserDefaults(suiteName: Self.appGroup)
+        // BuzzKit's own keys ("dev.buzzkit." + name). Identity fields stay: the
+        // SDK still needs them to finish deleting its retired subscription.
+        for key in ["deviceToken", "deviceTokenEnvironment", "permissionStatus"] {
+            shared?.removeObject(forKey: "dev.buzzkit." + key)
+        }
+    }
+
     /// Mandatory app-delegate hook. Hash the exact lowercase token string that
     /// BuzzKit registers; no APNs token is persisted in bighelp notification state.
     func noteAPNSToken(_ token: Data) {

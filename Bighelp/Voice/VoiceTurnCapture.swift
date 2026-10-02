@@ -40,6 +40,8 @@ final class VoiceEndOfSpeechDetector {
     /// Without live words to go on (Hermes transcription with no on-device
     /// captions), sustained voice counts as speech.
     var countsVoiceAsSpeech = false
+    /// A cap on the pause from the host's settings (`voice.silence_duration`).
+    var silenceLimit: Duration?
     private var hasSpeech = false
     private var accumulatedSilence: Duration = .zero
     private var talkingTime: Duration = .zero
@@ -71,7 +73,7 @@ final class VoiceEndOfSpeechDetector {
         let talked = min(talkingTime / .seconds(1), 45)
         var silence = baseSilence + .milliseconds(Int(talked * 35))
         if let lastWord, Self.continuationWords.contains(lastWord) { silence += .seconds(1.2) }
-        return min(silence, maximumSilence)
+        return min(silence, maximumSilence, silenceLimit ?? maximumSilence)
     }
 
     func receiveTranscript(_ update: VoiceRecognitionUpdate) {

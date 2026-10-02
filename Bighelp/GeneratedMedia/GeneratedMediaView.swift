@@ -9,8 +9,6 @@ struct GeneratedMediaCard: View {
     let event: ChatActivityEvent
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var isVisible = false
     @ScaledMetric(relativeTo: .body) private var statusIconSize = 24.0
 
     var body: some View {
@@ -23,19 +21,25 @@ struct GeneratedMediaCard: View {
                 .aspectRatio(4.0 / 3.0, contentMode: .fit)
                 .clipped()
             }
-            HStack(spacing: BighelpTokens.space8) {
-                Image(systemName: statusSymbol)
-                    .frame(width: statusIconSize, height: statusIconSize)
-                    .accessibilityHidden(true)
-                Text(statusLabel)
-                    .bighelpFont(.body, weight: .semibold)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: BighelpTokens.space8)
-                Text(kind == .image ? "Image" : "Video")
-                    .bighelpFont(.metadata, weight: .semibold)
-                    .foregroundStyle(.secondary)
+            // The picture speaks for itself, and the loader carries its own
+            // words; the line explains only a problem, or a picture shown in
+            // the reply instead. Keeping it out of the loader and the finished
+            // picture alike means the card never changes height as it lands.
+            if showsStatusLine {
+                HStack(spacing: BighelpTokens.space8) {
+                    Image(systemName: statusSymbol)
+                        .frame(width: statusIconSize, height: statusIconSize)
+                        .accessibilityHidden(true)
+                    Text(statusLabel)
+                        .bighelpFont(.body, weight: .semibold)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: BighelpTokens.space8)
+                    Text(kind == .image ? "Image" : "Video")
+                        .bighelpFont(.metadata, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(statusColor)
             }
-            .foregroundStyle(statusColor)
             if event.generatedMedia?.omittedCount ?? 0 > 0,
                event.generatedMedia?.state == .ready {
                 Text("Some generated media could not be displayed on this device.")
@@ -53,8 +57,6 @@ struct GeneratedMediaCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(statusLabel)
         .accessibilityIdentifier("chat.generated-media.\(event.eventID)")
-        .onAppear { isVisible = true }
-        .onDisappear { isVisible = false }
         .animation(
             reduceMotion ? nil : .easeInOut(duration: BighelpTokens.stateDuration),
             value: event.generatedMedia?.state
@@ -80,22 +82,18 @@ struct GeneratedMediaCard: View {
             }
             .transition(.opacity)
         case (.succeeded, .unavailable), (.succeeded, .oversized), (.failed, _), (.cancelled, _), (.recorded, _):
-            GeneratedMediaGradient(
-                isAnimating: false,
-                theme: theme
-            )
-            .overlay {
-                Image(systemName: statusSymbol)
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.28), radius: 6)
-                    .accessibilityHidden(true)
-            }
+            RoundedRectangle(cornerRadius: BighelpTokens.radius12, style: .continuous)
+                .fill(theme.incomingMessageBackground)
+                .overlay {
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(theme.tertiaryText)
+                        .accessibilityHidden(true)
+                }
         default:
-            GeneratedMediaGradient(
-                isAnimating: isVisible && scenePhase == .active && !reduceMotion,
-                theme: theme
-            )
+            // Still being made, or made and still loading onto this device.
+            // No progress bar or count: Hermes reports neither for a picture.
+            BighelpImageGeneratingView(caption: loaderCaption, aspectRatio: 4.0 / 3.0)
         }
     }
 
@@ -103,10 +101,27 @@ struct GeneratedMediaCard: View {
         GeneratedMediaProjection.kind(for: event) ?? .image
     }
 
+    private var showsStatusLine: Bool {
+        if event.generatedMedia?.shownInReply == true { return true }
+        switch (event.lifecycle, event.generatedMedia?.state) {
+        case (.running, _), (.succeeded, nil), (.succeeded, .ready): return false
+        default: return true
+        }
+    }
+
+    private var loaderCaption: String {
+        switch (event.lifecycle, kind) {
+        case (.running, .image): "Making your image"
+        case (.running, .video): "Making your video"
+        case (_, .image): "Loading your image"
+        case (_, .video): "Loading your video"
+        }
+    }
+
     private var statusLabel: String {
         switch event.lifecycle {
         case .running:
-            return kind == .image ? "Generating image…" : "Generating video…"
+            return kind == .image ? "Making your image" : "Making your video"
         case .failed:
             return kind == .image ? "Image generation failed" : "Video generation failed"
         case .cancelled:
@@ -120,9 +135,10 @@ struct GeneratedMediaCard: View {
             case .oversized:
                 return "Generated media is too large to display"
             case .unavailable:
-                return "Generated media is unavailable"
+                // It was made; this phone just can't show it here.
+                return kind == .image ? "Image made, but it can't show here" : "Video made, but it can't show here"
             case nil:
-                return kind == .image ? "Loading generated image…" : "Loading generated video…"
+                return kind == .image ? "Loading your image" : "Loading your video"
             }
         }
     }
@@ -132,6 +148,7 @@ struct GeneratedMediaCard: View {
         case .running: "sparkles"
         case .succeeded where event.generatedMedia?.state == .ready: "checkmark.circle.fill"
         case .succeeded where event.generatedMedia == nil: "arrow.triangle.2.circlepath"
+        case .succeeded where event.generatedMedia?.state == .unavailable: kind == .image ? "photo" : "film"
         case .cancelled: "stop.circle.fill"
         case .recorded: "clock.arrow.circlepath"
         default: "exclamationmark.triangle.fill"
@@ -143,6 +160,7 @@ struct GeneratedMediaCard: View {
         case .running: theme.action
         case .succeeded where event.generatedMedia?.state == .ready: theme.success
         case .succeeded where event.generatedMedia == nil: theme.action
+        case .succeeded where event.generatedMedia?.state == .unavailable: theme.secondaryText
         case .cancelled: theme.secondaryText
         case .recorded: theme.secondaryText
         default: theme.danger
@@ -150,44 +168,6 @@ struct GeneratedMediaCard: View {
     }
 
     @BighelpThemeReader private var theme
-}
-
-struct GeneratedMediaGradient: View {
-    let isAnimating: Bool
-    let theme: BighelpTheme
-    var aspectRatio = 4.0 / 3.0
-
-    @State private var startedAt = Date()
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating)) { context in
-            let elapsed = isAnimating ? context.date.timeIntervalSince(startedAt) : 0
-            Color.black
-                .colorEffect(
-                    ShaderLibrary.generatedMediaGradient(
-                        .boundingRect,
-                        .float(Float(elapsed)),
-                        .float(4.0),
-                        .float(6.0),
-                        .float(0.0),
-                        .float(0.86),
-                        .color(theme.action),
-                        .color(theme.information),
-                        .color(theme.focus),
-                        .color(theme.success),
-                        .color(theme.warning),
-                        .color(theme.danger),
-                        .color(theme.canvas),
-                        .color(theme.surface),
-                        .color(theme.raisedSurface)
-                    )
-                )
-        }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(aspectRatio, contentMode: .fit)
-        .clipShape(.rect(cornerRadius: BighelpTokens.radius12))
-        .accessibilityHidden(true)
-    }
 }
 
 private struct GeneratedMediaArtifactView: View {
@@ -205,6 +185,8 @@ private struct GeneratedMediaArtifactView: View {
                     .frame(maxWidth: .infinity, maxHeight: 460)
                     .background(.black.opacity(0.04))
                     .clipShape(.rect(cornerRadius: BighelpTokens.radius12))
+                    .contentShape(.contextMenuPreview, .rect(cornerRadius: BighelpTokens.radius12))
+                    .chatPictureActions(attachment)
                     .accessibilityLabel("Generated image")
             } else {
                 unavailable
@@ -237,6 +219,7 @@ private struct GeneratedMediaVideoView: View {
     @State private var temporaryDirectory: URL?
     @State private var isUnavailable = false
     @State private var isPlaying = false
+    @BighelpThemeReader private var theme
 
     var body: some View {
         Group {
@@ -280,8 +263,14 @@ private struct GeneratedMediaVideoView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 180)
             } else {
-                ProgressView("Preparing video…")
-                    .frame(maxWidth: .infinity, minHeight: 180)
+                HStack(spacing: BighelpTokens.space8) {
+                    BighelpSpinner(size: 14)
+                        .foregroundStyle(theme.secondaryText)
+                    Text("Preparing video…")
+                        .bighelpFont(.metadata)
+                        .bighelpShimmer(isActive: true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 180)
             }
         }
         .task(id: attachment.id) {
@@ -336,24 +325,3 @@ private struct GeneratedMediaVideoView: View {
     }
 }
 
-/// A card still streaming in (#18): the image-generation loader in its place,
-/// so the card's code never shows. Still with Reduce Motion.
-struct ChatPendingCardView: View {
-    @BighelpThemeReader private var theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BighelpTokens.space12) {
-            GeneratedMediaGradient(isAnimating: scenePhase == .active && !reduceMotion, theme: theme, aspectRatio: 2)
-            Label("Making a card…", systemImage: "sparkles")
-                .bighelpFont(.body, weight: .semibold)
-                .foregroundStyle(theme.action)
-        }
-        .padding(BighelpTokens.space12)
-        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: BighelpTokens.radius16))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Making a card")
-        .accessibilityIdentifier("chat.card.pending")
-    }
-}

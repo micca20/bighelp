@@ -116,6 +116,12 @@ struct BighelpManagedNotificationIntegration {
                 await service.receive(host: host, event: event)
             },
             recoverForeground: { isCurrent in
+                if service.turnOffPending {
+                    // Finish a turn-off the notification service hadn't confirmed.
+                    if (try? await service.turnOffNotifications()) != nil { BighelpNotificationDeviceCleanup.run() }
+                    return
+                }
+                await service.retryPendingHostCleanups()
                 do {
                     _ = try await service.refreshNotificationIdentity()
                 } catch is CancellationError {

@@ -30,6 +30,14 @@ final class WorkspaceConnectionKeeper {
     private(set) var state: WorkspaceConnectionState = .connected
     /// False while the phone has no network at all ("No internet", not "Disconnected").
     private(set) var hasNetwork = true
+    /// Whether the selected computer has connected since the app started (or
+    /// since it was picked): "Reconnecting" once it has, "Connecting" before.
+    /// The island and the chat both read it, so they say the same thing.
+    private(set) var hasConnected = false
+
+    /// The keeper of the computer in use, for screens the chat's environment
+    /// doesn't reach (Hosts), so they say what the island and the chat say.
+    static weak var current: WorkspaceConnectionKeeper?
 
     @ObservationIgnored private var storeProvider: () -> DirectHermesWorkspaceStore? = { nil }
     @ObservationIgnored private var isActive = true
@@ -37,9 +45,14 @@ final class WorkspaceConnectionKeeper {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var tracking = 0
+    @ObservationIgnored private weak var connectedStore: DirectHermesWorkspaceStore?
+    @ObservationIgnored private var isHeldForTesting = false
     @ObservationIgnored private nonisolated(unsafe) let monitor = NWPathMonitor()
 
     init() {
+        #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
+        holdForTesting(ProcessInfo.processInfo.arguments)
+        #endif
         monitor.pathUpdateHandler = { [weak self] path in
             let satisfied = path.status == .satisfied
             Task { @MainActor [weak self] in self?.pathChanged(satisfied: satisfied) }
@@ -52,7 +65,13 @@ final class WorkspaceConnectionKeeper {
     /// Follows whichever host store is selected; safe to call repeatedly.
     func bind(_ provider: @escaping () -> DirectHermesWorkspaceStore?) {
         storeProvider = provider
+        Self.current = self
         evaluate()
+    }
+
+    /// Whether this keeper looks after `store`, so its state describes it.
+    func isFollowing(_ store: DirectHermesWorkspaceStore?) -> Bool {
+        store != nil && storeProvider() === store
     }
 
     func setActive(_ active: Bool) {
@@ -71,6 +90,7 @@ final class WorkspaceConnectionKeeper {
     }
 
     private func pathChanged(satisfied: Bool) {
+        guard !isHeldForTesting else { return }
         let recovered = satisfied && !isPathSatisfied
         isPathSatisfied = satisfied
         if hasNetwork != satisfied { hasNetwork = satisfied }
@@ -80,6 +100,7 @@ final class WorkspaceConnectionKeeper {
 
     /// Recomputes the state and re-arms observation of the store's connection.
     private func evaluate(tryNow: Bool = false) {
+        guard !isHeldForTesting else { return }
         tracking &+= 1
         let current = tracking
         let store = withObservationTracking {
@@ -93,6 +114,9 @@ final class WorkspaceConnectionKeeper {
                 self.evaluate()
             }
         }
+        if let store, store.isConnected { connectedStore = store }
+        let connectedBefore = store != nil && store === connectedStore
+        if hasConnected != connectedBefore { hasConnected = connectedBefore }
         guard let store, store.hasSavedConnection, !store.isConnected else {
             loop?.cancel(); loop = nil; attempt = 0
             publish(.connected)
@@ -130,6 +154,25 @@ final class WorkspaceConnectionKeeper {
     private func publish(_ value: WorkspaceConnectionState) {
         if state != value { state = value }
     }
+
+    #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
+    /// "-test-connection-keeper connecting|reconnecting|disconnected|no-internet":
+    /// holds one state, so demo chats show the banner (and the island follows)
+    /// for screenshots.
+    private func holdForTesting(_ arguments: [String]) {
+        guard let index = arguments.firstIndex(of: "-test-connection-keeper"),
+              arguments.indices.contains(index + 1) else { return }
+        let held: [String: (state: WorkspaceConnectionState, connectedBefore: Bool, network: Bool)] = [
+            "connecting": (.reconnecting, false, true), "reconnecting": (.reconnecting, true, true),
+            "disconnected": (.disconnected, true, true), "no-internet": (.disconnected, true, false),
+        ]
+        guard let hold = held[arguments[index + 1]] else { return }
+        isHeldForTesting = true
+        state = hold.state
+        hasConnected = hold.connectedBefore
+        hasNetwork = hold.network
+    }
+    #endif
 }
 
 /// Shown above the composer while the host connection is being restored.
@@ -137,33 +180,32 @@ struct ChatConnectionBanner: View {
     let state: WorkspaceConnectionState
     let retry: () -> Void
 
+    @Environment(WorkspaceConnectionKeeper.self) private var keeper: WorkspaceConnectionKeeper?
     @BighelpThemeReader private var theme
 
     var body: some View {
-        HStack(spacing: BighelpTokens.space8) {
-            if state == .reconnecting {
-                ProgressView().controlSize(.small)
-            } else {
-                Image(systemName: "wifi.exclamationmark")
+        if let status = HostConnectionStatus(chat: state, hasNetwork: keeper?.hasNetwork ?? true,
+                                             hasConnected: keeper?.hasConnected ?? true) {
+            HStack(spacing: BighelpTokens.space8) {
+                BighelpConnectionIndicator(phase: status.phase)
+                Text(status.label)
+                    .font(.bighelp(.footnote).weight(.medium))
                     .foregroundStyle(theme.secondaryText)
-                    .accessibilityHidden(true)
+                    .contentTransition(.opacity)
+                Spacer(minLength: BighelpTokens.space8)
+                if status.phase == .disconnected {
+                    Button("Retry", action: retry)
+                        .font(.bighelp(.footnote).weight(.semibold))
+                        .foregroundStyle(theme.action)
+                        .frame(minHeight: BighelpTokens.hitTarget)
+                        .accessibilityIdentifier("chat.connection.retry")
+                }
             }
-            Text(state == .reconnecting ? "Reconnecting to your computer…" : "Not connected to your computer")
-                .font(.bighelp(.footnote).weight(.medium))
-                .foregroundStyle(theme.secondaryText)
-            Spacer(minLength: BighelpTokens.space8)
-            if state == .disconnected {
-                Button("Retry", action: retry)
-                    .font(.bighelp(.footnote).weight(.semibold))
-                    .foregroundStyle(theme.action)
-                    .frame(minHeight: BighelpTokens.hitTarget)
-                    .accessibilityIdentifier("chat.connection.retry")
-            }
+            .padding(.horizontal, BighelpTokens.space12)
+            .frame(minHeight: 36)
+            .background(theme.incomingMessageBackground, in: .capsule)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("chat.connection-banner")
         }
-        .padding(.horizontal, BighelpTokens.space12)
-        .frame(minHeight: 36)
-        .background(theme.incomingMessageBackground, in: .capsule)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("chat.connection-banner")
     }
 }

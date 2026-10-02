@@ -28,9 +28,33 @@ struct ChatCardMessageProjectionTests {
         let partial = "Here's the forecast.\n\n```loopdy-card\n{\"schema\":\"loopdy.generative_ui\",\"vers"
         let streaming = ChatCardMessageProjection(source: partial, role: .assistant, isStreaming: true)
         #expect(streaming.segments.count == 2)
-        #expect(streaming.segments.last == .pendingCard)
+        #expect(streaming.segments.last == .pendingCard(.generic))
         #expect(!streaming.visibleText.contains("schema"))
         #expect(streaming.visibleText.contains("Here's the forecast."))
+    }
+
+    /// The loader takes the shape of the card on its way once the partial
+    /// card names its kind; the plugin writes `component` near the start.
+    @Test func aStreamingCardsLoaderMatchesTheKindItAlreadyNames() {
+        func kind(_ partial: String) -> ChatPendingCardKind? {
+            let projection = ChatCardMessageProjection(source: "Here.\n\n```loopdy-card\n" + partial,
+                                                       role: .assistant, isStreaming: true)
+            guard case .pendingCard(let kind)? = projection.segments.last else { return nil }
+            return kind
+        }
+        #expect(kind(#"{"card_id":"0123","component":"weather_forecast","content_hash":"ab"#) == .forecast)
+        #expect(kind(#"{"card_id":"0123","component": "stock_quote""#) == .quote)
+        #expect(kind(#"{"component":"checklist","data":{"items":["#) == .list)
+        #expect(kind(#"{"component":"dashboard""#) == .metrics)
+        #expect(kind(#"{"component":"summary""#) == .summary)
+        // Not named yet, an unknown kind, or the newer card document: a generic card.
+        #expect(kind(#"{"card_id":"0123","compon"#) == .generic)
+        #expect(kind(#"{"component":"hologram""#) == .generic)
+        #expect(kind(#"{"card_id":"0123","content_hash":"ab","elements":{"#) == .generic)
+        // Every kind has a real card to draw as its skeleton.
+        for kind in [ChatPendingCardKind.generic, .forecast, .quote, .list, .metrics, .summary] {
+            #expect(ChatPendingCardPlaceholder.document(for: kind) != nil, "\(kind)")
+        }
     }
 
     @Test(arguments: ["```", "```loo", "```loopdy-car"])
@@ -39,13 +63,13 @@ struct ChatCardMessageProjectionTests {
                                                    role: .assistant, isStreaming: true)
         #expect(projection.cardIDs.count == 1)
         #expect(!projection.visibleText.contains("```"))
-        if marker != "```" { #expect(projection.segments.last == .pendingCard) }
+        if marker != "```" { #expect(projection.segments.last == .pendingCard(.generic)) }
     }
 
     @Test func ordinaryCodeStillStreamsAsCode() {
         let projection = ChatCardMessageProjection(source: "Try this:\n```swift\nlet x = 1", role: .assistant,
                                                    isStreaming: true)
-        #expect(!projection.segments.contains(.pendingCard))
+        #expect(!projection.segments.contains { if case .pendingCard = $0 { true } else { false } })
         #expect(projection.visibleText.contains("let x = 1"))
     }
 

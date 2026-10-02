@@ -30,14 +30,14 @@ struct BighelpActionRow: View {
                 }
                 Spacer(minLength: BighelpTokens.space8)
                 if isWorking {
-                    ProgressView().controlSize(.small)
+                    BighelpSpinner(size: 16, lineWidth: 2, color: tint ?? theme.action)
                 }
             }
             .frame(minHeight: 52)
             .contentShape(.rect)
             .opacity(isEnabled ? 1 : 0.45)
         }
-        .buttonStyle(.plain)
+        .bighelpPlainButtonStyle(.rounded(BighelpTokens.radius12), padding: BighelpTokens.space4)
     }
 
     @BighelpThemeReader private var theme

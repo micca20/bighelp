@@ -80,6 +80,17 @@ final class WatchAppUITests: XCTestCase {
         save("08-chat-answered", app)
     }
 
+    /// A chat the agent is working in says what it's doing, in the phone's words.
+    @MainActor
+    func testAWorkingChatSaysWhatTheAgentIsDoing() {
+        let app = launch()
+        XCTAssertTrue(reveal("watch.chat.demo-sink", in: app))
+        element("watch.chat.demo-sink", in: app).tap()
+        XCTAssertTrue(text(containing: "Searching the web…", in: app).waitForExistence(timeout: 8),
+                      "The running tool's plain words show while the agent works")
+        save("10-chat-working", app)
+    }
+
     @MainActor
     func testTalkStartsANewChat() {
         let app = launch()

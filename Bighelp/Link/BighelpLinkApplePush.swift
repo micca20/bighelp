@@ -294,6 +294,9 @@ final class BighelpLinkApplicationDelegate: NSObject, UIApplicationDelegate,
         // Configure only after bighelp installs its delegate so BuzzKit captures and
         // forwards to it. Missing injected configuration remains a truthful state.
         _ = BighelpBuzzKitRuntime.shared.configureIfPossible()
+        #if targetEnvironment(macCatalyst)
+        BighelpMacUpdates.shared.start()
+        #endif
         return true
     }
 

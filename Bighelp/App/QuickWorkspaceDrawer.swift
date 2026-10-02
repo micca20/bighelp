@@ -464,7 +464,7 @@ struct QuickWorkspaceDrawer: View {
                 agents.profiles.first { $0.id == id }.map { ($0.name, agents.avatarURL(for: $0)) }
             }
         }
-        .buttonStyle(.plain)
+        .bighelpPlainButtonStyle(.rounded(BighelpTokens.radius12), padding: BighelpTokens.space4)
         .accessibilityIdentifier("menu.chat.\(session.id)")
     }
 

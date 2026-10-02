@@ -1,116 +1,94 @@
 import SwiftUI
 import UIKit
 
+/// One tool call or helper agent inside an unfolded work trail, as a step
+/// line hanging from the trail's rail. A tool call unfolds its full details
+/// (arguments, result) in place. Each one is its own recycled timeline row.
 struct ChatActivityRow: View {
     let event: ChatActivityEvent
     let onDisclosureChange: () -> Void
 
     @Environment(\.chatActivityDisclosureStore) private var disclosures
     @State private var localExpanded: Bool?
+    @BighelpLoaderScaled(relativeTo: .footnote) private var stepGlyphSide = BighelpActivityMetrics.stepGlyphSide
     private var isExpanded: Bool {
-        disclosures?.isExpanded(event) ?? localExpanded ?? (event.kind == .reasoning && event.lifecycle == .running)
+        disclosures?.isExpanded(event) ?? localExpanded ?? false
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-            if event.kind == .tool || event.kind == .reasoning {
-                Button {
-                    onDisclosureChange()
-                    let expanded = !isExpanded
-                    if let disclosures { disclosures.setExpanded(expanded, for: event) }
-                    else { localExpanded = expanded }
-                } label: {
-                    rowHeader
-                        .frame(minHeight: event.kind == .reasoning ? BighelpTokens.hitTarget : nil)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(accessibilityText)
-                .accessibilityValue(
-                    ChatActivityDisclosureAccessibility.value(isExpanded: isExpanded)
-                )
-                .accessibilityHint(accessibilityHint)
-                .accessibilityIdentifier("chat.activity.\(event.eventID)")
-            } else {
-                rowHeader
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(accessibilityText)
-                    .accessibilityIdentifier("chat.activity.\(event.eventID)")
-            }
-
-            if event.kind == .tool, isExpanded {
-                toolDetails
-                    .padding(.leading, 28)
-            } else if event.kind == .reasoning, isExpanded, let text = event.reasoningText {
-                Text(text)
-                    .bighelpFont(.label, weight: .regular)
-                    .foregroundStyle(theme.secondaryText)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .modifier(ChatInterimReplyStyle(theme: theme))
-                    .accessibilityIdentifier("chat.reasoning-content.\(event.eventID)")
-            }
-        }
-    }
-
-    private var rowHeader: some View {
-        HStack(alignment: .top, spacing: BighelpTokens.space8) {
-            activityMark
-
-            VStack(alignment: .leading, spacing: BighelpTokens.space4) {
-                HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
-                    if event.kind == .reasoning {
-                        Text(reasoningTitle)
-                            .bighelpFont(.label)
-                            .foregroundStyle(theme.secondaryText)
-                            .bighelpActiveCallShimmer(isActive: event.lifecycle == .running, color: .white)
-                    } else {
-                        Text(event.presentationTitle)
-                            .bighelpFont(.body)
-                            .foregroundStyle(statusColor)
-                    }
-                    Spacer(minLength: BighelpTokens.space8)
-                    if event.kind != .reasoning || [.failed, .cancelled].contains(event.lifecycle) {
-                        Text(statusLabel)
-                            .bighelpFont(.metadata, weight: .semibold)
-                            .foregroundStyle(statusColor)
-                    }
-                    if event.kind == .tool || event.kind == .reasoning {
-                        Image(systemName: "chevron.right")
-                            .bighelpFont(.metadata, weight: .semibold)
-                            .foregroundStyle(theme.tertiaryText)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .accessibilityHidden(true)
-                    }
-                }
-                if event.kind != .reasoning, let summary = event.collapsedPresentationSummary {
-                    Text(summary)
-                        .bighelpFont(.metadata)
-                        .foregroundStyle(theme.tertiaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.horizontal, BighelpTokens.space8)
-        .padding(.vertical, BighelpTokens.space4)
-        .bighelpActiveCallShimmer(
-            isActive: event.kind == .tool && toolVisualState.shimmers,
-            color: .white
-        )
-    }
-
-    @ViewBuilder
-    private var activityMark: some View {
         if event.kind == .reasoning {
-            BighelpAnimatedMark(isActive: event.lifecycle == .running, height: 16)
-                .frame(width: 20, height: 20)
+            ChatThinkingRow(events: [event], onDisclosureChange: onDisclosureChange)
         } else {
-            Image(systemName: systemImage)
-                .bighelpFont(.metadata)
-                .foregroundStyle(statusColor)
-                .frame(width: 20, height: 20)
-                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                if event.kind == .tool {
+                    Button {
+                        onDisclosureChange()
+                        let expanded = !isExpanded
+                        if let disclosures { disclosures.setExpanded(expanded, for: event) }
+                        else { localExpanded = expanded }
+                    } label: {
+                        HStack(spacing: BighelpTokens.space8) {
+                            stepLine
+                            Image(systemName: "chevron.right")
+                                .font(.bighelp(.caption2, weight: .bold))
+                                .foregroundStyle(theme.tertiaryText)
+                                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(event.collapsedAccessibilityLabel(status: outcome))
+                    .accessibilityValue(ChatActivityDisclosureAccessibility.value(isExpanded: isExpanded))
+                    .accessibilityHint(isExpanded ? "Collapses full tool details." : "Expands full tool details.")
+                    .accessibilityIdentifier("chat.activity.\(event.eventID)")
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        stepLine
+                        if let summary = event.collapsedPresentationSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.bighelp(.caption))
+                                .foregroundStyle(theme.tertiaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, stepGlyphSide + BighelpTokens.space8)
+                                .padding(.bottom, BighelpTokens.space4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .leading)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(event.collapsedAccessibilityLabel(status: outcome))
+                    .accessibilityIdentifier("chat.activity.\(event.eventID)")
+                }
+
+                if event.kind == .tool, isExpanded {
+                    VStack(alignment: .leading, spacing: BighelpTokens.space8) {
+                        toolDetails
+                    }
+                    .padding(.leading, stepGlyphSide + BighelpTokens.space8)
+                    .padding(.bottom, BighelpTokens.space8)
+                }
+            }
+            .bighelpActivityRail()
+        }
+    }
+
+    private var stepLine: some View {
+        BighelpActivityStepRow(step: ChatActivityPresentation.step(for: event),
+                               showsSpinner: event.lifecycle == .running)
+    }
+
+    /// Touch needs a full target; the Mac's pointer keeps the stack compact.
+    private var minimumHeight: CGFloat {
+        BighelpPlatform.isMac ? BighelpTokens.scaled(32) : BighelpTokens.hitTarget
+    }
+
+    /// An ending worth hearing; a running or finished step says it in its words.
+    private var outcome: String? {
+        switch event.lifecycle {
+        case .failed: "Failed"
+        case .cancelled: "Stopped"
+        case .running, .succeeded, .recorded: nil
         }
     }
 
@@ -200,166 +178,33 @@ struct ChatActivityRow: View {
         return value
     }
 
-    private var systemImage: String {
-        switch event.kind {
-        case .reasoning: "sparkles"
-        case .tool: "terminal"
-        case .subagent: "person.badge.plus"
-        case .botHandoff: "arrow.trianglehead.swap"
-        }
-    }
-
-    /// "Thinking…" while it runs, then how long it took, like Claude.
-    private var reasoningTitle: String {
-        guard event.lifecycle != .running else { return "Thinking…" }
-        guard let milliseconds = event.durationMilliseconds, (1_000..<86_400_000).contains(milliseconds) else {
-            return "Thought process"
-        }
-        let seconds = milliseconds / 1_000
-        return seconds < 60 ? "Thought for \(seconds)s" : "Thought for \(seconds / 60)m \(seconds % 60)s"
-    }
-
-    private var statusLabel: String {
-        switch event.lifecycle {
-        case .running: "Working"
-        case .succeeded: "Done"
-        case .failed: "Failed"
-        case .cancelled: "Stopped"
-        case .recorded: "Recorded"
-        }
-    }
-
-    private var statusColor: Color {
-        if event.kind == .tool {
-            return color(for: toolVisualState.tone)
-        }
-        return color(for: visualState.tone)
-    }
-
-    private func color(for tone: ChatActivityVisualTone) -> Color {
-        switch tone {
-        case .neutral: theme.secondaryText
-        case .success: theme.success
-        case .failure: theme.danger
-        case .secondary: theme.secondaryText
-        }
-    }
-
-    private var visualState: ChatActivityVisualState {
-        ChatActivityVisualState(lifecycle: event.lifecycle)
-    }
-
-    private var toolVisualState: ChatToolActivityVisualState {
-        ChatToolActivityVisualState(lifecycle: event.lifecycle)
-    }
-
-    private var accessibilityText: String {
-        if event.kind == .tool {
-            event.collapsedAccessibilityLabel(status: statusLabel)
-        } else if event.kind == .reasoning {
-            "Thinking. \(statusLabel)"
-        } else {
-            [event.presentationTitle, event.collapsedPresentationSummary, statusLabel]
-                .compactMap { $0 }
-                .joined(separator: ". ")
-        }
-    }
-
-    private var accessibilityHint: String {
-        if event.kind == .reasoning {
-            return isExpanded ? "Collapses reasoning text." : "Expands reasoning text."
-        }
-        guard event.kind == .tool else { return "" }
-        return isExpanded ? "Collapses full tool details." : "Expands full tool details."
-    }
-
     @BighelpThemeReader private var theme: BighelpTheme
-
 }
 
-/// Back-to-back reasoning as one Thinking / Thought process row, with each
-/// entry on its own line inside.
-struct ChatReasoningGroupRow: View {
+/// Back-to-back thinking as one row: "Thinking" while it runs, then "Thought
+/// for 6s". The agent's thinking text unfolds under it; it's open while the
+/// agent thinks unless the reader chose otherwise.
+struct ChatThinkingRow: View {
     let events: [ChatActivityEvent]
     let onDisclosureChange: () -> Void
 
     @Environment(\.chatActivityDisclosureStore) private var disclosures
     @State private var localExpanded: Bool?
 
-    private var isRunning: Bool { events.contains { $0.lifecycle == .running } }
     private var isExpanded: Bool {
-        disclosures?.isExpanded(reasoning: events) ?? localExpanded ?? isRunning
+        disclosures?.isExpanded(reasoning: events) ?? localExpanded ?? events.contains { $0.lifecycle == .running }
     }
-    private var identifier: String { events.first?.eventID ?? "reasoning" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-            Button {
-                onDisclosureChange()
-                let expanded = !isExpanded
+        BighelpActivityRow(
+            phase: ChatActivityPresentation.thinkingPhase(for: events),
+            note: ChatActivityPresentation.thinkingNote(for: events),
+            isExpanded: Binding(get: { isExpanded }, set: { expanded in
                 if let disclosures { disclosures.setExpanded(expanded, reasoning: events) }
                 else { localExpanded = expanded }
-            } label: {
-                header
-                    .frame(minHeight: BighelpTokens.hitTarget)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isRunning ? "Thinking. Working" : "Thinking. Done")
-            .accessibilityValue(ChatActivityDisclosureAccessibility.value(isExpanded: isExpanded))
-            .accessibilityHint(isExpanded ? "Collapses reasoning text." : "Expands reasoning text.")
-            .accessibilityIdentifier("chat.activity.\(identifier)")
-
-            if isExpanded, !lines.isEmpty {
-                VStack(alignment: .leading, spacing: BighelpTokens.space8) {
-                    ForEach(lines, id: \.id) { line in
-                        Text(line.text)
-                            .bighelpFont(.label, weight: .regular)
-                            .foregroundStyle(theme.secondaryText)
-                            .lineSpacing(3)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("chat.reasoning-content.\(line.id)")
-                    }
-                }
-                .modifier(ChatInterimReplyStyle(theme: theme))
-            }
-        }
+            }),
+            onDisclosureChange: onDisclosureChange,
+            accessibilityIdentifier: "chat.activity.\(events.first?.eventID ?? "reasoning")"
+        )
     }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: BighelpTokens.space8) {
-            BighelpAnimatedMark(isActive: isRunning, height: 16)
-                .frame(width: 20, height: 20)
-            Text(ChatReasoningGroupRow.title(for: events))
-                .bighelpFont(.label)
-                .foregroundStyle(theme.secondaryText)
-                .bighelpActiveCallShimmer(isActive: isRunning, color: .white)
-            Spacer(minLength: BighelpTokens.space8)
-            Image(systemName: "chevron.right")
-                .bighelpFont(.metadata, weight: .semibold)
-                .foregroundStyle(theme.tertiaryText)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, BighelpTokens.space8)
-        .padding(.vertical, BighelpTokens.space4)
-    }
-
-    private var lines: [(id: String, text: String)] {
-        events.compactMap { event in event.reasoningText.map { (event.eventID, $0) } }
-    }
-
-    /// "Thinking…" while any entry runs, then the total time when every entry
-    /// has one, like a single reasoning row.
-    static func title(for events: [ChatActivityEvent]) -> String {
-        if events.contains(where: { $0.lifecycle == .running }) { return "Thinking…" }
-        let durations = events.compactMap(\.durationMilliseconds).filter { (0..<86_400_000).contains($0) }
-        let total = durations.reduce(0, +)
-        guard durations.count == events.count, (1_000..<86_400_000).contains(total) else { return "Thought process" }
-        let seconds = total / 1_000
-        return seconds < 60 ? "Thought for \(seconds)s" : "Thought for \(seconds / 60)m \(seconds % 60)s"
-    }
-
-    @BighelpThemeReader private var theme: BighelpTheme
 }

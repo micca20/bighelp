@@ -79,6 +79,13 @@ GLYPHS = {
     "projects": '<path d="M6.5 5.5V5a2 2 0 0 1 2-2h3.3l1.9 1.9H19a2 2 0 0 1 2 2V13"/>' + folder(3, 7.5, 15, 12.5),
     "simple": blob(12, 10, 0.95) + '<ellipse cx="12" cy="20.2" rx="5.2" ry="1.1"/>',
     "agents": blob(12, 12.3, 1.12),
+    # The all-hosts switch: one bot means "one host", a crowd means "every host".
+    "bot": '<rect x="4.5" y="8.5" width="15" height="11.5" rx="4"/><path d="M12 8.5V5.6M2.5 12.6v3.4M21.5 12.6v3.4"/>'
+           + dot(12, 4.3, 1.3) + dot(9.3, 14, 1.3) + dot(14.7, 14, 1.3),
+    "bots": '<rect x="1.5" y="10.5" width="9" height="9" rx="3"/><rect x="13.5" y="10.5" width="9" height="9" rx="3"/>'
+            + '<path d="M8 8.6V6.5a3 3 0 0 1 3 -3h2a3 3 0 0 1 3 3v2.1"/>'
+            + dot(4.5, 15, 1.05) + dot(7.5, 15, 1.05) + dot(16.5, 15, 1.05) + dot(19.5, 15, 1.05)
+            + dot(10.6, 6.6, 0.9) + dot(13.4, 6.6, 0.9),
     "scheduled": '<path d="M20.4 12a8.4 8.4 0 1 1-2.5-6"/><path d="M18.4 2.8v3.6h-3.6"/><path d="M12 7.6V12l2.8 2"/>',
     "kanban": '<rect x="3.5" y="4" width="4.6" height="16" rx="2.3"/><rect x="9.7" y="4" width="4.6" height="11" rx="2.3"/>'
               '<rect x="15.9" y="4" width="4.6" height="7" rx="2.3"/>' + dot(18.2, 15.6, 1.35),

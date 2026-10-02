@@ -20,6 +20,7 @@ extension BotModeRoomStore {
         guard var room = room(id: roomID) else { throw BotModeRoomError.roomNotFound }
         guard expectedOwner.matches(room) else { throw CancellationError() }
         var complete = false
+        var supersededByNewerMessage = false
         var failures = room.memberFailures
         var changed = false
         for event in events.sorted(by: { $0.sequence < $1.sequence }) {
@@ -62,6 +63,12 @@ extension BotModeRoomStore {
                     && event.discussionEventID == discussionEventID
                     && (expectedThreadID == nil || event.threadID == expectedThreadID)
             }
+            // A message sent while the room worked is its own discussion,
+            // queued behind this one; its failures count like this turn's.
+            let belongsToFollowUp = expectedRetryReceipts == nil
+                && event.discussionEventID.map { id in
+                    room.nativeFollowUps.contains { $0.discussionEventID == id }
+                } == true
             let expectedTaskMatches = expectedTaskIDs.map { allowed in
                 event.taskID.map(allowed.contains) ?? false
             } ?? true
@@ -123,7 +130,11 @@ extension BotModeRoomStore {
                     break
                 }
             }
-            if belongsToCurrentDiscussion,
+            // Hermes cancels a member turn whose thread got a newer message;
+            // that's the person moving the conversation on, not a failure.
+            let isSuperseded = event.kind == "turn.cancelled"
+                && event.payload["reason"]?.string == "superseded_by_newer_user_event"
+            if belongsToCurrentDiscussion || belongsToFollowUp, !isSuperseded,
                ["turn.failed", "turn.deferred", "turn.cancelled"].contains(event.kind),
                let memberID = event.memberID,
                let taskID = event.taskID,
@@ -144,7 +155,7 @@ extension BotModeRoomStore {
                 failures.removeAll { $0.memberID == memberID }
                 failures.append(failure)
             }
-            if belongsToCurrentDiscussion,
+            if belongsToCurrentDiscussion || belongsToFollowUp,
                event.kind == "turn.settled",
                let taskID = event.taskID {
                 let beforeCount = failures.count
@@ -162,6 +173,16 @@ extension BotModeRoomStore {
                 let hadCompletionMarker = room.nativeCompletedDiscussionEventIDs.contains(completedDiscussionID)
                 room.markNativeDiscussionCompleted(eventID: completedDiscussionID)
                 changed = changed || !hadCompletionMarker
+                if expectedRetryReceipts == nil,
+                   room.settleNativeFollowUps(completedDiscussionID: completedDiscussionID) {
+                    // Hermes only drives a thread's newest message. Once a
+                    // later one settles, earlier discussions are finished too.
+                    for earlier in [room.nativePendingDiscussionEventID, discussionEventID].compactMap({ $0 }) {
+                        room.markNativeDiscussionCompleted(eventID: earlier)
+                    }
+                    supersededByNewerMessage = discussionEventID != nil
+                    changed = true
+                }
                 if expectedRetryReceipts == nil, belongsToCurrentDiscussion {
                     complete = true
                 }
@@ -171,7 +192,7 @@ extension BotModeRoomStore {
         room.replaceFailures(with: failures)
         if room.nativeLogCursor < cursor { changed = true }
         room.advanceNativeLog(to: cursor)
-        complete = complete || room.nativeRetryJournal?.isComplete == true
+        complete = complete || supersededByNewerMessage || room.nativeRetryJournal?.isComplete == true
         guard changed else { return complete }
         guard let saved = try compareAndSave(
             room,

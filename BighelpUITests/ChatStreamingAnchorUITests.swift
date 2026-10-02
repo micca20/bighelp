@@ -189,7 +189,7 @@ final class ChatStreamingAnchorUITests: BighelpUITestCase {
         if inspectFullText {
             // Completed work folds after the stream ends. Open that real
             // disclosure before searching inside its virtualized tool rows.
-            let completedTurn = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Completed turn")).firstMatch
+            let completedTurn = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat.completed-turn:")).firstMatch
             for _ in 0..<8 {
                 if completedTurn.exists && completedTurn.isHittable { break }
                 app.tables["chat.timeline"].swipeDown(velocity: .fast)

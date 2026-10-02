@@ -45,7 +45,29 @@ final class RegistryFleetReader: FleetHostReading {
         }
     }
 
+    /// Saves an agent's section or hidden state on its host, connecting it
+    /// for the write like a read does.
+    func setPlacement(_ placement: AgentListPlacement, hostID: UUID, profileID: String) async throws {
+        try await withWorkspace(hostID) { workspace, owner, current, _ in
+            try await DirectHermesAgentDirectoryClient(workspace: workspace, owner: owner, currentOwner: current)
+                .setPlacement(placement, profileID: profileID)
+        }
+    }
+
     private func readNow(_ hostID: UUID, avatars: FleetAvatarFolder) async throws -> FleetSnapshot {
+        try await withWorkspace(hostID) { workspace, owner, current, client in
+            try await Self.snapshot(hostID, avatars: avatars, workspace: workspace, owner: owner,
+                                    current: current, http: client)
+        }
+    }
+
+    /// Runs `body` with a host's workspace client: connected for it when it
+    /// wasn't, and let go again after unless the app keeps it.
+    private func withWorkspace<T>(
+        _ hostID: UUID,
+        _ body: @MainActor (DirectHermesWorkspaceClient, WorkspaceOwner, @escaping @MainActor () -> WorkspaceOwner?,
+                            DirectHermesClient) async throws -> T
+    ) async throws -> T {
         guard registry.selectedHostID != hostID, registry.isWorkspaceReady,
               let host = registry.hosts.first(where: { $0.id == hostID }) else { throw CancellationError() }
         let store = registry.workspace(for: host)
@@ -84,11 +106,18 @@ final class RegistryFleetReader: FleetHostReading {
             availability[capability] = .available
         }
         try workspace.installCapabilities(WorkspaceCapabilities(owner: owner, values: availability))
+        return try await body(workspace, owner, current, client)
+    }
 
+    private static func snapshot(
+        _ hostID: UUID, avatars: FleetAvatarFolder, workspace: DirectHermesWorkspaceClient, owner: WorkspaceOwner,
+        current: @escaping @MainActor () -> WorkspaceOwner?, http client: DirectHermesClient
+    ) async throws -> FleetSnapshot {
+        let authority = owner.authority
         let profiles = try await DirectHermesAgentDirectoryClient(
             workspace: workspace, owner: owner, currentOwner: current
         ).list()
-        let pinned = Self.pinnedAgentIDs(scope: authority.cacheScopeID) ?? profiles.filter(\.isDefault).map(\.id)
+        let pinned = pinnedAgentIDs(scope: authority.cacheScopeID) ?? profiles.filter(\.isDefault).map(\.id)
 
         var chats: [FleetChat] = []
         var activity: [String: FleetActivity] = [:]
@@ -108,10 +137,10 @@ final class RegistryFleetReader: FleetHostReading {
                 }
             }
             for row in listed["sessions"]?.array ?? [] {
-                guard let chat = Self.chat(row, hostID: hostID, profileID: profile.id, live: live) else { continue }
+                guard let chat = chat(row, hostID: hostID, profileID: profile.id, live: live) else { continue }
                 chats.append(chat)
             }
-            if live.values.contains(where: Self.workingStatuses.contains) { activity[profile.id] = .working }
+            if live.values.contains(where: workingStatuses.contains) { activity[profile.id] = .working }
             else if live.values.contains("waiting") { activity[profile.id] = .waiting }
         }
 
@@ -122,7 +151,7 @@ final class RegistryFleetReader: FleetHostReading {
         let agents = profiles.map { profile in
             FleetAgent(hostID: hostID, profileID: profile.id, name: profile.name, role: profile.role,
                        avatarFile: profile.avatar.flatMap { avatars.store($0) }, isPinned: pinned.contains(profile.id),
-                       isDefault: profile.isDefault, activity: activity[profile.id])
+                       isDefault: profile.isDefault, activity: activity[profile.id], placement: profile.placement)
         }
         return FleetSnapshot(agents: agents, chats: chats,
                              tasks: tasks.map { FleetTask(hostID: hostID, scheduledTask: $0) }, refreshedAt: Date())
@@ -155,7 +184,7 @@ final class RegistryFleetReader: FleetHostReading {
 
 extension FleetTask {
     init(hostID: UUID, scheduledTask task: ScheduledTask) {
-        self.init(hostID: hostID, jobID: task.id, profileID: task.agentID, name: task.name,
+        self.init(hostID: hostID, jobID: task.id, profileID: task.agentID, name: task.displayName,
                   schedule: ScheduledTaskCopy.friendlySchedule(task), nextRun: task.nextRun, status: task.status)
     }
 }

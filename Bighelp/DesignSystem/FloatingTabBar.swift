@@ -143,6 +143,8 @@ struct FloatingTabBar: View {
                 }
         }
         .buttonStyle(.bighelpTilePress)
+        .bighelpHover(in: Self.selectionShape)
+        .bighelpHelp(tab.title, shortcut: tab.macShortcut)
         .accessibilityLabel(tab.title)
         .accessibilityValue(unread.contains(tab) && !isSelected ? "New" : "")
         .accessibilityShowsLargeContentViewer {
@@ -280,6 +282,7 @@ private struct NavigationSurface<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         surfaced(content)
+            .modifier(InteractiveGlassHover(shape: shape, isInteractive: isInteractive))
             .overlay {
                 if increasedContrast {
                     shape.strokeBorder(Color.primary.opacity(0.5), lineWidth: 1)
@@ -309,6 +312,20 @@ private struct NavigationSurface<S: InsettableShape>: ViewModifier {
             content.background(.regularMaterial, in: shape)
             #endif
         }
+    }
+}
+
+/// Mac: glass that's a button lights up under the pointer.
+private struct InteractiveGlassHover<S: Shape>: ViewModifier {
+    let shape: S
+    let isInteractive: Bool
+
+    func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        if isInteractive { content.bighelpHover(in: shape) } else { content }
+        #else
+        content
+        #endif
     }
 }
 

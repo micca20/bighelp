@@ -294,12 +294,14 @@ final class DirectHermesNativePluginClient {
         case .wikiSaveCommit: return Route(path: "wiki/save/commit", feature: "native-wiki-v1", isMutation: true)
         case .wikiSaveStatus: return Route(path: "wiki/save/status", feature: "native-wiki-v1", isMutation: false)
         case .wikiDisconnect: return Route(path: "wiki/disconnect", feature: "native-wiki-disconnect-v1", isMutation: true)
+        // A big file takes the host a while to copy in, and a 4 MB piece takes
+        // a slow phone link longer than an ordinary request.
         case .attachmentsResolve:
             return Route(path: "attachments/resolve", feature: "native-agent-attachments-v1",
-                         isMutation: false, maximumResponseBytes: 1_048_576)
+                         isMutation: false, maximumResponseBytes: 1_048_576, timeout: 60)
         case .attachmentsFetch:
             return Route(path: "attachments/fetch", feature: "native-agent-attachments-v1",
-                         isMutation: false, maximumResponseBytes: 4 * 1_024 * 1_024 + 65_536)
+                         isMutation: false, maximumResponseBytes: 4 * 1_024 * 1_024 + 65_536, timeout: 60)
         case .groupActivityOpen:
             return Route(path: "groups/activity/open", feature: "native-room-activity-v1", isMutation: true, maximumResponseBytes: 196_608)
         case .groupActivityPoll:

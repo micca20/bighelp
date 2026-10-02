@@ -29,6 +29,12 @@ final class AgentEditorModel: Identifiable {
     /// agent with one also makes it that agent's animated chat companion.
     private(set) var selectedCompanionAppearance: CompanionAppearance?
     var selectedCompanionCharacter: CompanionCharacter? { selectedCompanionAppearance?.character }
+    /// How Hermes Desktop should draw the pending avatar; saved alongside it.
+    private(set) var pendingLook: AgentAvatarLook?
+    /// Whether the last save put in a new avatar or removed it.
+    private(set) var lastSaveChangedAvatar = false
+    /// The petdex pet behind a pending pet avatar; its moves play in chats.
+    private(set) var selectedPet: PetdexPet?
 
     let id = UUID()
 
@@ -256,16 +262,33 @@ final class AgentEditorModel: Identifiable {
     }
 
     func importAvatar(data: Data) async throws {
-        try await prepareAvatar(data: data, companionAppearance: nil)
+        try await prepareAvatar(data: data, companionAppearance: nil, look: .photo)
     }
 
     func importCompanionAvatar(data: Data, appearance: CompanionAppearance) async throws {
-        try await prepareAvatar(data: data, companionAppearance: appearance)
+        try await prepareAvatar(data: data, companionAppearance: appearance, look: .photo)
+    }
+
+    /// A Hermes face or shape: its picture, plus the look Hermes Desktop draws.
+    func importLookAvatar(data: Data, look: AgentAvatarLook) async throws {
+        try await prepareAvatar(data: data, companionAppearance: nil, look: look)
+    }
+
+    /// A petdex pet: its first frame is the picture everyone sees.
+    func importPetAvatar(data: Data, pet: PetdexPet) async throws {
+        try await prepareAvatar(data: data, companionAppearance: nil, look: .photo)
+        selectedPet = pet
+    }
+
+    /// The profile name a face follows: the agent's, or the one a new agent will get.
+    var faceName: String {
+        editingID ?? AgentProfileID.generated(from: draft.name, occupied: Set(store.profiles.map(\.id)))
     }
 
     private func prepareAvatar(
         data: Data,
-        companionAppearance: CompanionAppearance?
+        companionAppearance: CompanionAppearance?,
+        look: AgentAvatarLook
     ) async throws {
         guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
         do {
@@ -273,6 +296,8 @@ final class AgentEditorModel: Identifiable {
             guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
             pendingAvatar = preparedAvatar
             selectedCompanionAppearance = companionAppearance
+            selectedPet = nil
+            pendingLook = look
             draft.removesAvatar = false
             avatarError = nil
         } catch let error as AvatarImageProcessor.Error {
@@ -285,12 +310,16 @@ final class AgentEditorModel: Identifiable {
     func cancelAvatarSelection() async {
         pendingAvatar = nil
         selectedCompanionAppearance = nil
+        selectedPet = nil
+        pendingLook = nil
         avatarError = nil
     }
 
     func removeAvatar() {
         pendingAvatar = nil
         selectedCompanionAppearance = nil
+        selectedPet = nil
+        pendingLook = nil
         draft.avatarFileName = nil
         draft.avatar = nil
         draft.removesAvatar = true
@@ -300,6 +329,23 @@ final class AgentEditorModel: Identifiable {
     func reportAvatarLoadFailure() {
         guard isCurrent() else { return }
         avatarError = "We couldn’t read that photo. Choose a PNG, JPEG, or HEIF image and try again."
+    }
+
+    /// Chats draw the agent's saved character (or pet) ahead of its picture,
+    /// so both follow the saved avatar: a new one replaces the old, and any
+    /// other kind of avatar, or none, retires it.
+    func applySavedLook(companions: CompanionStore, pets: PetAvatarStore, key: String) {
+        if let look = selectedCompanionAppearance {
+            companions.setOverride(look, for: key)
+        } else if lastSaveChangedAvatar {
+            companions.setOverride(nil, for: key)
+        }
+        if let pet = selectedPet {
+            let store = store
+            pets.assign(pet, to: key) { try await store.petSheet(pet) }
+        } else if lastSaveChangedAvatar {
+            pets.remove(key)
+        }
     }
 
     func reportCompanionAvatarRenderFailure() {
@@ -319,6 +365,8 @@ final class AgentEditorModel: Identifiable {
         saveError = nil
         let oldFileName = draft.avatarFileName
         let requestedAvatarRemoval = draft.removesAvatar
+        let changesAvatar = pendingAvatar != nil || requestedAvatarRemoval
+        lastSaveChangedAvatar = false
         var storedFileName: String?
         // Any `{{agent_name}}` still in the instructions gets the agent's name.
         draft.instructions = AgentNamePlaceholder.fill(draft.instructions, name: draft.name)
@@ -333,6 +381,7 @@ final class AgentEditorModel: Identifiable {
                 storedFileName = fileName
                 savedDraft.avatarFileName = fileName
                 savedDraft.avatar = try AgentAvatar(preparedAvatar: pendingAvatar)
+                savedDraft.look = pendingLook
                 savedDraft.removesAvatar = false
             }
             let profile: AgentProfile
@@ -344,7 +393,9 @@ final class AgentEditorModel: Identifiable {
             guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
             editingID = profile.id
             adopt(profile, removesAvatar: false)
+            lastSaveChangedAvatar = changesAvatar
             pendingAvatar = nil
+            pendingLook = nil
             isSaving = false
             return profile
         } catch {

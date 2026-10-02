@@ -18,10 +18,25 @@ struct BighelpMacWindowStyle: ViewModifier {
 
 #if targetEnvironment(macCatalyst)
 /// A menu draws exactly its label, as on iPhone and iPad; the Mac's pull-down
-/// style would put a bezel inside the app's own round buttons.
+/// style would put a bezel inside the app's own round buttons. Its whole label
+/// (at least 28 points each way) opens it and lights up under the pointer.
 private struct BighelpMacMenuStyle: MenuStyle {
     func makeBody(configuration: Configuration) -> some View {
-        Menu(configuration).menuStyle(.button).buttonStyle(.plain)
+        Menu(configuration).menuStyle(.button).buttonStyle(MenuLabelStyle())
+            .bighelpHover(in: Capsule())
+    }
+
+    /// Draws the label as `.plain` does, at least 28 points each way: the Mac
+    /// opens a menu from its label's frame, so a bare "…" glyph was a sliver.
+    /// A menu hands its label only to a `ButtonStyle` (a primitive style gets
+    /// just its title).
+    private struct MenuLabelStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .frame(minWidth: BighelpPointer.minimumTarget, minHeight: BighelpPointer.minimumTarget)
+                .contentShape(.rect)
+                .opacity(configuration.isPressed ? 0.6 : 1)
+        }
     }
 }
 

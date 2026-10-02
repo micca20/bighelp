@@ -238,7 +238,7 @@ struct SpectrumAction: View {
         )
         .contentShape(.rect)
         .disabled(!isAvailable)
-        .accessibilityLabel(accessibilityLabel)
+        .bighelpIconLabel(accessibilityLabel)
         .accessibilityValue(isAvailable ? "Available" : "Unavailable")
     }
 
@@ -332,7 +332,7 @@ struct BighelpHeaderActionButton: View {
         .contentShape(.rect)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.48)
-        .accessibilityLabel(accessibilityLabel)
+        .bighelpIconLabel(accessibilityLabel)
         .accessibilityValue(isEnabled ? "Available" : "Unavailable")
     }
 
@@ -347,9 +347,9 @@ private struct BighelpHeaderSurfaceModifier: ViewModifier {
         if uiV3Enabled {
             content.bighelpNavigationGlass(in: Circle(), isInteractive: true)
         } else if uiV2Enabled {
-            content.bighelpSurface(.circularControl, isInteractive: true)
+            content.bighelpSurface(.circularControl, isInteractive: true).bighelpHover(in: Circle())
         } else {
-            content
+            content.bighelpHover(in: Circle())
         }
     }
 }
@@ -448,6 +448,7 @@ struct BighelpIconButton: View {
                     height: BighelpTokens.minimumControlSize
                 )
                 .contentShape(.circle)
+                .bighelpHover(in: Circle())
         }
         .buttonStyle(SpectrumPressStyle())
         .frame(
@@ -457,7 +458,7 @@ struct BighelpIconButton: View {
         .bighelpSurface(presentation.surfaceRole, isInteractive: true)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.48)
-        .accessibilityLabel(accessibilityLabel)
+        .bighelpIconLabel(accessibilityLabel)
         .accessibilityValue(isEnabled ? "Available" : "Unavailable")
     }
 
@@ -528,6 +529,7 @@ struct BighelpPillControl<Label: View>: View {
                 .padding(.horizontal, BighelpTokens.space16)
                 .frame(minHeight: BighelpTokens.minimumControlSize)
                 .contentShape(.capsule)
+                .bighelpHover(in: Capsule())
         }
         .buttonStyle(SpectrumPressStyle())
         .modifier(BighelpPillSurfaceModifier(usesNavigationGlass: usesNavigationGlass))
@@ -609,6 +611,7 @@ struct BighelpMenuRow<Label: View>: View {
                 .frame(minHeight: BighelpTokens.minimumControlSize)
                 .padding(.horizontal, BighelpTokens.space12)
                 .contentShape(.rect)
+                .bighelpHover(in: RoundedRectangle(cornerRadius: BighelpTokens.menuRowCornerRadius, style: .continuous))
         }
         .buttonStyle(SpectrumPressStyle())
         .modifier(BighelpMenuRowSurfaceModifier(isSelected: isSelected))
@@ -675,8 +678,8 @@ struct BighelpSearchField: View {
                         .reflectiveVisionIcon()
                         .accessibilityHidden(true)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+                .bighelpPlainButtonStyle(.circle)
+                .bighelpIconLabel("Clear search")
                 .accessibilityHint("Removes the current search text")
                 .modifier(BighelpSearchIdentifier(identifier: accessibilityIdentifier.map { "\($0).clear" }))
             }
@@ -685,6 +688,8 @@ struct BighelpSearchField: View {
         .padding(.trailing, text.isEmpty ? BighelpTokens.space12 : 0)
         .frame(minHeight: BighelpTokens.searchMinimumHeight)
         .bighelpSurface(.input, isInteractive: true)
+        // Mac: a click anywhere on the field (the glass, the padding) puts the caret in it.
+        .bighelpMacFieldArea()
     }
 
     @BighelpThemeReader private var theme
@@ -867,8 +872,8 @@ struct SessionContextRing: View {
             )
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Context window")
+        .bighelpPlainButtonStyle(.circle)
+        .bighelpIconLabel("Context window")
         .accessibilityValue(
             SessionContextRingPresentation.accessibilityValue(for: snapshot)
         )
@@ -937,8 +942,8 @@ struct SessionContextTokenPopover: View {
                                 .frame(width: 32, height: 32)
                                 .background(Circle().fill(theme.action.opacity(0.12)))
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Provider usage")
+                        .bighelpPlainButtonStyle(.circle)
+                        .bighelpIconLabel("Provider usage")
                         .accessibilityHint("Shows the plans and limits of the AI providers on your computer.")
                         .accessibilityIdentifier("chat.session-context.provider-usage")
                     }
@@ -1022,7 +1027,7 @@ struct BighelpInlineNotice: View {
                 Button(actionTitle, action: action)
                     .bighelpFont(.metadata, weight: .semibold)
                     .foregroundStyle(theme.action)
-                    .buttonStyle(.plain)
+                    .bighelpPlainButtonStyle(padding: 4)
                     .frame(minHeight: BighelpTokens.hitTarget)
                     .contentShape(.rect)
                     .disabled(!isActionEnabled)
@@ -1036,8 +1041,8 @@ struct BighelpInlineNotice: View {
                         .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
                         .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss")
+                .bighelpPlainButtonStyle(.circle)
+                .bighelpIconLabel("Dismiss")
             }
         }
         .padding(.leading, BighelpTokens.space12)
@@ -1067,7 +1072,7 @@ struct BighelpPressFeedbackStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? pressedScale : 1)
-            .opacity(configuration.isPressed && reduceMotion ? 0.6 : 1)
+            .opacity(configuration.isPressed ? (reduceMotion ? 0.6 : BighelpButtonPress.opacity) : 1)
             .animation(.spring(response: 0.22, dampingFraction: 0.62), value: configuration.isPressed)
     }
 }

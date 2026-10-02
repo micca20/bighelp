@@ -37,6 +37,17 @@ struct BighelpManagedNotificationSetupError: Error, LocalizedError, Equatable, S
     }
 }
 
+/// Where Turn off notifications is, for its progress line.
+enum BighelpNotificationTurnOffStep: Equatable, Sendable {
+    case hosts, service, device
+}
+
+struct BighelpNotificationTurnOffResult: Equatable, Sendable {
+    /// Hosts that couldn't delete their copy yet. They can no longer send
+    /// notifications, and bighelp asks them again later.
+    let unreachableHosts: [String]
+}
+
 @MainActor
 protocol BighelpManagedNotificationProvider: AnyObject {
     func identify(accountAPI: any BighelpManagedNotificationAccountAPI, credentials: BighelpManagedNotificationCredentials) async throws
@@ -65,6 +76,7 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
     private let now: () -> Date
     private let sealedRecipientKeys: BighelpNotificationRecipientKeyStore
     private let sealedSenders: BighelpSealedAlertSenderStore
+    private let defaults: UserDefaults
     private var enrolling = Set<String>()
     private var revocationInFlight = false
     private var opening: UUID?
@@ -82,8 +94,10 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
          hostClient: @escaping HostClientFactory, now: @escaping () -> Date = Date.init,
          buzzKit: any BighelpManagedNotificationProvider = BighelpBuzzKitRuntime.shared,
          sealedRecipientKeys: BighelpNotificationRecipientKeyStore = BighelpSealedAlertRecipient.store,
-         sealedSenders: BighelpSealedAlertSenderStore = BighelpSealedAlertSenderStore()) {
+         sealedSenders: BighelpSealedAlertSenderStore = BighelpSealedAlertSenderStore(),
+         defaults: UserDefaults = .standard) {
         self.buzzKit = buzzKit
+        self.defaults = defaults
         self.sealedRecipientKeys = sealedRecipientKeys; self.sealedSenders = sealedSenders
         self.identity = identity; self.api = api
         self.requestPermission = requestPermission
@@ -94,6 +108,8 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
     func enroll(host: BighelpConfiguredHost, connection: DirectHermesSavedConnection,
                 isCurrent: @escaping @MainActor () -> Bool) async throws -> HostNotificationSetupResult {
         var host = host
+        // Turning notifications on again replaces an unfinished turn-off.
+        defaults.removeObject(forKey: Self.turnOffPendingKey)
         var credentials = try await identity.resolveForEnrollment()
         guard isCurrent(), registry.accountScope == host.accountScope,
               let current = registry.hosts.first(where: { $0.id == host.id }),
@@ -579,6 +595,128 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
         ledger.didEraseAccountData()
     }
 
+    // MARK: Turn off notifications
+
+    /// Anything left to turn off: an identity, grants, a host marked enabled,
+    /// or a turn-off still finishing.
+    var hasNotificationData: Bool {
+        (try? identity.current()) != nil || !ledger.enrollments.isEmpty || turnOffPending
+            || !pendingHostCleanups.isEmpty
+            || registry.hosts.contains { $0.notificationBinding != nil || $0.notificationState != .notConfigured }
+    }
+
+    /// Settings › Notifications › Turn off. Leaves this device as if
+    /// notifications were never turned on: every host deletes its copy, the
+    /// notification service revokes every grant and this installation (which
+    /// deletes the BuzzKit subscriber, its devices and preferences), and the
+    /// keys, ledger and per-host flags on this device go. A host that can't be
+    /// reached is listed and retried later; it can no longer send anything.
+    func turnOffNotifications(
+        progress: @MainActor (BighelpNotificationTurnOffStep) -> Void = { _ in }
+    ) async throws -> BighelpNotificationTurnOffResult {
+        // Durable first: until the service confirms, launch and foreground
+        // recovery finish the turn-off instead of identifying again.
+        defaults.set(true, forKey: Self.turnOffPendingKey)
+        var cleanups = pendingHostCleanups
+        for host in registry.hosts {
+            let grants = ledger.enrollments.filter {
+                $0.accountScope == host.notificationScope && $0.hostConnectionID == host.hostConnectionID
+            }.compactMap { $0.grant?.grantId }
+            if !grants.isEmpty { cleanups[host.id.uuidString, default: []].formUnion(grants) }
+        }
+        pendingHostCleanups = cleanups
+
+        // This device stops using notifications at once.
+        retireForAccountBoundary()
+        for host in registry.hosts { try ledger.retire(host: host) }
+        await activityRuntime?.resetForAccountBoundary()
+        await buzzKit.retireIdentityForLocalErasure()
+
+        progress(.hosts)
+        let unreachable = await retryPendingHostCleanups()
+
+        progress(.service)
+        do {
+            try await reconcilePendingRevocations()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Revoking the installation below revokes every grant it holds.
+        }
+        try await identity.erase()
+
+        progress(.device)
+        try ledger.erase()
+        try? sealedRecipientKeys.remove()
+        try? sealedSenders.removeAll()
+        try? activityKeys.removeAll()
+        for var host in registry.hosts where host.notificationBinding != nil || host.notificationState != .notConfigured {
+            host.notificationBinding = nil
+            host.notificationState = .notConfigured
+            try registry.update(host)
+        }
+        retiredHosts.removeAll()
+        defaults.removeObject(forKey: Self.turnOffPendingKey)
+        return BighelpNotificationTurnOffResult(unreachableHosts: unreachable)
+    }
+
+    /// A turn-off the notification service hasn't confirmed yet.
+    var turnOffPending: Bool { defaults.bool(forKey: Self.turnOffPendingKey) }
+
+    /// Asks each host still holding this device's notification data to delete
+    /// it. Returns the names of hosts that couldn't be reached; they stay on
+    /// the list for the next try. Hosts no longer configured are dropped.
+    @discardableResult
+    func retryPendingHostCleanups() async -> [String] {
+        var remaining: [String: Set<String>] = [:]
+        var unreachable: [String] = []
+        for (hostID, grants) in pendingHostCleanups.sorted(by: { $0.key < $1.key }) {
+            guard let host = registry.hosts.first(where: { $0.id.uuidString == hostID }) else { continue }
+            var left = Set<String>()
+            for grant in grants.sorted() {
+                do {
+                    let client = try hostClient(host)
+                    let removed = try await client.request("/enrollments/\(grant)", method: "DELETE", body: nil,
+                                                           isCurrent: { true })
+                    guard removed.object?["grantId"]?.string == grant,
+                          removed.object?["state"]?.string == "removed" else { throw DirectHermesError.invalidResponse }
+                } catch {
+                    left.insert(grant)
+                }
+            }
+            if !left.isEmpty {
+                remaining[hostID] = left
+                unreachable.append(host.name)
+            }
+        }
+        pendingHostCleanups = remaining
+        return unreachable
+    }
+
+    /// Names of hosts that still have to delete this device's notification data.
+    var hostsAwaitingCleanup: [String] {
+        let ids = Set(pendingHostCleanups.keys)
+        return registry.hosts.filter { ids.contains($0.id.uuidString) }.map(\.name)
+    }
+
+    private var pendingHostCleanups: [String: Set<String>] {
+        get {
+            let stored = defaults.dictionary(forKey: Self.pendingHostCleanupKey) as? [String: [String]] ?? [:]
+            return stored.reduce(into: [:]) { result, entry in
+                guard UUID(uuidString: entry.key) != nil else { return }
+                let grants = Set(entry.value.filter(ManagedNotificationValidation.uuid))
+                if !grants.isEmpty { result[entry.key] = grants }
+            }
+        }
+        set {
+            if newValue.isEmpty { defaults.removeObject(forKey: Self.pendingHostCleanupKey) }
+            else { defaults.set(newValue.mapValues { $0.sorted() }, forKey: Self.pendingHostCleanupKey) }
+        }
+    }
+
+    static let turnOffPendingKey = "bighelp.notifications.turn-off-pending"
+    static let pendingHostCleanupKey = "bighelp.notifications.pending-host-cleanup"
+
     func credentials(for host: BighelpConfiguredHost) throws -> BighelpManagedNotificationCredentials {
         guard let credentials = try identity.current() else { throw DirectHermesError.invalidCredentials }
         try requireCurrent(host, credentials: credentials); return credentials
@@ -603,7 +741,8 @@ final class BighelpManagedNotificationService: HostNotificationSetupServing {
         )
     }
     func refreshNotificationIdentity() async throws -> BighelpNotificationRuntimeSnapshot {
-        guard let credentials = try identity.current() else {
+        // Never identify again while a turn-off is finishing.
+        guard !turnOffPending, let credentials = try identity.current() else {
             _ = BighelpBuzzKitRuntime.shared.configureIfPossible()
             return .current
         }

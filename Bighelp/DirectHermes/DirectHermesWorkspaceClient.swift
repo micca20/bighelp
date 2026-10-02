@@ -215,6 +215,10 @@ final class DirectHermesWorkspaceClient: WorkspaceOperationPerforming {
                            allowed: ["name", "description", "soul", "model", "provider", "confirm_expensive_model",
                                      "ui_meta", "ui_meta_expected_revisions"],
                            required: ["name"])
+        case .petGallery:
+            return try rpc(operation, payload, allowed: ["localOnly"])
+        case .petThumb:
+            return try rpc(operation, payload, allowed: ["slug", "url"], required: ["slug"])
         case .profilesCreate, .profilesClone:
             try fields(payload, allowed: ["name", "clone_from", "clone_all", "no_alias", "mirror_credentials", "description", "no_skills"],
                        required: ["name"])

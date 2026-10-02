@@ -103,9 +103,9 @@ extension ChatModel {
                 return
             }
         }
-        let hydratedItems = hasSameContextOwner
+        let hydratedItems = keepingDeliveredFiles(hasSameContextOwner
             ? ReferenceCanonicalHistory.preservingAcceptedRows(local: items, incoming: session.items)
-            : session.items
+            : session.items)
         let hasHydratedChanges = hydratedItems != items
             || session.activityEvents != activityLedger.allEvents
         if !session.isActive, isSending {
@@ -344,6 +344,21 @@ extension ChatModel {
     /// A completed native message can acquire authenticated media bytes later.
     /// Keep its exact owner, identity, source order, and newer timing metadata.
     @discardableResult
+    /// The host's saved copy of a message still names its files as `MEDIA:`
+    /// lines. Where this device already shows those files for that exact text,
+    /// keep them rather than going back to loading tiles.
+    func keepingDeliveredFiles(_ incoming: [TimelineItem]) -> [TimelineItem] {
+        guard !deliveredFileSources.isEmpty else { return incoming }
+        return incoming.map { row in
+            guard row.attachments.isEmpty, case .message(let text) = row.content,
+                  deliveredFileSources[row.id] == text, let index = itemIndexByID[row.id],
+                  items[index].role == row.role, !items[index].attachments.isEmpty else { return row }
+            let shown = items[index]
+            return TimelineItem(id: row.id, role: row.role, sender: row.sender, content: shown.content,
+                                metadata: row.metadata, attachments: shown.attachments)
+        }
+    }
+
     func applyNativeMedia(_ item: TimelineItem, replacing source: TimelineItem,
                           from owner: DirectHermesConversationClient) -> Bool {
         guard (client as? DirectHermesConversationClient) === owner,
@@ -351,10 +366,18 @@ extension ChatModel {
               item.id == source.id, item.role == source.role,
               let index = itemIndexByID[item.id] else { return false }
         let existing = items[index]
+        if case .message(let text) = source.content, deliveredFileSources[item.id] == text,
+           existing.role == source.role, !existing.attachments.isEmpty {
+            // Already showing these files: a history reload kept them.
+            return true
+        }
         guard existing.role == source.role, existing.sender == source.sender, existing.content == source.content,
               existing.attachments == source.attachments else { return false }
         replaceItem(at: index, with: TimelineItem(id: existing.id, role: existing.role, sender: existing.sender,
             content: item.content, metadata: existing.metadata, attachments: item.attachments))
+        if !item.attachments.isEmpty, case .message(let text) = source.content {
+            deliveredFileSources[item.id] = text
+        }
         updateProjectedMessage(items[index])
         persistSession()
         flushPersistence()

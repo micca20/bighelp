@@ -46,15 +46,15 @@ final class ConnectionIslandModel {
     private(set) var phase: ConnectionIslandPhase = .hidden
     /// The hardware island in window points, on phones that have one.
     var islandFrame: CGRect?
-    @ObservationIgnored private var hasConnected = false
     @ObservationIgnored private var isRecovering = false
     @ObservationIgnored private var showing: Task<Void, Never>?
     @ObservationIgnored private var hiding: Task<Void, Never>?
     @ObservationIgnored private var isHeldForTesting = false
 
-    func update(state: WorkspaceConnectionState, isHostConnected: Bool, hasNetwork: Bool, isActive: Bool) {
+    /// `hasConnected`: the keeper's word on whether this computer answered yet,
+    /// so the island and the chat agree on "Connecting" or "Reconnecting".
+    func update(state: WorkspaceConnectionState, hasConnected: Bool, hasNetwork: Bool, isActive: Bool) {
         guard !isHeldForTesting else { return }
-        if isHostConnected { hasConnected = true }
         if !isActive { isRecovering = false }
         let next = ConnectionIslandRules.next(from: phase, state: state, hasConnected: hasConnected,
                                               hasNetwork: hasNetwork, isActive: isActive,
@@ -98,16 +98,6 @@ final class ConnectionIslandModel {
 }
 
 extension ConnectionIslandPhase {
-    var title: String {
-        switch self {
-        case .connecting: "Connecting…"
-        case .reconnecting: "Reconnecting…"
-        case .connected, .hidden: "Connected!"
-        case .disconnected: "Disconnected"
-        case .noInternet: "No internet"
-        }
-    }
-
     var spokenStatus: String {
         switch self {
         case .connecting: "Connecting to your computer"
@@ -117,30 +107,10 @@ extension ConnectionIslandPhase {
         case .noInternet: "No internet connection"
         }
     }
-
-    var systemImage: String {
-        switch self {
-        case .connecting: "antenna.radiowaves.left.and.right"
-        case .reconnecting: "arrow.triangle.2.circlepath"
-        case .connected, .hidden: "checkmark.circle.fill"
-        case .disconnected: "xmark.circle.fill"
-        case .noInternet: "wifi.slash"
-        }
-    }
-
-    /// System colors, so they adjust for light, dark and increased contrast.
-    var tint: Color {
-        switch self {
-        case .connecting: Color(uiColor: .systemBlue)
-        case .reconnecting: Color(uiColor: .systemOrange)
-        case .connected, .hidden: Color(uiColor: .systemGreen)
-        case .disconnected, .noInternet: Color(uiColor: .systemRed)
-        }
-    }
 }
 
 /// A small Liquid Glass pill right under the Dynamic Island (under the status
-/// bar where there isn't one): the status's own icon and color, then its name.
+/// bar where there isn't one): the shared connection indicator, then its words.
 struct ConnectionIslandPill: View {
     let model: ConnectionIslandModel
 
@@ -149,8 +119,8 @@ struct ConnectionIslandPill: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
-                if model.phase != .hidden {
-                    label(model.phase)
+                if let status = HostConnectionStatus(island: model.phase) {
+                    label(status)
                         .padding(.top, model.islandFrame.map { $0.maxY + 6 }
                                  ?? proxy.safeAreaInsets.top + BighelpTokens.space4)
                         .transition(reduceMotion ? .opacity
@@ -165,20 +135,18 @@ struct ConnectionIslandPill: View {
         .accessibilityHidden(true)
     }
 
-    private func label(_ phase: ConnectionIslandPhase) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: phase.systemImage)
-                .foregroundStyle(phase.tint)
-                .symbolEffect(.pulse, options: .repeating, isActive: phase.isWaiting && !reduceMotion)
-                .contentTransition(.symbolEffect(.replace))
-            Text(phase.title)
+    private func label(_ status: HostConnectionStatus) -> some View {
+        HStack(spacing: 7) {
+            BighelpConnectionIndicator(phase: status.phase)
+            Text(status.label)
                 .foregroundStyle(.primary)
                 .contentTransition(.opacity)
         }
         .font(.bighelp(.footnote).weight(.semibold))
         .lineLimit(1)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-        .padding(.horizontal, 12)
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
         .padding(.vertical, 7)
         .bighelpNavigationGlass(in: Capsule())
         .accessibilityIdentifier("connection.island")
@@ -188,7 +156,7 @@ struct ConnectionIslandPill: View {
 extension ConnectionIslandModel {
     static let shared = ConnectionIslandModel()
 
-    #if DEBUG && targetEnvironment(simulator)
+    #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
     /// "-test-connection-island reconnecting": holds one status on screen for screenshots.
     func showForTesting(_ arguments: [String]) {
         guard let index = arguments.firstIndex(of: "-test-connection-island"),
@@ -212,13 +180,11 @@ final class ConnectionIslandFollower {
 
     private let model = ConnectionIslandModel.shared
     private weak var keeper: WorkspaceConnectionKeeper?
-    private var isHostConnected: @MainActor () -> Bool = { false }
     private var tracking = 0
     private var observers: [NSObjectProtocol] = []
 
-    func follow(_ keeper: WorkspaceConnectionKeeper, isHostConnected: @escaping @MainActor () -> Bool) {
+    func follow(_ keeper: WorkspaceConnectionKeeper) {
         self.keeper = keeper
-        self.isHostConnected = isHostConnected
         if observers.isEmpty {
             let center = NotificationCenter.default
             for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification] {
@@ -234,7 +200,7 @@ final class ConnectionIslandFollower {
         tracking &+= 1
         let current = tracking
         let (state, connected, network) = withObservationTracking {
-            (keeper?.state ?? .connected, isHostConnected(), keeper?.hasNetwork ?? true)
+            (keeper?.state ?? .connected, keeper?.hasConnected ?? false, keeper?.hasNetwork ?? true)
         } onChange: {
             // Only the latest registration re-arms, so observations never pile up.
             Task { @MainActor in
@@ -242,7 +208,7 @@ final class ConnectionIslandFollower {
                 ConnectionIslandFollower.shared.evaluate()
             }
         }
-        model.update(state: state, isHostConnected: connected, hasNetwork: network,
+        model.update(state: state, hasConnected: connected, hasNetwork: network,
                      isActive: UIApplication.shared.applicationState == .active)
     }
 }
@@ -258,7 +224,7 @@ struct ConnectionIslandLayer: View {
             ConnectionIslandPill(model: .shared)
             #endif
         }
-        #if DEBUG && targetEnvironment(simulator)
+        #if DEBUG && (targetEnvironment(simulator) || targetEnvironment(macCatalyst))
         .task { ConnectionIslandModel.shared.showForTesting(ProcessInfo.processInfo.arguments) }
         #endif
     }

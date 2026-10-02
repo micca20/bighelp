@@ -18,10 +18,15 @@ protocol FleetHostReading: AnyObject {
     func keepConnected(_ hostID: UUID) async
     /// Saves a pin for a host that isn't selected. False when it can't be saved.
     func setPinned(_ pinned: Bool, hostID: UUID, profileID: String) -> Bool
+    /// Saves an agent's section or hidden state on a host that isn't selected.
+    func setPlacement(_ placement: AgentListPlacement, hostID: UUID, profileID: String) async throws
 }
 
 extension FleetHostReading {
     func keepConnected(_ hostID: UUID) async {}
+    func setPlacement(_ placement: AgentListPlacement, hostID: UUID, profileID: String) async throws {
+        throw WorkspaceClientError.unavailable(.unsupportedHost)
+    }
 }
 
 /// Why a host couldn't be read, in words for the list.
@@ -76,9 +81,22 @@ final class FleetStore {
     /// The order the person dragged pinned agents into, across hosts.
     private(set) var pinnedOrder: [String] = []
 
+    /// The person's sections, in their order; empty ones too. This device's own.
+    var sections: [FleetSection] = []
+    /// Which section each group chat is in, by its list ID. Kept on this device.
+    var groupSectionIDs: [String: String] = [:]
+    /// Why the last section or hide change couldn't be saved.
+    var placementError: String?
+
     @ObservationIgnored let avatars: FleetAvatarFolder
-    @ObservationIgnored private let reader: any FleetHostReading
-    @ObservationIgnored private let directory: URL
+    @ObservationIgnored let reader: any FleetHostReading
+    @ObservationIgnored let directory: URL
+    /// Saves the selected host's placements through its own agent list.
+    @ObservationIgnored var selectedHostPlacementWriter: ((AgentListPlacement, String) async throws -> Void)?
+    /// Sections deleted here whose members are still being unfiled.
+    @ObservationIgnored var pendingSectionDeletes: [String: UUID] = [:]
+    /// When each agent's placement was last saved from here.
+    @ObservationIgnored var placementWrites: [String: Date] = [:]
     @ObservationIgnored private var reads: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var pendingSaves: Set<UUID> = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -109,6 +127,7 @@ final class FleetStore {
                 snapshots[host.id] = snapshot
             }
         }
+        loadSections()
     }
 
     var selectedHostID: UUID? { hosts.first(where: \.isSelected)?.id }
@@ -150,12 +169,14 @@ final class FleetStore {
     /// The selected host's agents, chats and tasks, straight from the app.
     func recordLive(_ snapshot: FleetSnapshot, hostID: UUID) {
         guard hosts.contains(where: { $0.id == hostID }) else { return }
+        let snapshot = fencedPlacements(snapshot, hostID: hostID)
         var unchanged = snapshots[hostID]
         unchanged?.refreshedAt = snapshot.refreshedAt
         statuses[hostID] = .ready
         guard unchanged != snapshot else { return }
         snapshots[hostID] = snapshot
         scheduleSave(hostID)
+        adoptSections()
     }
 
     /// A live agent's picture, copied in once.
@@ -196,8 +217,9 @@ final class FleetStore {
                 case .success(let snapshot):
                     // Selected while it was read: its live data wins.
                     if selectedHostID != id {
-                        snapshots[id] = snapshot
+                        snapshots[id] = fencedPlacements(snapshot, hostID: id)
                         scheduleSave(id)
+                        adoptSections()
                     }
                     statuses[id] = .ready
                 case .failure(let error as FleetReadError):
@@ -318,6 +340,12 @@ final class FleetStore {
         }
     }
 
+    /// Changes one host's snapshot from here (a placement), saved soon.
+    func replaceSnapshot(_ snapshot: FleetSnapshot, hostID: UUID) {
+        snapshots[hostID] = snapshot
+        scheduleSave(hostID)
+    }
+
     // MARK: Saving
 
     private var pinnedOrderURL: URL {
@@ -329,7 +357,7 @@ final class FleetStore {
     }
 
     /// Batches saves: live snapshots change while a reply streams.
-    private func scheduleSave(_ id: UUID) {
+    func scheduleSave(_ id: UUID) {
         pendingSaves.insert(id)
         guard saveTask == nil else { return }
         let delay = saveDelay

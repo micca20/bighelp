@@ -50,6 +50,13 @@ struct VoiceTurnCaptureTests {
         (duration / .milliseconds(1)).rounded() / 1_000
     }
 
+    @Test func hermesSilenceDurationCapsThePause() {
+        let detector = detector {}
+        detector.silenceLimit = .seconds(2)
+        detector.receiveTranscript(.init(text: "I need milk and", isFinal: false))
+        #expect(seconds(detector.requiredSilence) == 2)
+    }
+
     @Test func aSentenceLeftHangingWaitsLonger() {
         let detector = detector {}
         detector.receiveTranscript(.init(text: "I need milk and", isFinal: false))

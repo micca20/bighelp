@@ -51,7 +51,8 @@ final class DirectHermesWorkspaceStore {
         }
         let workspace = DirectHermesWorkspaceClient(rpc: client, http: client, owner: owner,
             capabilities: .init(owner: owner), currentOwner: current)
-        return DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: current)
+        return DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: current,
+                                                cache: .shared, remoteFetch: LinkPreviewLoader.live.fetch)
     }
     @ObservationIgnored private var client: DirectHermesClient?
     @ObservationIgnored private var promptConnection: DirectHermesPromptConnection?

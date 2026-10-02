@@ -292,7 +292,8 @@ final class NativeWorkspaceRuntime {
         let generatedMediaBox = WorkspaceOwnedClientBox<DirectHermesGeneratedMediaClient>(
             connections: connections, authority: authority
         ) { workspace, owner, current in
-            DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: current)
+            DirectHermesGeneratedMediaClient(workspace: workspace, owner: owner, currentOwner: current,
+                                             cache: .shared, remoteFetch: LinkPreviewLoader.live.fetch)
         }
         let mediaResolver = WorkspaceGeneratedMediaProxy(box: generatedMediaBox)
         bridge.attachmentResolver = mediaResolver
@@ -347,6 +348,7 @@ final class NativeWorkspaceRuntime {
             midSessionBehavior: { settings.midSessionChatBehavior }
         )
         self.features = features
+        features.teamCallServices = DirectHermesTeamCallServices(connections: connections, authority: authority)
         bridge.onSessionTodosChange = { [weak connections, weak features] owner, snapshot in
             guard connections?.owner == owner, owner.authority == authority else { return }
             features?.acceptSessionTodos(snapshot)

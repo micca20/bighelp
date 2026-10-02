@@ -300,6 +300,22 @@ final class AgentDirectoryStore {
         !isPinned(id) && canPinAnotherAgent && profiles.contains(where: { $0.id == id })
     }
 
+    /// Files an agent into a section or hides it in the all-hosts list, on
+    /// its host. Shown at once; put back when the host doesn't take it.
+    func setPlacement(_ placement: AgentListPlacement, profileID: String) async throws {
+        guard let writer = client as? any AgentListPlacementWriting else {
+            throw WorkspaceClientError.unavailable(.unsupportedHost)
+        }
+        let previous = profiles.first { $0.id == profileID }?.placement
+        if let index = profiles.firstIndex(where: { $0.id == profileID }) { profiles[index].placement = placement }
+        do {
+            try await writer.setPlacement(placement, profileID: profileID)
+        } catch {
+            if let index = profiles.firstIndex(where: { $0.id == profileID }) { profiles[index].placement = previous }
+            throw error
+        }
+    }
+
     @discardableResult
     func pinAgent(_ id: String) -> Bool {
         guard canPin(id) else { return false }
@@ -418,7 +434,8 @@ final class AgentDirectoryStore {
                 instructions: response.instructions,
                 avatarFileName: response.avatarFileName,
                 avatar: response.avatar,
-                isDefault: response.isDefault
+                isDefault: response.isDefault,
+                look: response.look
             ))
             guard profiles.contains(where: { $0.id == id }) else {
                 throw CocoaError(.fileNoSuchFile)
@@ -431,6 +448,12 @@ final class AgentDirectoryStore {
             throw error
         }
     }
+
+    func petGallery() async throws -> [PetdexPet] { try await client.petGallery() }
+
+    func petThumbnail(_ pet: PetdexPet) async throws -> Data { try await client.petThumbnail(pet) }
+
+    func petSheet(_ pet: PetdexPet) async throws -> Data { try await client.petSheet(pet) }
 
     func avatarURL(for profile: AgentProfile) -> URL? {
         AvatarFileURL.resolve(fileName: profile.avatarFileName, in: avatarDirectory)

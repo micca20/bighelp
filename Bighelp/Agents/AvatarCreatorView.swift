@@ -1,11 +1,51 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
+/// What the creator hands back to Agent Studio.
+enum AvatarCreatorResult {
+    case companion(CompanionAppearance)
+    /// A Hermes face or shape; the studio draws its picture.
+    case look(AgentAvatarLook)
+    /// A petdex pet's first frame, ready to save; its moves play in chats.
+    case pet(PetdexPet, avatar: Data)
+    case photo(PhotosPickerItem)
+}
+
 /// Agent Studio avatar creator: pick a character or a Bit, then make it yours
 /// with a colorway or color, headwear (or a Bit's face), a pattern and how it moves.
+/// Hermes Desktop's faces and shapes, a petdex pet or a photo work too.
 @MainActor
 @Observable
 final class AvatarCreatorModel {
+    /// The kind of avatar: the app's own characters, or Hermes Desktop's choices.
+    enum Style: String, CaseIterable, Identifiable {
+        case characters, face, shapes, pets, photo
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .characters: "Characters"
+            case .face: "Face"
+            case .shapes: "Shapes"
+            case .pets: "Pets"
+            case .photo: "Photo"
+            }
+        }
+    }
+
+    var style: Style = .characters
+    /// The blob face: follows the name unless locked, optionally pinned to a silhouette.
+    var blobShape = HermesBlobShape()
+    var shape = "circle"
+    /// A picked shape color; nil matches the name.
+    var shapeColor: String?
+    private(set) var selectedPet: PetdexPet?
+    private(set) var selectedPetFrame: Data?
+    private(set) var selectedPetAvatar: Data?
+    private(set) var isLoadingPet = false
+    private(set) var petError: String?
     enum Tab: String, CaseIterable, Identifiable {
         case character, color, extras, moves
 
@@ -44,8 +84,60 @@ final class AvatarCreatorModel {
     private(set) var isCelebrating = false
     private var celebration: Task<Void, Never>?
 
-    init(appearance: CompanionAppearance) {
+    init(appearance: CompanionAppearance, look: AgentAvatarLook? = nil) {
         self.appearance = appearance
+        switch look?.style {
+        case .face:
+            style = .face
+            blobShape = HermesBlobShape(look?.shape) ?? HermesBlobShape()
+        case .shape:
+            style = .shapes
+            shape = look?.shape ?? shape
+            shapeColor = look?.color
+        default:
+            break
+        }
+    }
+
+    func randomizeFace() {
+        blobShape.seedPart = HermesBlobShape.randomSeed()
+    }
+
+    /// Lock keeps today's face even if the name changes; unlock follows the name again.
+    func toggleFaceLock(name: String) {
+        blobShape.seedPart = blobShape.isLocked ? "" : name
+    }
+
+    func select(_ pet: PetdexPet, gallery: PetdexGalleryModel) async {
+        selectedPet = pet
+        selectedPetFrame = gallery.cachedThumbnail(pet)
+        selectedPetAvatar = nil
+        petError = nil
+        isLoadingPet = true
+        defer { if selectedPet == pet { isLoadingPet = false } }
+        let frame = await gallery.thumbnail(pet)
+        let avatar = await gallery.avatar(for: pet)
+        guard selectedPet == pet else { return }
+        selectedPetFrame = frame
+        selectedPetAvatar = avatar
+        if avatar == nil { petError = "Couldn’t load that pet. Try another." }
+    }
+
+    /// The finished choice for this style, or nil when there's nothing to use yet.
+    func result(faceName: String) -> AvatarCreatorResult? {
+        switch style {
+        case .characters:
+            .companion(appearance)
+        case .face:
+            .look(AgentAvatarLook(style: .face, shape: blobShape.string,
+                                  faceSeed: blobShape.isLocked ? nil : faceName))
+        case .shapes:
+            .look(AgentAvatarLook(style: .shape, shape: shape, color: shapeColor))
+        case .pets:
+            selectedPetAvatar.flatMap { data in selectedPet.map { .pet($0, avatar: data) } }
+        case .photo:
+            nil
+        }
     }
 
     /// New agents start from a random pleasant look instead of the same one.
@@ -128,8 +220,15 @@ final class AvatarCreatorModel {
 
 struct AvatarCreatorView: View {
     @State private var model: AvatarCreatorModel
+    @State private var pets: PetdexGalleryModel
+    @State private var photoItem: PhotosPickerItem?
+    /// While typing a pet search on a phone the stage steps aside, so the
+    /// matches show above the keyboard.
+    @FocusState private var isSearchingPets: Bool
     let agentName: String
-    let onUse: (CompanionAppearance) -> Void
+    /// The profile name Hermes faces are drawn from.
+    let faceName: String
+    let onUse: (AvatarCreatorResult) -> Void
     @Environment(\.dismiss) private var dismiss
     #if os(visionOS)
     /// A mood being tried on the 3D stage; nil plays the chosen moves.
@@ -139,9 +238,18 @@ struct AvatarCreatorView: View {
     @Environment(\.openWindow) private var openWindow
     #endif
 
-    init(appearance: CompanionAppearance, agentName: String, onUse: @escaping (CompanionAppearance) -> Void) {
-        _model = State(initialValue: AvatarCreatorModel(appearance: appearance))
+    init(
+        appearance: CompanionAppearance,
+        look: AgentAvatarLook? = nil,
+        agentName: String,
+        faceName: String,
+        petSource: PetdexSource,
+        onUse: @escaping (AvatarCreatorResult) -> Void
+    ) {
+        _model = State(initialValue: AvatarCreatorModel(appearance: appearance, look: look))
+        _pets = State(initialValue: PetdexGalleryModel(source: petSource))
         self.agentName = agentName
+        self.faceName = faceName
         self.onUse = onUse
     }
 
@@ -170,9 +278,11 @@ struct AvatarCreatorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use avatar") {
-                        onUse(model.appearance)
+                        guard let result = model.result(faceName: faceName) else { return }
+                        onUse(result)
                         dismiss()
                     }
+                    .disabled(model.result(faceName: faceName) == nil)
                     .fontWeight(.semibold)
                     .bighelpProminentButtonStyle()
                     .buttonBorderShape(.capsule)
@@ -184,6 +294,11 @@ struct AvatarCreatorView: View {
             }
         }
         .accessibilityIdentifier("avatar.creator")
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            onUse(.photo(item))
+            dismiss()
+        }
     }
 
     /// Phone and iPad: the character on top, choices under it. Vision Pro: the
@@ -199,20 +314,33 @@ struct AvatarCreatorView: View {
                     .frame(width: min(440, proxy.size.width * 0.46))
                     .padding([.leading, .vertical], BighelpTokens.space20)
                 VStack(spacing: 0) {
-                    tabBar
-                        .padding(.vertical, BighelpTokens.space12)
+                    styleBar
+                        .padding(.top, BighelpTokens.space12)
+                    if model.style == .characters {
+                        tabBar
+                            .padding(.top, BighelpTokens.space8)
+                    }
                     choices
+                        .padding(.top, BighelpTokens.space12)
                 }
             }
         }
         #else
         VStack(spacing: 0) {
-            stage
-                .padding(.horizontal, BighelpTokens.space20)
-                .padding(.top, BighelpTokens.space8)
-            tabBar
-                .padding(.vertical, BighelpTokens.space12)
+            if !(isSearchingPets && model.style == .pets) {
+                stage
+                    .padding(.horizontal, BighelpTokens.space20)
+                    .padding(.top, BighelpTokens.space8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            styleBar
+                .padding(.top, BighelpTokens.space12)
+            if model.style == .characters {
+                tabBar
+                    .padding(.top, BighelpTokens.space8)
+            }
             choices
+                .padding(.top, BighelpTokens.space12)
         }
         #endif
     }
@@ -224,8 +352,9 @@ struct AvatarCreatorView: View {
                 .padding(.bottom, BighelpTokens.space20)
         }
         .scrollIndicators(.hidden)
+        .dismissesKeyboardOnScroll(true)
         // Each tab opens at its top, not where the last one was scrolled.
-        .id(model.tab)
+        .id("\(model.style.rawValue).\(model.tab.rawValue)")
     }
 
     // MARK: Stage
@@ -242,24 +371,16 @@ struct AvatarCreatorView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
                 }
                 .overlay(RoundedRectangle(cornerRadius: 32, style: .continuous).strokeBorder(theme.border, lineWidth: 1))
-            #if os(visionOS)
-            spatialStage
-            #else
-            CompanionAvatar(
-                appearance: model.appearance,
-                reaction: model.isCelebrating ? .celebrate : .idle,
-                isAnimating: true
-            )
-            .frame(width: Self.previewSize, height: Self.previewSize)
-            .contentShape(.rect)
-            .onTapGesture { model.celebrate() }
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint("Plays a little celebration.")
-            .accessibilityIdentifier("avatar.creator.preview")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, BighelpTokens.space20)
-            #endif
-            Text(model.appearance.character.displayName)
+            if model.style == .characters {
+                characterStage
+            } else {
+                hermesStage
+                    .frame(width: Self.hermesPreviewSize, height: Self.hermesPreviewSize)
+                    .accessibilityIdentifier("avatar.creator.preview")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, BighelpTokens.space20)
+            }
+            Text(stageTitle)
                 .font(.bighelp(.headline))
                 .foregroundStyle(theme.primaryText)
                 .padding(.horizontal, BighelpTokens.space16)
@@ -267,8 +388,11 @@ struct AvatarCreatorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(false)
                 .accessibilityIdentifier("avatar.creator.name")
+            if model.style == .characters || model.style == .face {
             Button {
-                withAnimation(.snappy) { model.shuffle() }
+                withAnimation(.snappy) {
+                    if model.style == .face { model.randomizeFace() } else { model.shuffle() }
+                }
             } label: {
                 Image(systemName: "dice")
                     .font(.system(size: 17, weight: .semibold))
@@ -280,9 +404,10 @@ struct AvatarCreatorView: View {
             }
             .buttonStyle(.plain)
             .padding(BighelpTokens.space8)
-            .accessibilityLabel("Shuffle")
-            .accessibilityHint("Tries a random character and look.")
+            .accessibilityLabel(model.style == .face ? "Randomize" : "Shuffle")
+            .accessibilityHint(model.style == .face ? "Tries a random face." : "Tries a random character and look.")
             .accessibilityIdentifier("avatar.creator.shuffle")
+            }
         }
         #if os(visionOS) || targetEnvironment(macCatalyst)
         .frame(maxHeight: .infinity)
@@ -291,10 +416,42 @@ struct AvatarCreatorView: View {
         #endif
     }
 
+    @ViewBuilder
+    private var characterStage: some View {
+        #if os(visionOS)
+        spatialStage
+        #else
+        CompanionAvatar(
+            appearance: model.appearance,
+            reaction: model.isCelebrating ? .celebrate : .idle,
+            isAnimating: true
+        )
+        .frame(width: Self.previewSize, height: Self.previewSize)
+        .contentShape(.rect)
+        .onTapGesture { model.celebrate() }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Plays a little celebration.")
+        .accessibilityIdentifier("avatar.creator.preview")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, BighelpTokens.space20)
+        #endif
+    }
+
+    private var stageTitle: String {
+        switch model.style {
+        case .characters: model.appearance.character.displayName
+        case .face: model.blobShape.kind?.displayName ?? "Face"
+        case .shapes: HermesShapeFace.displayName(model.shape)
+        case .pets: model.selectedPet?.displayName ?? "Pets"
+        case .photo: "Photo"
+        }
+    }
+
     #if !os(visionOS)
     /// The Mac's stage is the sheet's full height, so the character can be bigger.
     private static var previewSize: CGFloat { BighelpPlatform.isMac ? 240 : 180 }
     #endif
+    private static var hermesPreviewSize: CGFloat { BighelpPlatform.isMac ? 220 : 160 }
 
     #if os(visionOS)
     /// Moods to try on the 3D stage: how it looks while the agent works.
@@ -415,11 +572,18 @@ struct AvatarCreatorView: View {
 
     @ViewBuilder
     private var panel: some View {
-        switch model.tab {
-        case .character: characterPanel
-        case .color: colorPanel
-        case .extras: extrasPanel
-        case .moves: movesPanel
+        switch model.style {
+        case .characters:
+            switch model.tab {
+            case .character: characterPanel
+            case .color: colorPanel
+            case .extras: extrasPanel
+            case .moves: movesPanel
+            }
+        case .face: facePanel
+        case .shapes: shapesPanel
+        case .pets: petsPanel
+        case .photo: photoPanel
         }
     }
 
@@ -656,6 +820,269 @@ struct AvatarCreatorView: View {
         }
     }
 
+    // MARK: Hermes styles
+
+    /// Characters, Hermes faces and shapes, petdex pets, or a photo.
+    private var styleBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: BighelpTokens.space8) {
+                ForEach(AvatarCreatorModel.Style.allCases) { style in
+                    let isSelected = model.style == style
+                    Button {
+                        withAnimation(.snappy) { model.style = style }
+                    } label: {
+                        Text(style.title)
+                            .font(.bighelp(.callout).weight(.semibold))
+                            .foregroundStyle(isSelected ? theme.actionForeground : theme.primaryText)
+                            .padding(.horizontal, BighelpTokens.space16)
+                            .frame(minHeight: 36)
+                            .background(Capsule().fill(isSelected ? theme.action : theme.incomingMessageBackground))
+                            .frame(minHeight: BighelpTokens.hitTarget)
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityIdentifier("avatar.creator.style.\(style.rawValue)")
+                }
+            }
+            .padding(.horizontal, BighelpTokens.space20)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    @ViewBuilder
+    private var hermesStage: some View {
+        switch model.style {
+        case .face:
+            HermesBlobFaceView(seed: model.blobShape.seed(name: faceName), kind: model.blobShape.kind)
+        case .shapes:
+            HermesShapeFaceView(shape: model.shape, color: HermesShapeFace.color(model.shapeColor, name: faceName))
+        case .pets:
+            if let frame = model.selectedPetFrame, let image = UIImage(data: frame) {
+                Image(uiImage: image).interpolation(.none).resizable().scaledToFit()
+            } else if model.isLoadingPet {
+                ProgressView()
+            } else {
+                stagePlaceholder("pawprint", "Pick a pet below")
+            }
+        case .photo, .characters:
+            stagePlaceholder("photo.on.rectangle", "Choose a photo below")
+        }
+    }
+
+    private func stagePlaceholder(_ systemImage: String, _ text: String) -> some View {
+        VStack(spacing: BighelpTokens.space8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(theme.secondaryText)
+            Text(text)
+                .font(.bighelp(.footnote))
+                .foregroundStyle(theme.secondaryText)
+        }
+    }
+
+    private var facePanel: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space16) {
+            section("Shape") {
+                grid(minimum: 76) {
+                    ForEach([HermesBlobFace.Kind?.none] + HermesBlobFace.Kind.allCases.map(Optional.some), id: \.self) { kind in
+                        tile(
+                            title: kind?.displayName ?? "Auto",
+                            isSelected: model.blobShape.kind == kind,
+                            identifier: "avatar.creator.face.\(kind?.rawValue ?? "auto")"
+                        ) {
+                            withAnimation(.snappy) { model.blobShape.kind = kind }
+                        } preview: {
+                            HermesBlobFaceView(seed: model.blobShape.seed(name: faceName), kind: kind)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: BighelpTokens.space8) {
+                pill(model.blobShape.isLocked ? "Unlock" : "Lock face",
+                     systemImage: model.blobShape.isLocked ? "lock.open" : "lock",
+                     identifier: "avatar.creator.face.lock") {
+                    model.toggleFaceLock(name: faceName)
+                }
+                pill("Randomize", systemImage: "dice", identifier: "avatar.creator.face.randomize") {
+                    withAnimation(.snappy) { model.randomizeFace() }
+                }
+            }
+            Text(model.blobShape.isLocked
+                 ? "Face locked. It stays the same even if the name changes."
+                 : "The face comes from the agent’s name. Hermes Desktop shows the same face.")
+                .font(.bighelp(.footnote))
+                .foregroundStyle(theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var shapesPanel: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space16) {
+            section("Shape") {
+                grid(minimum: 76) {
+                    ForEach(HermesShapeFace.pickerShapes, id: \.self) { shape in
+                        tile(
+                            title: HermesShapeFace.displayName(shape),
+                            isSelected: model.shape == shape,
+                            identifier: "avatar.creator.shape.\(shape)"
+                        ) {
+                            withAnimation(.snappy) { model.shape = shape }
+                        } preview: {
+                            HermesShapeFaceView(shape: shape, color: HermesShapeFace.color(model.shapeColor, name: faceName))
+                        }
+                    }
+                }
+            }
+            section("Color") {
+                let matchesName = model.shapeColor == nil
+                Button {
+                    model.shapeColor = nil
+                } label: {
+                    Label {
+                        Text("Match the name")
+                    } icon: {
+                        Circle()
+                            .fill(HermesFaceColor.color(HermesShapeFace.color(nil, name: faceName)))
+                            .frame(width: 18, height: 18)
+                    }
+                    .font(.bighelp(.callout).weight(.semibold))
+                    .foregroundStyle(matchesName ? theme.actionForeground : theme.primaryText)
+                    .padding(.horizontal, BighelpTokens.space16)
+                    .frame(minHeight: 36)
+                    .background(Capsule().fill(matchesName ? theme.action : theme.incomingMessageBackground))
+                    .frame(minHeight: BighelpTokens.hitTarget)
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(matchesName ? [.isButton, .isSelected] : .isButton)
+                .accessibilityIdentifier("avatar.creator.shape-color.name")
+                // Hermes Desktop's twelve swatches, two even rows.
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: BighelpTokens.space12), count: 6),
+                          spacing: BighelpTokens.space12) {
+                    ForEach(Array(HermesShapeFace.swatches.enumerated()), id: \.element) { index, color in
+                        swatch(
+                            fill: AnyShapeStyle(HermesFaceColor.color(color)),
+                            isSelected: model.shapeColor == color,
+                            label: "Color \(index + 1)",
+                            identifier: "avatar.creator.shape-color.\(index)"
+                        ) { model.shapeColor = color } overlay: { EmptyView() }
+                    }
+                }
+            }
+        }
+    }
+
+    private var petsPanel: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space12) {
+            HStack(spacing: BighelpTokens.space8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(theme.secondaryText)
+                TextField("Search", text: $pets.query,
+                          prompt: Text(pets.pets.isEmpty ? "Search pets" : "Search \(pets.pets.count) pets").bighelpFieldHint(theme))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .focused($isSearchingPets)
+                    .accessibilityIdentifier("avatar.creator.pets.search")
+            }
+            .padding(.horizontal, BighelpTokens.space12)
+            .frame(minHeight: BighelpTokens.hitTarget)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.surface))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(theme.border, lineWidth: 1))
+            if let error = model.petError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.bighelp(.footnote))
+                    .foregroundStyle(theme.danger)
+            }
+            petsContent
+        }
+        .task { await pets.loadIfNeeded() }
+        .animation(.snappy, value: isSearchingPets)
+    }
+
+    @ViewBuilder
+    private var petsContent: some View {
+        switch pets.phase {
+        case .idle, .loading:
+            ProgressView("Loading pets")
+                .frame(maxWidth: .infinity, minHeight: 160)
+                .accessibilityIdentifier("avatar.creator.pets.loading")
+        case .failed:
+            VStack(spacing: BighelpTokens.space8) {
+                Text("Couldn’t load the pet gallery.")
+                    .font(.bighelp(.body))
+                    .foregroundStyle(theme.primaryText)
+                Button("Try again") { Task { await pets.loadIfNeeded() } }
+                    .font(.bighelp(.body).weight(.semibold))
+                    .frame(minHeight: BighelpTokens.hitTarget)
+            }
+            .frame(maxWidth: .infinity, minHeight: 160)
+        case .loaded:
+            let matches = pets.matches
+            if matches.isEmpty {
+                Text("No pets match.")
+                    .font(.bighelp(.body))
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                grid(minimum: 76) {
+                    ForEach(pets.visible) { pet in
+                        tile(
+                            title: pet.displayName,
+                            isSelected: model.selectedPet == pet,
+                            identifier: "avatar.creator.pet.\(pet.slug)"
+                        ) {
+                            isSearchingPets = false
+                            Task { await model.select(pet, gallery: pets) }
+                        } preview: {
+                            PetdexThumbnailView(pet: pet, gallery: pets)
+                        }
+                        .onAppear { pets.reached(pet) }
+                    }
+                }
+                Text(pets.isFromPetdex
+                     ? "Showing \(pets.visible.count) of \(matches.count) pets from petdex.dev"
+                     : "Showing \(pets.visible.count) of \(matches.count) pets")
+                    .font(.bighelp(.footnote))
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("avatar.creator.pets.count")
+            }
+        }
+    }
+
+    private var photoPanel: some View {
+        VStack(alignment: .leading, spacing: BighelpTokens.space12) {
+            Text("Use any picture you like.")
+                .font(.bighelp(.body))
+                .foregroundStyle(theme.secondaryText)
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label("Upload a photo", systemImage: "photo")
+                    .font(.bighelp(.body).weight(.semibold))
+                    .foregroundStyle(theme.actionForeground)
+                    .frame(maxWidth: .infinity, minHeight: BighelpTokens.hitTarget)
+                    .background(Capsule().fill(theme.action))
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("avatar.creator.photo")
+        }
+    }
+
+    private func pill(_ title: String, systemImage: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.bighelp(.callout).weight(.semibold))
+                .foregroundStyle(theme.action)
+                .padding(.horizontal, BighelpTokens.space16)
+                .frame(minHeight: BighelpTokens.hitTarget)
+                .background(Capsule().fill(theme.incomingMessageBackground))
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+
     // MARK: Building blocks
 
     private func preview(_ change: (inout CompanionAppearance) -> Void) -> CompanionAppearance {
@@ -786,3 +1213,36 @@ private struct FlowLayout: Layout {
     }
 }
 #endif
+
+/// One pet's first frame, fetched when its tile shows and kept pixel-sharp.
+private struct PetdexThumbnailView: View {
+    let pet: PetdexPet
+    let gallery: PetdexGalleryModel
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).interpolation(.none).resizable().scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(theme.incomingMessageBackground)
+                    .overlay {
+                        if failed {
+                            Image(systemName: "pawprint").foregroundStyle(theme.secondaryText)
+                        }
+                    }
+            }
+        }
+        .task(id: pet.id) {
+            if let cached = gallery.cachedThumbnail(pet) { image = UIImage(data: cached); return }
+            let data = await gallery.thumbnail(pet)
+            guard !Task.isCancelled else { return }
+            image = data.flatMap(UIImage.init(data:))
+            failed = image == nil
+        }
+    }
+
+    @BighelpThemeReader private var theme
+}

@@ -129,4 +129,66 @@ struct AvatarCreatorTests {
         model.removeAvatar()
         #expect(model.selectedCompanionAppearance == nil && model.pendingAvatar == nil)
     }
+
+    /// Chats draw an agent's saved character ahead of its picture. Saving a
+    /// pet, face, shape or photo over a character must retire the character,
+    /// or new chats keep showing it while the editor shows the new avatar.
+    @Test func savingAnotherKindOfAvatarRetiresTheOldCharacter() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AgentDirectoryStore(client: AgentDirectoryFixtureClient(profiles: [.financeFixture]),
+                                        defaults: isolatedDefaults())
+        try await store.load()
+        let companions = CompanionStore(defaults: isolatedDefaults())
+        let pets = PetAvatarStore(defaults: isolatedDefaults(), directory: directory.appending(path: "pets"))
+        let key = CompanionStore.agentKey(agentScope: "scope", agentID: AgentProfile.financeFixture.id)
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).pngData { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        }
+        let fox = CompanionAppearance(character: .fox, colorHex: "#9B87F5", matchesTheme: false, vibe: .bouncy)
+
+        let first = AgentEditorModel.editing(.financeFixture, store: store, processor: AvatarImageProcessor(),
+                                             avatarDirectory: directory)
+        try await first.importCompanionAvatar(data: png, appearance: fox)
+        let saved = try await first.save()
+        first.applySavedLook(companions: companions, pets: pets, key: CompanionStore.agentKey(agentScope: "scope", agentID: saved.id))
+        #expect(companions.override(for: key) == fox)
+
+        let unchanged = AgentEditorModel.editing(saved, store: store, processor: AvatarImageProcessor(),
+                                                 avatarDirectory: directory)
+        unchanged.draft.role = "Keeps the books"
+        _ = try await unchanged.save()
+        unchanged.applySavedLook(companions: companions, pets: pets, key: key)
+        #expect(companions.override(for: key) == fox)
+
+        // A petdex pet replaces the character, and its moves play in chats.
+        let pip = PetdexFixtures.pets[0]
+        let pet = AgentEditorModel.editing(saved, store: store, processor: AvatarImageProcessor(),
+                                           avatarDirectory: directory)
+        try await pet.importPetAvatar(data: png, pet: pip)
+        _ = try await pet.save()
+        pet.applySavedLook(companions: companions, pets: pets, key: key)
+        #expect(companions.override(for: key) == nil)
+        for _ in 0..<400 where pets.slug(for: key) == nil { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(pets.slug(for: key) == pip.slug)
+        #expect(pets.frames(for: key, move: .run)?.count == PetdexSprite.framesPerMove)
+
+        // A face replaces the pet.
+        let face = AgentEditorModel.editing(saved, store: store, processor: AvatarImageProcessor(),
+                                            avatarDirectory: directory)
+        try await face.importLookAvatar(data: png, look: AgentAvatarLook(style: .face, shape: "blobatar"))
+        _ = try await face.save()
+        face.applySavedLook(companions: companions, pets: pets, key: key)
+        #expect(pets.slug(for: key) == nil)
+        #expect(pets.frames(for: key, move: .idle) == nil)
+
+        companions.setOverride(fox, for: key)
+        let removed = AgentEditorModel.editing(saved, store: store, processor: AvatarImageProcessor(),
+                                               avatarDirectory: directory)
+        removed.removeAvatar()
+        _ = try await removed.save()
+        removed.applySavedLook(companions: companions, pets: pets, key: key)
+        #expect(companions.override(for: key) == nil)
+    }
 }

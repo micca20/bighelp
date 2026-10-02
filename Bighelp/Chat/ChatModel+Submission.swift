@@ -67,6 +67,10 @@ extension ChatModel {
             failureMessage = "Pause, resume, clear, or unwait the current goal while Hermes is working. Set or inspect a goal after this turn finishes."
             return
         }
+        if isBotMode, acceptsBotModeFollowUp {
+            await sendBotModeFollowUp()
+            return
+        }
         if isSending {
             await sendMidSession(using: defaultMidSessionBehavior)
             return

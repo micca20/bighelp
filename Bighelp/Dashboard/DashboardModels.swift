@@ -55,28 +55,6 @@ struct DashboardSnapshot: Equatable, Sendable {
     let agents: [DashboardAgent]
 }
 
-struct DashboardConnectionPresentation: Equatable, Sendable {
-    let title: String
-    let systemImage: String
-    let isConnected: Bool
-
-    init(linkState: BighelpAppReadinessLinkState) {
-        self.init(isConnected: linkState == .verified)
-    }
-
-    init(isConnected: Bool) {
-        if isConnected {
-            title = "Connected"
-            systemImage = "checkmark.circle.fill"
-            self.isConnected = true
-        } else {
-            title = "Reconnecting"
-            systemImage = "exclamationmark.circle.fill"
-            self.isConnected = false
-        }
-    }
-}
-
 enum DashboardWeatherFreshness: Equatable, Sendable {
     case fresh
     case stale

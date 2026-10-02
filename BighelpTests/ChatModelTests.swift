@@ -4034,27 +4034,33 @@ struct ChatModelTests {
             occurredAt: 3
         )
 
-        #expect(ChatWorkTrailSummary(events: [runningTool]).hasRunningCall)
-        #expect(!ChatWorkTrailSummary(events: [completedTool]).hasRunningCall)
-        #expect(!ChatWorkTrailSummary(events: [runningReasoning]).hasRunningCall)
+        #expect(ChatActivityPresentation.trailPhase(for: [runningTool]).isLive)
+        #expect(!ChatActivityPresentation.trailPhase(for: [completedTool]).isLive)
+        #expect(ChatActivityPresentation.trailPhase(for: [completedTool]) == .done(elapsed: nil))
+        #expect(ChatActivityPresentation.stepCount(of: [runningReasoning]) == 0)
     }
 
-    @Test func toolRowsAreNeutralExceptForFailuresAndShimmerOnlyWhileRunning() {
-        #expect(ChatToolActivityVisualState(lifecycle: .running) == .init(
-            lifecycle: .running
-        ))
-        #expect(ChatToolActivityVisualState(lifecycle: .running).tone == .neutral)
-        #expect(ChatToolActivityVisualState(lifecycle: .running).shimmers)
-        #expect(ChatToolActivityVisualState(lifecycle: .succeeded).tone == .neutral)
-        #expect(!ChatToolActivityVisualState(lifecycle: .succeeded).shimmers)
-        #expect(ChatToolActivityVisualState(lifecycle: .failed).tone == .failure)
-        #expect(!ChatToolActivityVisualState(lifecycle: .failed).shimmers)
-        #expect(ChatToolActivityVisualState(lifecycle: .cancelled).tone == .neutral)
+    @Test func toolStepsAreNeutralExceptForFailuresAndSpinOnlyWhileRunning() {
+        func step(_ lifecycle: ChatActivityLifecycle) -> BighelpActivityStep {
+            ChatActivityPresentation.step(for: ChatActivityEvent(
+                eventID: "tool-\(lifecycle.rawValue)", sessionID: "session", turnID: "turn", kind: .tool,
+                lifecycle: lifecycle, title: "read_file", summary: nil, detail: nil, occurredAt: 1,
+                toolCallID: "call-\(lifecycle.rawValue)", toolName: "read_file"))
+        }
+        #expect(step(.running).isRunning)
+        #expect(step(.running).label == "Reading a file…")
+        #expect(!step(.succeeded).isRunning)
+        #expect(step(.succeeded).label == "Read a file")
+        #expect(!step(.succeeded).metaIsFailure)
+        #expect(step(.failed).metaIsFailure)
+        #expect(step(.failed).meta == "Failed")
+        #expect(!step(.cancelled).metaIsFailure)
+        #expect(step(.cancelled).meta == "Stopped")
     }
 
-    @Test func reasoningOnlyWorkTrailUsesQuietAccurateLifecycleLabels() {
-        func summary(_ lifecycle: ChatActivityLifecycle) -> ChatWorkTrailSummary {
-            ChatWorkTrailSummary(events: [ChatActivityEvent(
+    @Test func reasoningOnlyWorkUsesQuietAccurateLifecycleLabels() {
+        func summary(_ lifecycle: ChatActivityLifecycle) -> String {
+            BighelpActivitySummary.label(for: ChatActivityPresentation.thinkingPhase(for: [ChatActivityEvent(
                 eventID: "reasoning-\(lifecycle.rawValue)",
                 sessionID: "session",
                 turnID: "turn",
@@ -4064,13 +4070,13 @@ struct ChatModelTests {
                 summary: "Real bounded status",
                 detail: nil,
                 occurredAt: 1
-            )])
+            )]))
         }
 
-        #expect(summary(.running).compactLabel == "Reasoning")
-        #expect(summary(.succeeded).compactLabel == "Reasoning completed")
-        #expect(summary(.failed).compactLabel == "Reasoning failed")
-        #expect(summary(.cancelled).compactLabel == "Reasoning stopped")
+        #expect(summary(.running) == "Thinking")
+        #expect(summary(.succeeded) == "Thought process")
+        #expect(summary(.failed) == "Hit a snag")
+        #expect(summary(.cancelled) == "Stopped")
     }
 
     @Test func sendAppendsExactlyOneHumanAndOneAssistantItemInOrder() async {
@@ -5147,13 +5153,10 @@ struct ChatModelTests {
             ),
         ]
 
-        let summary = ChatWorkTrailSummary(events: events)
-
-        #expect(summary.toolCallCount == 2)
-        #expect(summary.subagentCount == 1)
-        #expect(summary.hasRunningWork)
-        #expect(summary.compactLabel == "2 tool calls, 1 subagent, and work in progress")
-        #expect(summary.leadingSystemImage == "terminal")
+        #expect(ChatActivityPresentation.stepCount(of: events) == 3)
+        let phase = ChatActivityPresentation.trailPhase(for: events)
+        #expect(phase.isLive)
+        #expect(BighelpActivitySummary.label(for: phase) == "Using tools…")
     }
 
     @Test func toolActivityPreservesExpandableArgumentsAndResultAcrossUpdates() throws {

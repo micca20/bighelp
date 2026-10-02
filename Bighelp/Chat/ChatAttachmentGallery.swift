@@ -45,6 +45,7 @@ struct ChatAttachmentGallery: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Preview \(attachment.fileName)")
                     .accessibilityHint("Opens a preview with save options")
+                    .modifier(PictureActionsIfImage(attachment: attachment))
                 }
             }
         }
@@ -109,6 +110,20 @@ struct ChatAttachmentGallery: View {
     @BighelpThemeReader private var theme: BighelpTheme
 
     @Environment(\.bighelpUIV3Enabled) private var uiV3Enabled
+}
+
+/// Pictures get Copy and Save to Photos on touch and hold; other files keep
+/// their tap-to-preview only.
+private struct PictureActionsIfImage: ViewModifier {
+    let attachment: ChatAttachment
+
+    func body(content: Content) -> some View {
+        if attachment.kind == .image {
+            content.chatPictureActions(attachment)
+        } else {
+            content
+        }
+    }
 }
 
 struct ChatAttachmentPreviewView: View {

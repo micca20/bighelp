@@ -14,7 +14,11 @@ struct PluginUpdateSection: View {
                 VStack(alignment: .leading, spacing: BighelpTokens.space4) {
                     HStack {
                         Text(store.title).bighelpFont(.label, weight: .semibold)
-                        if store.isWorking || store.isPending { ProgressView().controlSize(.small) }
+                        if let connection = HostConnectionStatus(pluginUpdate: store) {
+                            BighelpConnectionIndicator(phase: connection.phase)
+                        } else if store.isWorking || store.isPending {
+                            ProgressView().controlSize(.small)
+                        }
                     }
                     if let message = store.message ?? store.status?.message {
                         Text(message).bighelpFont(.metadata).foregroundStyle(theme.secondaryText)

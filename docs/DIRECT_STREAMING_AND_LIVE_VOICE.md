@@ -18,6 +18,23 @@ Every delegated task has its own Hermes conversation, durable job identity and o
 
 An explicitly selected API-key mode uses the distinct public `gpt-live-1` protocol and the host's configured `OPENAI_API_KEY`. It may incur separate usage charges. Subscription errors never select it automatically. Turn-based voice remains an explicit alternative.
 
+## Team call
+
+A group chat with two or more members can start a team call from its header (`Bighelp/TeamCall/`). It is turn-based
+voice only: no realtime model. The button shows only when the host can speak for every member (`voiceOutput`).
+
+- What the person says posts to the room through `BotModeRoomStore.send`, the composer's idempotent path. One
+  message is in flight until the room log shows it, so messages land in the order they were said.
+- Members' replies arrive as completed messages in the room log. Each is spoken in log order with that member's own
+  `/api/audio/speak` voice (`DirectHermesVoiceSpeechOutput(profileID:)`), so every agent keeps its own `tts.*`.
+- `TeamCallSpeechPipeline` makes the next pieces' audio while one plays. A reply is cut like Hermes'
+  `SentenceChunker`: the first sentence of at least `tts.streaming.min_len` characters (default 20) goes alone.
+- The microphone stays on between replies. While a reply plays, the device recognizer listens for barge-in
+  (`voice.barge_in`, `barge_in_grace_seconds`, `barge_in_threshold_multiplier`, echo filtering); cutting in stops
+  playback and drops the queue. `voice.silence_duration` caps the end-of-turn pause, and saying exactly a
+  `voice.stop_phrases` entry hangs up. The first member whose config is readable supplies `voice.*`.
+- Hanging up never sends `groups.stop`; the room keeps working.
+
 ## Security and compatibility
 
 The plugin does not modify Hermes core or start a second model-execution service. All jobs use supported platform-adapter ingress and lifecycle/approval/clarification callbacks. iPhone device tools remain opt-in and require the existing verified host-context capability; unsupported hosts do not gain authority from a voice transcript or device identifier.

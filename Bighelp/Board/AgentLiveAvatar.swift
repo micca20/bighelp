@@ -22,8 +22,9 @@ extension ChatModel {
 }
 
 /// The agent's face across the app. A designed pet plays a move for each kind
-/// of work; a photo avatar gets a matching motion. A small badge names the
-/// work (code, web, images…) so the difference reads at a glance.
+/// of work, a petdex pet plays its own sheet's move, and a photo avatar gets a
+/// matching motion. A small badge names the work (code, web, images…) so the
+/// difference reads at a glance.
 struct AgentLiveAvatar: View {
     let agentID: String
     let displayName: String
@@ -40,6 +41,7 @@ struct AgentLiveAvatar: View {
     @Environment(\.agentActivityInIsland) private var activityInIsland
     @Environment(\.companionAgentScope) private var companionAgentScope
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -63,6 +65,13 @@ struct AgentLiveAvatar: View {
         return companionStore.override(for: CompanionStore.agentKey(agentScope: companionAgentScope, agentID: agentID))
     }
 
+    private var petFrames: [CGImage]? {
+        guard !companionAgentScope.isEmpty else { return nil }
+        let move = activity == .idle && restingState == .listening ? .waiting : PetdexMove(activity: activity)
+        return PetAvatarStore.shared.frames(
+            for: CompanionStore.agentKey(agentScope: companionAgentScope, agentID: agentID), move: move)
+    }
+
     @ViewBuilder
     private var face: some View {
         if let look {
@@ -77,6 +86,15 @@ struct AgentLiveAvatar: View {
                         activityMood: activity.moodID
                     )
                     .frame(width: size * 0.82, height: size * 0.82)
+                }
+        } else if let petFrames {
+            // Pets are drawn with dark outlines, so the disc stays light in dark mode.
+            Circle()
+                .fill(theme.action.opacity(showsBackdrop ? (colorScheme == .dark ? 0.45 : 0.12) : 0))
+                .overlay(Circle().strokeBorder(theme.action.opacity(showsBackdrop ? 0.2 : 0), lineWidth: 1))
+                .overlay {
+                    PetdexAnimatedAvatar(frames: petFrames)
+                        .frame(width: size * 0.86, height: size * 0.86)
                 }
         } else {
             AvatarView(stableID: agentID, displayName: displayName, imageURL: imageURL,

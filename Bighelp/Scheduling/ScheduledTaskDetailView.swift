@@ -113,7 +113,7 @@ struct ScheduledTaskDetailView: View {
                 )
                 .accessibilityHidden(true)
                 VStack(spacing: BighelpTokens.space4) {
-                    Text(task.name)
+                    Text(task.displayName)
                         .bighelpFont(.screenTitle)
                         .foregroundStyle(theme.primaryText)
                         .multilineTextAlignment(.center)

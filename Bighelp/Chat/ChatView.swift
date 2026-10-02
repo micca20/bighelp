@@ -97,7 +97,7 @@ struct ChatView: View {
     @Environment(\.companionStore) private var companionStore
     @Environment(\.companionAgentScope) private var companionAgentScope
     @Environment(\.agentHomeChrome) private var homeChrome
-    @Environment(\.scenePhase) var botActivityScenePhase
+    @Environment(\.teamCallAction) private var teamCallAction
     private enum SessionTitleDialog {
         case rename
         case error
@@ -729,7 +729,10 @@ struct ChatView: View {
     private var conversationHeader: some View {
         Group {
             if model.isBotMode {
-                groupConversationIdentityButton
+                VStack(spacing: 6) {
+                    groupConversationIdentityButton
+                    if let teamCallAction { TeamCallHeaderButton(action: teamCallAction) }
+                }
             } else {
                 conversationIdentityButton
             }

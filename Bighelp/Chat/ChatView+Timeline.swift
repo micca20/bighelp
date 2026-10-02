@@ -83,7 +83,7 @@ extension ChatView {
                     Text(verbatim: "Getting the latest changes...")
                         .bighelpFont(.metadata)
                         .foregroundStyle(theme.secondaryText)
-                        .bighelpActiveCallShimmer(isActive: botActivityScenePhase == .active, color: .white)
+                        .bighelpShimmer(isActive: true)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, BighelpTokens.space12)
                         .padding(.vertical, BighelpTokens.space8)
@@ -107,14 +107,13 @@ extension ChatView {
         switch row {
         case .transcript(let row): transcriptRow(row)
         case .workTrailHeader(let turn):
-            ChatWorkTrailCard(turn: turn, rendersExpandedEvents: false, onDisclosureChange: beginDisclosureReview)
+            ChatWorkTrailCard(turn: turn, rendersExpandedEvents: false, waiting: activityWaiting(for: turn),
+                              onDisclosureChange: beginDisclosureReview)
         case .activityDetail(let event):
             ChatActivityRow(event: event, onDisclosureChange: beginDisclosureReview)
-                .padding(.horizontal, BighelpTokens.space4)
-                .padding(.leading, BighelpTokens.space4)
                 .modifier(ChatToolDetailStyle())
         case .workTrailEnd:
-            Divider().padding(.horizontal, BighelpTokens.space4)
+            Color.clear.frame(height: BighelpTokens.space4)
         case .earlierMessage(let item):
             TimelineItemView(item: item, onApprovalTap: onApprovalTap,
                              pendingMidSessionBehavior: model.pendingMidSessionBehavior(for: item.id),
@@ -222,9 +221,18 @@ extension ChatView {
     private func canvasRowBottomSpacing(_ row: ChatCanvasRow) -> CGFloat {
         switch row {
         case .bottom: 0
-        case .workTrailHeader, .activityDetail: BighelpTokens.space8
+        // An unfolded trail's steps hang from one unbroken line.
+        case .workTrailHeader(let turn): model.activityDisclosures.isExpanded(turn) ? 0 : BighelpTokens.space8
+        case .activityDetail: 0
         default: chatDensity.messageSpacing
         }
+    }
+    /// What a live run of tools is paused on: Hermes' waiting approvals and
+    /// questions for this chat, or a secure input request.
+    private func activityWaiting(for turn: ChatActivityTurn) -> ChatActivityWaiting? {
+        guard turn.events.contains(where: { $0.lifecycle == .running }) else { return nil }
+        let prompts = (model.nativeConversationClient ?? directHermesClient)?.prompts ?? []
+        return ChatActivityWaiting.resolve(prompts: prompts, events: turn.events)
     }
     private var displayedTranscriptRows: [ChatTurnDisplayRow] {
         ChatCompletedTurnProjection.rows(

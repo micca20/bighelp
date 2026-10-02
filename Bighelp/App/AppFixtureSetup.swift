@@ -39,6 +39,11 @@ enum AppFixtureSetup {
                 initialSessions[index].activityVisibility.showToolCalls = false
             }
         }
+        if usesFixtures, arguments.contains("-test-loader-chat"),
+           let index = initialSessions.firstIndex(where: { $0.id == "demo-finance" }) {
+            initialSessions[index] = ConversationFixtures.loaderChatPreview(
+                waiting: arguments.contains("-test-loader-chat-waiting"))
+        }
         if usesFixtures, arguments.contains("-test-card-replies"),
            let index = initialSessions.firstIndex(where: { $0.id == "demo-finance" }) {
             initialSessions[index] = ConversationFixtures.cardRepliesPreview

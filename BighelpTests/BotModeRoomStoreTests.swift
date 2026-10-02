@@ -263,6 +263,179 @@ struct BotModeRoomStoreTests {
         #expect(activities.map(\.lifecycle) == [.succeeded])
     }
 
+    /// Hermes appends a message sent during a member turn and queues it behind
+    /// the active room drive (`groups.send` answers `accepted` while the room
+    /// works). The app must send it then, not refuse until the room is quiet.
+    @Test func nativeRoomAcceptsAFollowUpWhileMembersAreStillWorking() async throws {
+        let room = BotModeRoom.fixture(id: "native-follow-up", memberIDs: ["finance", "research"])
+        let client = NativeBotModeTestClient(capabilities: .fixture())
+        let store = BotModeRoomStore(client: BotModeFixtureClient(), rooms: [room], nativeClient: client)
+        let thread = HermesBotModeWireCodec.mainThreadID(roomID: room.id)
+
+        let first = Task { @MainActor in
+            try await store.send(text: "@everyone plan the trip", roomID: room.id)
+        }
+        for _ in 0..<200 where store.room(id: room.id)?.nativePendingDiscussionEventID == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(store.room(id: room.id)?.isRunning == true)
+
+        try await store.send(text: "@finance keep it under budget", roomID: room.id)
+
+        #expect(client.sentPayloads.map(\.text) == ["@everyone plan the trip", "@finance keep it under budget"])
+        #expect(Set(client.sentEventIDs).count == 2)
+        let follow = try #require(store.room(id: room.id)?.nativeFollowUps.first)
+        #expect(follow.eventID == client.sentEventIDs[1])
+        #expect(follow.discussionEventID == "server-\(client.sentEventIDs[1])")
+
+        // Like Hermes: the newer message supersedes the turn still running for
+        // the first one (cancelled, not failed), and only the newest settles.
+        let firstID = "server-\(client.sentEventIDs[0])", secondID = "server-\(client.sentEventIDs[1])"
+        client.logPages = [[
+            .fixture(roomID: room.id, sequence: 1, eventID: firstID, kind: "message.user", payload: [
+                "text": .string("@everyone plan the trip"), "thread_id": .string(thread)
+            ]),
+            .fixture(roomID: room.id, sequence: 2, eventID: "answer-1", kind: "message.member", payload: [
+                "member_id": .string("finance"), "text": .string("Here is a plan"),
+                "discussion_event_id": .string(firstID), "thread_id": .string(thread)
+            ]),
+            .fixture(roomID: room.id, sequence: 3, eventID: secondID, kind: "message.user", payload: [
+                "text": .string("@finance keep it under budget"), "thread_id": .string(thread)
+            ]),
+            .fixture(roomID: room.id, sequence: 4, eventID: "superseded", kind: "turn.cancelled", payload: [
+                "member_id": .string("research"), "task_id": .string("task-research"),
+                "reason": .string("superseded_by_newer_user_event"),
+                "discussion_event_id": .string(firstID), "thread_id": .string(thread)
+            ]),
+        ]]
+        for _ in 0..<200 where store.room(id: room.id)?.nativeLogCursor != 4 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(store.room(id: room.id)?.isRunning == true)
+        #expect(store.room(id: room.id)?.nativeFollowUps.count == 1)
+        #expect(store.room(id: room.id)?.memberFailures.isEmpty == true)
+
+        client.logPages = [[
+            .fixture(roomID: room.id, sequence: 5, eventID: "answer-2", kind: "message.member", payload: [
+                "member_id": .string("finance"), "text": .string("Budget noted"),
+                "discussion_event_id": .string(secondID), "thread_id": .string(thread)
+            ]),
+            .fixture(roomID: room.id, sequence: 6, eventID: "settled-2", kind: "room.activity", payload: [
+                "status": .string("settled"), "discussion_event_id": .string(secondID), "thread_id": .string(thread)
+            ]),
+        ]]
+        try await first.value
+
+        let settled = try #require(store.room(id: room.id))
+        #expect(!settled.isRunning)
+        #expect(settled.nativeFollowUps.isEmpty)
+        #expect(settled.nativePendingEventID == nil)
+        #expect(settled.visibleEvents.filter { $0.kind == .human }.map(\.text) == [
+            "@everyone plan the trip", "@finance keep it under budget"
+        ])
+        #expect(settled.visibleEvents.contains { $0.text == "Budget noted" })
+        #expect(settled.memberFailures.isEmpty)
+        #expect(client.stopped.isEmpty)
+    }
+
+    /// A follow-up whose answer was lost keeps its identity: sending the same
+    /// text again reuses it, so Hermes never sees a second human message.
+    @Test func lostFollowUpReceiptRetriesWithTheSameClientEventID() async throws {
+        let room = BotModeRoom.fixture(id: "native-follow-up-retry", memberIDs: ["finance", "research"])
+        let client = NativeBotModeTestClient(capabilities: .fixture())
+        let store = BotModeRoomStore(client: BotModeFixtureClient(), rooms: [room], nativeClient: client)
+        let first = Task { @MainActor in try await store.send(text: "@everyone start", roomID: room.id) }
+        for _ in 0..<200 where store.room(id: room.id)?.nativePendingDiscussionEventID == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        client.acceptedResponseLostRemaining = 1
+        await #expect(throws: NativeBotModeTestError.transport) {
+            try await store.send(text: "And this", roomID: room.id)
+        }
+        let pending = try #require(store.room(id: room.id)?.nativeFollowUps.first)
+        #expect(pending.discussionEventID == nil)
+        try await store.send(text: "And this", roomID: room.id)
+
+        #expect(client.sentEventIDs.count == 3)
+        #expect(client.sentEventIDs[1] == pending.eventID)
+        #expect(client.sentEventIDs[2] == pending.eventID)
+        #expect(store.room(id: room.id)?.nativeFollowUps.count == 1)
+        #expect(store.room(id: room.id)?.nativeFollowUps.first?.discussionEventID == "server-\(pending.eventID)")
+        try await store.stopNativeRoom(roomID: room.id, cancelID: "test-stop")
+        _ = try? await first.value
+    }
+
+    /// Hermes drives only a thread's newest message. When the answer to a
+    /// message sent mid-turn was lost, the room still finishes: the receipt
+    /// is recovered under the same key and its discussion settles the turn.
+    @Test func lostFollowUpReceiptIsRecoveredSoTheRoomStillFinishes() async throws {
+        let room = BotModeRoom.fixture(id: "native-follow-up-lost", memberIDs: ["finance", "research"])
+        let client = NativeBotModeTestClient(capabilities: .fixture())
+        let store = BotModeRoomStore(client: BotModeFixtureClient(), rooms: [room], nativeClient: client)
+        let thread = HermesBotModeWireCodec.mainThreadID(roomID: room.id)
+        let first = Task { @MainActor in try await store.send(text: "@everyone start", roomID: room.id) }
+        for _ in 0..<200 where store.room(id: room.id)?.nativePendingDiscussionEventID == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        client.acceptedResponseLostRemaining = 1
+        await #expect(throws: NativeBotModeTestError.transport) {
+            try await store.send(text: "Actually, stop and summarize", roomID: room.id)
+        }
+        let lost = try #require(store.room(id: room.id)?.nativeFollowUps.first)
+        let secondID = "server-\(lost.eventID)"
+        client.logPages = [[
+            .fixture(roomID: room.id, sequence: 1, eventID: secondID, kind: "message.user", payload: [
+                "text": .string("Actually, stop and summarize"), "thread_id": .string(thread)
+            ]),
+            .fixture(roomID: room.id, sequence: 2, eventID: "settled-2", kind: "room.activity", payload: [
+                "status": .string("settled"), "discussion_event_id": .string(secondID), "thread_id": .string(thread)
+            ]),
+        ]]
+        try await first.value
+
+        #expect(client.sentEventIDs.filter { $0 == lost.eventID }.count == 2)
+        #expect(client.sentEventIDs.count == 3)
+        let settled = try #require(store.room(id: room.id))
+        #expect(!settled.isRunning)
+        #expect(settled.nativeFollowUps.isEmpty)
+        #expect(settled.nativePendingEventID == nil)
+    }
+
+    /// While a message sent mid-turn is still being worked on, the next
+    /// message is another follow-up, not a fresh turn that would leave the
+    /// earlier one waiting forever.
+    @Test func messageAfterTheTurnEndsButBeforeFollowUpsSettleIsAFollowUp() async throws {
+        let source = BotModeRoom.fixture(id: "native-follow-up-tail", memberIDs: ["finance", "research"])
+        let thread = HermesBotModeWireCodec.mainThreadID(roomID: source.id)
+        // As after a relaunch: the turn's owner is gone, its follow-up isn't settled.
+        let room = try BotModeRoom(
+            id: source.id,
+            members: source.members,
+            nativeRoomID: source.id,
+            nativeAuthorityGatewayID: "gateway",
+            nativeAuthorityEpoch: 1,
+            nativeFollowUps: [HermesBotModeFollowUp(
+                eventID: "bot-user-earlier", threadID: thread, text: "One more thing",
+                senderSnapshot: nil, discussionEventID: "server-bot-user-earlier"
+            )]
+        )
+        let client = NativeBotModeTestClient(capabilities: .fixture())
+        let store = BotModeRoomStore(client: BotModeFixtureClient(), rooms: [room], nativeClient: client)
+        #expect(store.room(id: room.id)?.isRunning == false)
+        #expect(store.room(id: room.id)?.isNativeWorking == true)
+
+        try await store.send(text: "And another", roomID: room.id)
+
+        let sent = try #require(store.room(id: room.id))
+        #expect(sent.nativeFollowUps.map(\.text) == ["One more thing", "And another"])
+        #expect(sent.nativePendingEventID == nil)
+        #expect(client.sentPayloads.map(\.text) == ["And another"])
+        try await store.stopNativeRoom(roomID: room.id, cancelID: "test-stop")
+        #expect(store.room(id: room.id)?.isNativeWorking == false)
+    }
+
     @Test func nativeStateSnapshotDoesNotSkipUncachedLogHistory() async throws {
         let source = BotModeRoom.fixture(id: "bot-native-replay", memberIDs: ["finance", "research"])
         let room = try BotModeRoom(

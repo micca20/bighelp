@@ -37,7 +37,8 @@ struct FleetHostFilter: View {
             HStack(spacing: BighelpTokens.space8) {
                 chip("All hosts", isOn: selection == nil, id: "fleet.filter.all") { selection = nil }
                 ForEach(fleet.hosts) { host in
-                    chip(host.name, isOn: selection == host.id, status: fleet.statuses[host.id],
+                    chip(host.name, isOn: selection == host.id,
+                         status: HostConnectionStatus(fleet: fleet.statuses[host.id], hostName: host.name),
                          id: "fleet.filter.\(host.name)") { selection = host.id }
                 }
             }
@@ -45,14 +46,13 @@ struct FleetHostFilter: View {
         }
     }
 
-    private func chip(_ title: String, isOn: Bool, status: FleetHostStatus? = nil, id: String,
+    /// A host still loading or out of reach shows it; a reachable one stays plain.
+    private func chip(_ title: String, isOn: Bool, status: HostConnectionStatus? = nil, id: String,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                if status == .loading {
-                    ProgressView().controlSize(.mini)
-                } else if case .unreachable = status {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.bighelp(.caption2))
+                if let status, status.phase != .connected {
+                    BighelpConnectionIndicator(phase: status.phase, tint: isOn ? theme.actionForeground : nil)
                 }
                 Text(title).lineLimit(1)
             }
@@ -137,7 +137,18 @@ struct FleetHomeView: View {
     var onNewChat: (() -> Void)? = nil
     /// Pins or unpins an agent on its own host.
     var onSetPinned: ((FleetAgent, Bool) -> Void)? = nil
+    /// Opens, renames or deletes a group chat. None hides group chats' actions.
+    var onGroupAction: ((FleetGroup, FleetGroupAction) -> Void)? = nil
+    /// Starts a new group chat.
+    var onNewGroup: (() -> Void)? = nil
+    /// The agent's routines: add, pause, resume or delete them there.
+    var onOpenRoutines: ((FleetAgent) -> Void)? = nil
     @State private var hostFilter: UUID?
+    /// Hidden agents show, dimmed, so they can be shown again. For this visit only.
+    @State private var showsHidden = false
+    @State private var namePrompt: FleetNamePrompt?
+    @State private var deletingGroup: FleetGroup?
+    @State private var deletedSection: FleetSectionDeletion?
     /// A pinned agent held and let go: its actions.
     @State private var managing: FleetAgent?
     @State private var search = ""
@@ -155,30 +166,29 @@ struct FleetHomeView: View {
                         .listRowSeparator(.hidden)
                 }
             }
-            if fleet.showsHostNames {
+            if fleet.showsHostNames || onGroupAction != nil {
                 Section {
-                    FleetHostFilter(fleet: fleet, selection: $hostFilter)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    HStack(spacing: 0) {
+                        if fleet.showsHostNames {
+                            FleetHostFilter(fleet: fleet, selection: $hostFilter)
+                        } else {
+                            Spacer()
+                        }
+                        if onGroupAction != nil { organizeMenu }
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+            ForEach(blocks(listed)) { block in
+                Section {
+                    ForEach(block.items) { item in itemRow(item) }
+                } header: {
+                    blockHeader(block)
                 }
             }
             Section {
-                ForEach(listed) { agent in
-                    Button { onOpen(agent) } label: { FleetAgentRow(agent: agent, fleet: fleet) }
-                        .buttonStyle(.plain)
-                        .listRowBackground(Color.clear)
-                        .contextMenu {
-                            if let onSetPinned {
-                                Button(agent.isPinned ? "Unpin" : "Pin",
-                                       systemImage: agent.isPinned ? "pin.slash" : "pin") {
-                                    onSetPinned(agent, !agent.isPinned)
-                                }
-                                .accessibilityIdentifier("fleet.agent.\(agent.isPinned ? "unpin" : "pin")")
-                            }
-                        }
-                        .accessibilityIdentifier("fleet.agent.\(agent.name)")
-                }
                 FleetHostNotes(fleet: fleet, hostFilter: hostFilter)
             }
         }
@@ -199,7 +209,7 @@ struct FleetHomeView: View {
             await fleet.waitForReads()
         }
         .overlay {
-            if fleet.agents().isEmpty, !fleet.hosts.contains(where: { fleet.isReading($0.id) }) {
+            if fleet.agents().isEmpty, fleet.groups().isEmpty, !fleet.hosts.contains(where: { fleet.isReading($0.id) }) {
                 ContentUnavailableView("No agents yet", systemImage: "person.2",
                                        description: Text("The agents on your hosts show up here."))
             }
@@ -216,6 +226,8 @@ struct FleetHomeView: View {
                 Button("Cancel", role: .cancel) {}
             }
         }
+        .modifier(FleetListPrompts(fleet: fleet, namePrompt: $namePrompt, deletingGroup: $deletingGroup,
+                                   deletedSection: $deletedSection, onGroupAction: onGroupAction))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fleet.home")
     }
@@ -223,18 +235,162 @@ struct FleetHomeView: View {
     /// Pinned agents up top, like favorites, when nothing is filtered.
     private var pinnedAgents: [FleetAgent] {
         guard search.isEmpty, hostFilter == nil else { return [] }
-        return fleet.pinnedAgents()
+        return fleet.pinnedAgents().filter { showsHidden || !$0.isHidden }
     }
 
-    private func listedAgents(excluding pinned: Set<String>) -> [FleetAgent] {
+    private func listedAgents(excluding pinned: Set<String>) -> [FleetListItem] {
         let query = search.trimmingCharacters(in: .whitespaces)
-        return fleet.agents(on: hostFilter).filter { agent in
-            guard !pinned.contains(agent.id) else { return false }
+        let agents = fleet.agents(on: hostFilter).filter { agent in
+            guard !pinned.contains(agent.id), showsHidden || !agent.isHidden else { return false }
             guard !query.isEmpty else { return true }
             return agent.name.localizedCaseInsensitiveContains(query)
                 || agent.role.localizedCaseInsensitiveContains(query)
                 || fleet.hostName(agent.hostID).localizedCaseInsensitiveContains(query)
         }
+        guard onGroupAction != nil else { return agents.map(FleetListItem.agent) }
+        let groups = fleet.groups(on: hostFilter).filter { group in
+            query.isEmpty || group.name.localizedCaseInsensitiveContains(query)
+                || group.memberNames.contains { $0.localizedCaseInsensitiveContains(query) }
+                || fleet.hostName(group.hostID).localizedCaseInsensitiveContains(query)
+        }
+        return agents.map(FleetListItem.agent) + groups.map(FleetListItem.group)
+    }
+
+    /// Sections in the person's order, then everything not in one. While
+    /// searching, empty sections step aside.
+    private func blocks(_ items: [FleetListItem]) -> [FleetSectionBlock] {
+        let all = FleetSectioning.blocks(items, sections: fleet.sections, groupSections: fleet.groupSectionIDs)
+        guard search.isEmpty else { return all.filter { !$0.items.isEmpty } }
+        return all
+    }
+
+    @ViewBuilder
+    private func blockHeader(_ block: FleetSectionBlock) -> some View {
+        if let section = block.section {
+            let index = fleet.sections.firstIndex(of: section) ?? 0
+            FleetSectionHeader(title: section.name, count: block.items.count,
+                               onRename: { namePrompt = .renameSection(section) },
+                               onDelete: { deletedSection = fleet.deleteSection(section.id) },
+                               onMoveUp: index > 0 ? { fleet.moveSection(section.id, by: -1) } : nil,
+                               onMoveDown: index < fleet.sections.count - 1 ? { fleet.moveSection(section.id, by: 1) } : nil)
+        } else if !fleet.sections.isEmpty, !block.items.isEmpty {
+            FleetSectionHeader(title: "Not in a section", count: block.items.count)
+        }
+    }
+
+    /// New section, new group chat, and showing hidden agents.
+    private var organizeMenu: some View {
+        Menu {
+            Button("New section", systemImage: "folder.badge.plus") { namePrompt = .newSection(filing: nil) }
+                .accessibilityIdentifier("fleet.organize.new-section")
+            if let onNewGroup {
+                Button("New group chat", systemImage: "person.3", action: onNewGroup)
+                    .accessibilityIdentifier("fleet.organize.new-group")
+            }
+            let hidden = fleet.hiddenAgentCount
+            if hidden > 0 || showsHidden {
+                Toggle(isOn: $showsHidden) {
+                    Label("Show hidden agents (\(hidden))", systemImage: "eye")
+                }
+                .accessibilityIdentifier("fleet.organize.show-hidden")
+            }
+        } label: {
+            Image(systemName: "folder.badge.gearshape")
+                .font(.bighelp(.body).weight(.semibold))
+                .frame(width: BighelpTokens.hitTarget, height: BighelpTokens.hitTarget)
+                .contentShape(.rect)
+        }
+        .foregroundStyle(theme.action)
+        .padding(.trailing, BighelpTokens.space8)
+        .accessibilityLabel("Organize")
+        .accessibilityHint("New section, new group chat, hidden agents.")
+        .accessibilityIdentifier("fleet.organize")
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: FleetListItem) -> some View {
+        switch item {
+        case .agent(let agent): agentRow(agent)
+        case .group(let group): groupRow(group)
+        }
+    }
+
+    private func agentRow(_ agent: FleetAgent) -> some View {
+        Button { onOpen(agent) } label: {
+            FleetAgentRow(agent: agent, fleet: fleet)
+                .opacity(agent.isHidden ? 0.45 : 1)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .contextMenu { agentMenu(agent) }
+        .accessibilityValue(agent.isHidden ? "Hidden" : "")
+        .accessibilityIdentifier("fleet.agent.\(agent.name)")
+    }
+
+    @ViewBuilder
+    private func agentMenu(_ agent: FleetAgent) -> some View {
+        if let onSetPinned {
+            Button(agent.isPinned ? "Unpin" : "Pin", systemImage: agent.isPinned ? "pin.slash" : "pin") {
+                onSetPinned(agent, !agent.isPinned)
+            }
+            .accessibilityIdentifier("fleet.agent.\(agent.isPinned ? "unpin" : "pin")")
+        }
+        if let onOpenRoutines {
+            let count = fleet.tasks(on: agent.hostID).filter { $0.profileID == agent.profileID }.count
+            Button(count == 0 ? "Routines" : "Routines (\(count))", systemImage: "clock.arrow.circlepath") {
+                onOpenRoutines(agent)
+            }
+            .accessibilityIdentifier("fleet.agent.routines")
+        }
+        if onGroupAction != nil {
+            sectionMenu(current: fleet.section(of: agent), item: .agent(agent)) { id in
+                Task { try? await fleet.file(agent, in: id) }
+            }
+            Button(agent.isHidden ? "Show in list" : "Hide from list",
+                   systemImage: agent.isHidden ? "eye" : "eye.slash") {
+                Task { try? await fleet.setHidden(agent, !agent.isHidden) }
+            }
+            .accessibilityIdentifier("fleet.agent.\(agent.isHidden ? "unhide" : "hide")")
+        }
+    }
+
+    private func groupRow(_ group: FleetGroup) -> some View {
+        Button { onGroupAction?(group, .open) } label: { FleetGroupRow(group: group, fleet: fleet) }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.clear)
+            .contextMenu {
+                Button("Open chat", systemImage: "bubble.left.and.bubble.right") { onGroupAction?(group, .open) }
+                sectionMenu(current: fleet.section(of: group), item: .group(group)) { fleet.file(group, in: $0) }
+                if group.hostID == fleet.selectedHostID {
+                    Button("Rename", systemImage: "pencil") { namePrompt = .renameGroup(group) }
+                        .disabled(!group.canRename)
+                        .accessibilityIdentifier("fleet.group.rename")
+                    Button("Delete", systemImage: "trash", role: .destructive) { deletingGroup = group }
+                        .disabled(!group.canDelete)
+                        .accessibilityIdentifier("fleet.group.delete")
+                }
+            }
+            .accessibilityIdentifier("fleet.group.\(group.name)")
+    }
+
+    /// Move to a section, a new one, or out of the one it's in.
+    private func sectionMenu(current: FleetSection?, item: FleetListItem,
+                             file: @escaping (String?) -> Void) -> some View {
+        Menu {
+            ForEach(fleet.sections) { section in
+                Button(section.name, systemImage: section.id == current?.id ? "checkmark" : "folder") { file(section.id) }
+                    .disabled(section.id == current?.id)
+            }
+            Button("New section", systemImage: "folder.badge.plus") { namePrompt = .newSection(filing: item) }
+                .accessibilityIdentifier("fleet.move.new-section")
+            if current != nil {
+                Button("Remove from section", systemImage: "folder.badge.minus") { file(nil) }
+                    .accessibilityIdentifier("fleet.move.remove")
+            }
+        } label: {
+            Label("Move to section", systemImage: "folder")
+        }
+        .accessibilityIdentifier("fleet.move")
     }
 
     /// Big pictures with the name and role, simple like a contact grid. Touch
@@ -278,18 +434,17 @@ struct FleetConnectingView: View {
     @State private var hasTried = false
 
     var body: some View {
-        let host = fleet.selectedHostID.map(fleet.hostName) ?? "your host"
+        let status = HostConnectionStatus(fleetSwitchTo: fleet.selectedHostID.map(fleet.hostName) ?? "your host",
+                                          isConnecting: isConnecting, hasTried: hasTried)
         FleetHomeView(fleet: fleet, onOpen: onOpen)
             .onChange(of: isConnecting, initial: true) { _, connecting in if connecting { hasTried = true } }
             .onChange(of: fleet.selectedHostID) { _, _ in hasTried = isConnecting }
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: BighelpTokens.space8) {
-                    if isConnecting || !hasTried {
-                        ProgressView()
-                        Text("Connecting to \(host)…")
-                    } else {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                        Text("Couldn't connect to \(host).")
+                    BighelpConnectionIndicator(phase: status.phase)
+                    Text(status.label)
+                        .contentTransition(.opacity)
+                    if status.phase == .disconnected {
                         Button("Try again", action: retry)
                             .buttonStyle(.borderless)
                     }
@@ -314,31 +469,36 @@ struct FleetHostNotes: View {
 
     var body: some View {
         ForEach(fleet.hosts.filter { hostFilter == nil || $0.id == hostFilter }) { host in
-            switch fleet.statuses[host.id] {
-            case .unreachable(let message):
-                HStack(spacing: BighelpTokens.space8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.secondaryText)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(host.name).font(.bighelp(.subheadline).weight(.semibold)).foregroundStyle(theme.primaryText)
-                        Text(fleet.snapshots[host.id] == nil ? message : "\(message) Showing what it had last time.")
-                            .font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText)
+            if let status = HostConnectionStatus(fleet: fleet.statuses[host.id], hostName: host.name) {
+                switch status.phase {
+                case .disconnected:
+                    HStack(spacing: BighelpTokens.space8) {
+                        BighelpConnectionIndicator(phase: status.phase)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(status.label).font(.bighelp(.subheadline).weight(.semibold))
+                                .foregroundStyle(theme.primaryText)
+                            if let reason = status.detailText {
+                                Text(fleet.snapshots[host.id] == nil ? reason : "\(reason) Showing what it had last time.")
+                                    .font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText)
+                            }
+                        }
+                        Spacer(minLength: BighelpTokens.space8)
+                        Button("Try again") { fleet.refresh(force: true) }
+                            .font(.bighelp(.subheadline).weight(.semibold))
+                            .buttonStyle(.borderless)
                     }
-                    Spacer(minLength: BighelpTokens.space8)
-                    Button("Try again") { fleet.refresh(force: true) }
-                        .font(.bighelp(.subheadline).weight(.semibold))
-                        .buttonStyle(.borderless)
+                    .listRowBackground(Color.clear)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("fleet.host-note.\(host.name)")
+                case .connecting where fleet.snapshots[host.id] == nil:
+                    HStack(spacing: BighelpTokens.space8) {
+                        BighelpConnectionIndicator(phase: status.phase)
+                        Text(status.label).font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
+                    }
+                    .listRowBackground(Color.clear)
+                default:
+                    EmptyView()
                 }
-                .listRowBackground(Color.clear)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("fleet.host-note.\(host.name)")
-            case .loading where fleet.snapshots[host.id] == nil:
-                HStack(spacing: BighelpTokens.space8) {
-                    ProgressView()
-                    Text("Loading \(host.name)…").font(.bighelp(.subheadline)).foregroundStyle(theme.secondaryText)
-                }
-                .listRowBackground(Color.clear)
-            default:
-                EmptyView()
             }
         }
     }

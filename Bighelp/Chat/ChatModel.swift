@@ -143,6 +143,9 @@ final class ChatModel {
     var nativeAffectionReaction: NativeAffectionReactionSignal?
 
     @ObservationIgnored var defersTranscriptPresentation = false
+    /// Messages whose files reached this device, by the saved text that named
+    /// them, so a history reload of that same text keeps the files on screen.
+    @ObservationIgnored var deliveredFileSources: [String: String] = [:]
     @ObservationIgnored var hasDeferredTranscriptChanges = false
 
     var transcriptProjectionWorkCount = 0
@@ -371,8 +374,11 @@ final class ChatModel {
         }
         guard !isAwaitingAuthoritativeSessionAllocation else { return false }
         guard !isBotMode || botModeExecutionEnabled else { return false }
-        guard botModeRoom?.isRunning != true else { return false }
-        guard botModeRoom?.nativePendingEventID == nil, !hasNativeBotModeRetryActions else { return false }
+        let sendsWhileRoomWorks = acceptsBotModeFollowUp
+        if !sendsWhileRoomWorks {
+            guard botModeRoom?.isRunning != true else { return false }
+            guard botModeRoom?.nativePendingEventID == nil, !hasNativeBotModeRetryActions else { return false }
+        }
         guard botModeRoom?.nativeRetryJournal == nil, botModeRoom?.nativePendingCancelID == nil else { return false }
         guard !richDraftRecovery.hasUnexportedChanges else { return false }
         let hasText = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -387,7 +393,7 @@ final class ChatModel {
               !hasStalePDFPageSelections,
               attachmentsSupported, hasText || hasSendableAttachments
         else { return false }
-        return !isSending || isMidSessionTurnLive
+        return !isSending || isMidSessionTurnLive || sendsWhileRoomWorks
     }
 
     /// Why Send is unavailable, in plain words, for VoiceOver and diagnostics.
@@ -435,6 +441,7 @@ final class ChatModel {
 
     var canStop: Bool {
         !referenceOwnerRetired && (isSending || botModeRoom?.isRunning == true || botModeRoom?.nativePendingEventID != nil
+            || botModeRoom?.nativeFollowUps.isEmpty == false
             || botModeRoom?.nativeRetryJournal != nil || botModeRoom?.nativePendingCancelID != nil)
             && !isStopping
             && !hasExclusiveMidSessionSubmission
@@ -452,7 +459,8 @@ final class ChatModel {
         isStopping
             || isPDFDraftSendInFlight
             || hasExclusiveMidSessionSubmission
-            || (isSending && !supportsMidSessionSending)
+            // A group chat keeps taking messages while its agents work.
+            || (isSending && !supportsMidSessionSending && !isBotMode)
     }
 
     var isComposerAttachmentInputDisabled: Bool {
@@ -685,7 +693,7 @@ final class ChatModel {
         sourceSession = session
         if let snapshot = session.sessionTodos { reconcileTodos(snapshot) }
         companionHistoryRevision &+= 1
-        items = session.items
+        items = keepingDeliveredFiles(session.items)
         rebuildItemIndexes()
         activityLedger = ChatActivityLedger(sessionID: conversationID, events: session.activityEvents)
         if sessionTodos == nil, taskDrawer == nil {

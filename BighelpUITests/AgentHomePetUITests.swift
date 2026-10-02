@@ -28,6 +28,41 @@ final class AgentHomePetUITests: BighelpUITestCase {
     }
 }
 
+/// A petdex pet on an agent plays its moves at the top of the chat.
+final class AgentPetdexAnimationUITests: BighelpUITestCase {
+    @MainActor
+    func testPetdexPetAnimatesInTheChatHeader() throws {
+        // Resting (no badge, so only the pet can change), then busy with code.
+        for (appearance, activity) in [("light", nil), ("dark", nil), ("light", "coding")] as [(String, String?)] {
+            let app = makeApp()
+            app.launchArguments = ["-use-demo-fixtures", "-disable-demo-delays", "-loopdy.home.opens-chat", "YES",
+                                   "-loopdy.settings.nerd-mode", "NO", "-loopdy.demo.appearance", appearance,
+                                   "-test-agent-pet", "finance:pip"]
+                + (activity.map { ["-test-island-activity", $0] } ?? [])
+            app.launch()
+            let avatar = app.buttons["agent.hero.avatar"]
+            XCTAssertTrue(avatar.waitForExistence(timeout: 25))
+            sleep(2)
+            var frames: [Data] = []
+            for index in 0..<6 {
+                let shot = avatar.screenshot()
+                frames.append(shot.pngRepresentation)
+                let attachment = XCTAttachment(screenshot: shot)
+                attachment.name = "pet-\(appearance)-\(activity ?? "idle")-\(index)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                usleep(190_000)
+            }
+            if activity == nil { XCTAssertGreaterThan(Set(frames).count, 1, "The resting pet still moves") }
+            let screen = XCTAttachment(screenshot: app.screenshot())
+            screen.name = "pet-\(appearance)-\(activity ?? "idle")-chat"
+            screen.lifetime = .keepAlways
+            add(screen)
+            app.terminate()
+        }
+    }
+}
+
 /// Opt-in: each kind of work has its own little scene in the Dynamic Island.
 final class AgentIslandUITests: BighelpUITestCase {
     /// The island starts as the small pill with the work acting out inside

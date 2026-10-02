@@ -41,6 +41,62 @@ final class BighelpLaunchTests: BighelpUITestCase {
         }
     }
 
+    /// Turn off notifications asks first, shows plain progress, then a plain
+    /// result. Demo mode leaves Studio Mac out of reach to show that message.
+    /// Set BIGHELP_TURN_OFF_EVIDENCE (TEST_RUNNER_…) to keep screenshots.
+    @MainActor
+    func testTurnOffNotificationsAsksFirstAndReportsPlainly() throws {
+        for appearance in ["light", "dark"] {
+            try turnOffNotifications(appearance: appearance)
+        }
+    }
+
+    @MainActor
+    private func turnOffNotifications(appearance: String) throws {
+        let app = makeApp()
+        app.launchArguments = ["-use-demo-fixtures", "-preview-ui-v3", "-demo-turn-off-offline-host",
+                               "-loopdy.demo.appearance", appearance]
+        app.launch()
+        openSettings(in: app)
+        let notifications = settingsRow("settings.menu.notifications", in: app)
+        XCTAssertTrue(notifications.waitForExistence(timeout: 5))
+        notifications.tap()
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
+        let turnOff = app.buttons["settings.notifications.turn-off"]
+        for _ in 0..<6 where !(turnOff.exists && turnOff.isHittable) { app.swipeUp() }
+        XCTAssertTrue(turnOff.isHittable, "Turn Off Notifications is on the Notifications screen")
+        saveTurnOff("1-button-\(appearance)")
+
+        turnOff.tap()
+        let confirm = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@", "Turn Off Notifications", "settings.notifications.turn-off"
+        )).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "It asks before deleting anything")
+        saveTurnOff("2-confirm-\(appearance)")
+        confirm.tap()
+
+        let progress = app.descendants(matching: .any)["settings.notifications.turn-off.progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 5), "Plain progress while it works")
+        saveTurnOff("3-progress-\(appearance)")
+
+        let result = app.descendants(matching: .any)["settings.notifications.turn-off.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertTrue(result.label.hasPrefix("Notifications are off."), result.label)
+        XCTAssertTrue(result.label.contains("Studio Mac"), "An unreachable computer is named: \(result.label)")
+        XCTAssertFalse(turnOff.exists, "Nothing left to turn off")
+        saveTurnOff("4-result-\(appearance)")
+        app.terminate()
+    }
+
+    @MainActor
+    private func saveTurnOff(_ name: String) {
+        guard ProcessInfo.processInfo.environment["BIGHELP_TURN_OFF_EVIDENCE"] != nil else { return }
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "turn-off-notifications-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     @MainActor
     func testChatsHeaderClearsMenuAndOpensDrawerOnFirstTap() throws {
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -541,7 +597,8 @@ final class BighelpLaunchTests: BighelpUITestCase {
         app.launch()
         let thinking = app.buttons["chat.activity.thinking-ui:1:reasoning:0"]
         XCTAssertTrue(thinking.waitForExistence(timeout: 5))
-        XCTAssertTrue(thinking.label.contains("Thinking"))
+        // "Thinking" while it runs; "Thought process" once a tool starts.
+        XCTAssertTrue(thinking.label.contains("Thinking") || thinking.label.hasPrefix("Thought"), thinking.label)
         XCTAssertEqual(thinking.value as? String, "Expanded")
         let content = app.staticTexts["Visible reasoning token"]
         XCTAssertTrue(content.waitForExistence(timeout: 3), "Native reasoning text must be visible before the turn finishes.")
@@ -685,7 +742,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
             "chat.activity.reasoning-fixture-event"
         ]
         XCTAssertTrue(completed.waitForExistence(timeout: 5))
-        XCTAssertEqual(completed.label, "Thinking. Done")
+        XCTAssertEqual(completed.label, "Thought process")
         XCTAssertEqual(completed.value as? String, "Collapsed")
         completed.tap()
         XCTAssertTrue(app.staticTexts["The reasoning phase finished."].waitForExistence(timeout: 3))
@@ -2911,7 +2968,7 @@ final class BighelpLaunchTests: BighelpUITestCase {
         }
 
         let workTrailToggle = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Work trail.")
+            NSPredicate(format: "identifier BEGINSWITH %@", "chat.work-trail.")
         ).firstMatch
         guard workTrailToggle.waitForExistence(timeout: 3) else {
             XCTFail("The streamed work trail was not expandable.")

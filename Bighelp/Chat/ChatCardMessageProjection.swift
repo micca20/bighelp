@@ -9,8 +9,9 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         /// A pipe table, drawn as a grid; the text around it stays selectable text.
         case table(MarkdownTable)
         case rule
-        /// A card whose payload is still streaming in (#18): a loader, never its code.
-        case pendingCard
+        /// A card whose payload is still streaming in (#18): a loader, never its
+        /// code, shaped like the kind the partial card already names.
+        case pendingCard(ChatPendingCardKind)
         /// A finished message's card that never closed or isn't valid.
         case unavailableCard
     }
@@ -120,7 +121,9 @@ struct ChatCardMessageProjection: Equatable, Sendable {
             }
             guard let closingIndex else {
                 flushMarkdown()
-                projected.append(isStreaming ? .pendingCard : .unavailableCard)
+                var partial = ""
+                for line in lines[(index + 1)...] where partial.utf8.count < 2_048 { partial += line + "\n" }
+                projected.append(isStreaming ? .pendingCard(ChatPendingCardKind(partialCard: partial)) : .unavailableCard)
                 index = lines.count
                 continue
             }
@@ -142,7 +145,7 @@ struct ChatCardMessageProjection: Equatable, Sendable {
         }
 
         flushMarkdown()
-        if cardIsComing { projected.append(.pendingCard) }
+        if cardIsComing { projected.append(.pendingCard(.generic)) }
         segments = projected.isEmpty ? Self.segments(for: MarkdownDocument(lines.joined(separator: "\n"))) : projected
         cardIDs = identities
     }

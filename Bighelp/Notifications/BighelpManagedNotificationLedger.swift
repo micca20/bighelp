@@ -168,6 +168,12 @@ final class BighelpManagedNotificationLedger {
     /// Call only after the account eraser has removed storageRoot. This prevents
     /// the retained service from writing an old account's cached rows back later.
     func didEraseAccountData() { snapshot = Snapshot() }
+    /// Turn off notifications: forget every enrollment and Live Activity owner.
+    func erase() throws {
+        let file = root.appending(path: "owners-v1.json")
+        if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+        snapshot = Snapshot()
+    }
     static func key(scope: String, host: String, profile: String) -> String {
         ManagedNotificationValidation.digest([scope, host, profile].joined(separator: "\0"))
     }
@@ -308,6 +314,12 @@ final class BighelpManagedActivityKeychain {
         let status = SecItemDelete(query(id) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw DirectHermesError.secureStorageUnavailable }
         guard try load(id) == nil else { throw DirectHermesError.secureStorageUnavailable }
+    }
+    /// Every saved Live Activity registration, for Turn off notifications.
+    func removeAll() throws {
+        let status = SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecAttrSynchronizable as String: kCFBooleanFalse as Any] as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw DirectHermesError.secureStorageUnavailable }
     }
     private func query(_ id: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
