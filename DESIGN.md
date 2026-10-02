@@ -219,6 +219,10 @@ iPhone, iPad and Vision Pro stay exactly as they are.
   rows, menus, toolbar items and views with a `.contextMenu` are UIKit on the Mac and don't report hover; they
   rely on their click area.
 - **Keys.** ⌘N new chat, ⌘, Settings, ⌃⌘S sidebar, ⌘1–⌘5 the bottom bar's tabs (`BighelpMenuCommands`).
+- **Sidebar.** A sidebar button sits in the title bar right after the window controls, as in Mail and Finder, so
+  the sidebar opens and closes from every screen, including pages with no ☰. Drag the line between the sidebar
+  and the page to make it narrower or wider (the page keeps at least 380 points); the width is remembered, and a
+  double-click on the line goes back to the usual width.
 
 ## Protected behavior
 

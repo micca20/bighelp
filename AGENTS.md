@@ -234,8 +234,11 @@ sections can crash only on devices ("Thread stack size exceeded").
 - Sheets open as panels at their content's minimum size and ignore detents: put `.bighelpSheetSize(.compact |
   .standard | .large)` on every sheet's content. Prefer popovers for pickers anchored to a button. Menus draw only
   their label (`BighelpMacMenuStyle`). Long-press-only actions need a `.contextMenu` (right-click) on the Mac.
-- ☰ is the window's sidebar (`BighelpSideMenu`, shared with Vision Pro): it stays open while you pick, ☰ and ⌃⌘S
-  toggle it, and the Mac remembers it.
+- ☰ is the window's sidebar (`BighelpSideMenu`, shared with Vision Pro): it stays open while you pick, and the Mac
+  remembers it. The title bar's sidebar button (`MacTitlebarItems`, on every screen), ☰ and ⌃⌘S toggle it. Drag
+  its divider to resize it (remembered; double-click for the default width).
+- Title bar items are an `NSToolbar` on `scene.titlebar`. An `NSToolbarItem` made from a `UIBarButtonItem` fires
+  only the button's target/action; a `primaryAction` closure never runs.
 - Keys: Return sends (Settings › Chat › Return sends), Shift-Return adds a line, Command-Return shows the send
   choices while the agent works. ⌘N starts a chat and ⌘, opens Settings (`BighelpMenuCommands`).
 - `BighelpMac` (`BighelpMac/`) is a separate, fixture-only desktop prototype. It isn't the shipping Mac app.
@@ -248,7 +251,8 @@ sections can crash only on devices ("Thread stack size exceeded").
   click on an inactive window only activates it. Use a desktop-scope session and click twice. Sheets are separate
   windows. `.dynamicTypeSize` has no effect on the Mac. A sheet's controls appear in the main window's accessibility
   tree. A Catalyst button's accessibility frame shows its click area (unless a `.contentShape` sits outside the
-  Button). Hover needs `move_cursor` with `"scope":"desktop"` while bighelp is in front.
+  Button). Hover needs `move_cursor` with `"scope":"desktop"` while bighelp is in front. Title bar items take only
+  desktop-scope clicks. To see a drag's in-between state, run a slow `drag` in the background and capture mid-way.
 
 ### Vision Pro
 

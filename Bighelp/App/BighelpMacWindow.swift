@@ -1,15 +1,19 @@
+import Observation
 import SwiftUI
 
 /// The Mac window (Mac Catalyst, "Optimize for Mac"): no title text over the
-/// app's own header, a size floor, a roomy first size, and icon menus that look
-/// like the buttons beside them instead of Mac pull-down buttons.
+/// app's own header, a sidebar button in the title bar on every screen, a size
+/// floor, a roomy first size, and icon menus that look like the buttons beside
+/// them instead of Mac pull-down buttons.
 struct BighelpMacWindowStyle: ViewModifier {
+    let sideMenu: BighelpSideMenu
+
     func body(content: Content) -> some View {
         #if targetEnvironment(macCatalyst)
         content
             .menuStyle(BighelpMacMenuStyle())
             .menuIndicator(.hidden)
-            .background(MacWindowConfigurator().allowsHitTesting(false).accessibilityHidden(true))
+            .background(MacWindowConfigurator(sideMenu: sideMenu).allowsHitTesting(false).accessibilityHidden(true))
         #else
         content
         #endif
@@ -41,17 +45,31 @@ private struct BighelpMacMenuStyle: MenuStyle {
 }
 
 private struct MacWindowConfigurator: UIViewRepresentable {
-    func makeUIView(context: Context) -> WindowConfiguringView { WindowConfiguringView() }
+    let sideMenu: BighelpSideMenu
+
+    func makeUIView(context: Context) -> WindowConfiguringView { WindowConfiguringView(sideMenu: sideMenu) }
     func updateUIView(_ view: WindowConfiguringView, context: Context) {}
 
     final class WindowConfiguringView: UIView {
         private static let sizedKey = "bighelp.mac.window-first-size"
+        private let titlebarItems: MacTitlebarItems
+
+        init(sideMenu: BighelpSideMenu) {
+            titlebarItems = MacTitlebarItems(sideMenu: sideMenu)
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
             isUserInteractionEnabled = false
             guard let scene = window?.windowScene else { return }
             scene.titlebar?.titleVisibility = .hidden
+            if scene.titlebar?.toolbar == nil {
+                scene.titlebar?.toolbar = titlebarItems.toolbar
+                scene.titlebar?.toolbarStyle = .unifiedCompact
+            }
             scene.sizeRestrictions?.minimumSize = CGSize(width: 480, height: 600)
             // macOS remembers the window's frame after this; only the very first
             // launch opens at a comfortable size instead of the 1024×768 default.
@@ -67,6 +85,58 @@ private struct MacWindowConfigurator: UIViewRepresentable {
                 UserDefaults.standard.set(true, forKey: Self.sizedKey)
             }
         }
+    }
+}
+
+/// The title bar's sidebar button, right after the window controls as in Mail
+/// and Finder, so the sidebar opens and closes from every screen (⌃⌘S too).
+/// It's greyed out while there's no sidebar (first-run setup).
+@MainActor
+private final class MacTitlebarItems: NSObject, NSToolbarDelegate {
+    private static let sidebar = NSToolbarItem.Identifier("bighelp.sidebar")
+    let toolbar = NSToolbar(identifier: "bighelp.window")
+    private let sideMenu: BighelpSideMenu
+    private weak var sidebarItem: NSToolbarItem?
+    // The title bar honours a bar button's target and action, not a primaryAction.
+    private lazy var sidebarButton = UIBarButtonItem(
+        image: UIImage(systemName: "sidebar.leading"), style: .plain, target: self, action: #selector(toggleSidebar))
+
+    init(sideMenu: BighelpSideMenu) {
+        self.sideMenu = sideMenu
+        super.init()
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        followAvailability()
+    }
+
+    @objc private func toggleSidebar() {
+        sideMenu.requestToggle()
+    }
+
+    private func followAvailability() {
+        withObservationTracking {
+            // The bar button and the title bar item each keep their own state.
+            sidebarButton.isEnabled = sideMenu.canToggle
+            sidebarItem?.isEnabled = sideMenu.canToggle
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.followAvailability() }
+        }
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.sidebar] }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.sidebar] }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard itemIdentifier == Self.sidebar else { return nil }
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier, barButtonItem: sidebarButton)
+        item.label = "Sidebar"
+        item.toolTip = "Show or hide the sidebar (⌃⌘S)"
+        item.isEnabled = sideMenu.canToggle
+        sidebarItem = item
+        return item
     }
 }
 #endif

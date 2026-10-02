@@ -457,7 +457,7 @@ struct BighelpApp: App {
             // Lavender (asset AccentColor, light/dark) for every control that
             // doesn't set its own tint, including switches that default to green.
             .tint(Color.accentColor)
-            .modifier(BighelpMacWindowStyle())
+            .modifier(BighelpMacWindowStyle(sideMenu: sideMenu))
             #endif
             .environment(\.companionStore, companion)
             .environment(\.providerLogoStore, providerLogoStore)
