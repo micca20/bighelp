@@ -92,7 +92,9 @@ lead widget: the agent's face ringed while it works with a badge for the work, i
 New chat, and Chat/Feed/Ideas/Goals links (`loopdy://agent/<tab>`); it also comes in Lock Screen sizes. Active
 Chats, Scheduled Tasks, New Chat and Recent Chats share the same look. Tinted and Lock Screen modes fall back to
 system styles. **Kanban** shows cards from the boards, filtered by board, status and agent and grouped by status,
-agent or board; tapping a card opens it in the app. On Vision Pro the same widgets sit on a wall or table as glass,
+agent or board; tapping a card opens it in the app. **Feed**, **Ideas** and **Goals** each show one board, for an
+agent picked in the widget or Auto (the agent picked in the app). The app reads only the boards widgets are set to
+(`BighelpWidgetBoardLoader`, a few agents at most) and the widget says so until it has. On Vision Pro the same widgets sit on a wall or table as glass,
 without the Lock Screen sizes.
 
 Apps: **Artifacts** lists what the agent made or changed lately, newest first, from one plugin request
@@ -117,6 +119,11 @@ car screen says Connecting, Listening, Thinking or Speaking, with End and Mute; 
 
 Shortcuts run with bighelp closed, in the background or open. The app closes its host connection in the
 background, so a Shortcut first proves the host answers (the agent list) and reconnects once if not.
+In the Shortcuts app bighelp's actions sit under **Chat** (Ask an agent, New chat, Continue last chat, Open group
+chat, Start voice chat), **Automation** (Run scheduled task now, Add Kanban task, Get computer status, Get Feed,
+Ideas or Goals), **Navigation** (Open in bighelp) and **Agents** (Switch agent, Open agent). Ten of them are
+ready-made Shortcuts, the most an app may have, with a tile per agent, scheduled task, group chat or place.
+Actions that open a screen hand bighelp a `loopdy://` link, so they wait for the host like a widget tap.
 
 Reactions use Hermes' own: the app saves them with `message.react`, and with Settings › Chat › "Agents see your
 reactions" on (the host's `display.message_reactions`), Hermes tells the agent at its next turn. The app sends no
@@ -125,7 +132,7 @@ silence marker follows Hermes' rules (`ChatSilentReply`), with one addition: aft
 person's message, a bare marker means the reaction was the whole reply, so it leaves no bubble and no warning.
 
 Feed, Ideas and Goals start empty. They fill only when the user asks the agent for updates; the agent then posts
-with the plugin's `bighelp_board` tool, often from a scheduled job it sets up. A Feed post's text is Markdown, drawn
+with the plugin's `bighelp_board` tool, often from a scheduled job it sets up. Feed posts and Ideas are Markdown, drawn
 with chat's renderer (`MarkdownMessageView`): headings, lists, quotes, code and tables. Nothing runs on the user's AI
 provider by itself. Every item has a long-press menu (and the same VoiceOver actions) with only what fits
 it: thumbs up/down on Feed (a thumbs down may ask "Less like this?" with quick reasons, never required), "Turn
