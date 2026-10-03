@@ -21,7 +21,7 @@ extension RootShellView {
     /// ☰'s host row, with the all-hosts switch beside it. Picking one host
     /// while all hosts show means "just this one".
     var fleetMenuHosts: BighelpMenuHosts {
-        var hosts = BighelpMenuHosts.current(registry: hostRegistry, linkDevices: linkDevices)
+        var hosts = BighelpMenuHosts.current(registry: hostRegistry, demoHosts: demoHosts)
         guard fleet != nil else { return hosts }
         let isOn = fleetModeOn
         let select = hosts.select
@@ -43,15 +43,9 @@ extension RootShellView {
         destinations.onAllChats = { afterClosingHomeSheets { openFleetChats() } }
         destinations.onAgents = { afterClosingHomeSheets { fleetGate(.agents) } }
         destinations.onSettings = { afterClosingHomeSheets { fleetGate(.settings) } }
-        if destinations.onNewGroup != nil {
-            destinations.onNewGroup = { afterClosingHomeSheets { fleetGate(.newGroup) } }
-        }
-        if destinations.onProjects != nil {
-            destinations.onProjects = { afterClosingHomeSheets { fleetGate(.projects) } }
-        }
-        if destinations.onKanban != nil {
-            destinations.onKanban = { afterClosingHomeSheets { fleetGate(.kanban) } }
-        }
+        // Projects, Kanban and Scheduled tasks belong to one host; the all-hosts menu leaves them out.
+        destinations.onProjects = nil
+        destinations.onKanban = nil
         if destinations.onProviderUsage != nil {
             destinations.onProviderUsage = { afterClosingHomeSheets { fleetGate(.providerUsage) } }
         }
@@ -73,6 +67,34 @@ extension RootShellView {
 
     func openFleetAgent(_ agent: FleetAgent) {
         openFleet(.agent(profileID: agent.profileID), on: agent.hostID)
+    }
+
+    /// A pinned agent from the widget: its latest chat or a new one, on its own
+    /// computer when the link names one (switching there first, like All agents).
+    func openIncomingAgentChat(agentID: String, hostID: UUID?) {
+        if let hostID, let fleet, hostID != fleet.selectedHostID {
+            guard fleet.hosts.contains(where: { $0.id == hostID }) else {
+                actionErrorMessage = "That computer isn't in bighelp anymore."
+                return
+            }
+            if let known = fleet.snapshots[hostID]?.agents, !known.isEmpty,
+               !known.contains(where: { $0.profileID == agentID }) {
+                actionErrorMessage = "That agent isn't on \(fleet.hostName(hostID)) anymore."
+                return
+            }
+            openFleet(.agent(profileID: agentID), on: hostID)
+            return
+        }
+        let place = hostID.flatMap { id in fleet?.hosts.first { $0.id == id }?.name } ?? "this computer"
+        Task { @MainActor in
+            // Opened as the app starts: the agent list may still be on its way.
+            if agents.profiles.isEmpty { try? await agents.load() }
+            guard agents.profiles.contains(where: { $0.id == agentID }) else {
+                actionErrorMessage = "That agent isn't on \(place) anymore."
+                return
+            }
+            performFleetOpen(.agent(profileID: agentID))
+        }
     }
 
     func openFleetChat(_ chat: FleetChat) {
@@ -245,7 +267,6 @@ extension RootShellView {
                 else { actionErrorMessage = "Provider usage isn't available on this host." }
             case .credentialVault: openCredentialVault()
             case .folder: presentHermesWorkspaces()
-            case .newGroup: inviteToGroup(seed: nil)
             }
         }
     }

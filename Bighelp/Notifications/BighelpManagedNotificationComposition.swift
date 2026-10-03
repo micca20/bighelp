@@ -63,13 +63,11 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
     convenience init(
         factory: BighelpManagedNotificationFactory,
         registry: BighelpHostRegistry,
-        account: BighelpLinkAccountStore,
         maximumAutomaticAttempts: Int = 3
     ) {
         self.init(
             isFixture: factory.isFixture,
             registry: registry,
-            account: account,
             maximumAutomaticAttempts: maximumAutomaticAttempts,
             applicationHooks: .live,
             makeIntegration: {
@@ -84,7 +82,6 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
     init(
         isFixture: Bool,
         registry: BighelpHostRegistry,
-        account: BighelpLinkAccountStore,
         maximumAutomaticAttempts: Int = 3,
         applicationHooks: ApplicationHookInstallers,
         makeIntegration: @escaping @MainActor () throws -> BighelpManagedNotificationIntegration
@@ -95,7 +92,7 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
         self.makeIntegration = makeIntegration
 
         guard !isFixture else { return }
-        installRootHooks(registry: registry, account: account, applicationHooks: applicationHooks)
+        installRootHooks(registry: registry, applicationHooks: applicationHooks)
         registry.notificationSetup = self
         _ = retryAutomatically(for: .startup)
     }
@@ -232,7 +229,6 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
 
     private func installRootHooks(
         registry: BighelpHostRegistry,
-        account: BighelpLinkAccountStore,
         applicationHooks: ApplicationHookInstallers
     ) {
         guard rootHookInstallationCount == 0 else { return }
@@ -260,30 +256,6 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
                 }
             }
             self?.scheduleChatPreparation(host: host, chat: chat)
-        }
-
-        let priorCredentialsWillChange = account.onCredentialsWillChange
-        account.onCredentialsWillChange = { [weak self] in
-            self?.integration?.hooks.retireAccountBoundary()
-            priorCredentialsWillChange()
-        }
-
-        let priorErasureCompleted = account.onLocalAccountErasureCompleted
-        account.onLocalAccountErasureCompleted = { [weak self] in
-            priorErasureCompleted()
-            self?.integration?.hooks.didEraseAccountData()
-        }
-
-        let priorIdentityErasure = account.eraseNotificationIdentityBeforeAccountDeletion
-        account.eraseNotificationIdentityBeforeAccountDeletion = { [weak self] in
-            guard let self else { throw DirectHermesError.secureStorageUnavailable }
-            let integration = try self.requireIntegrationForExplicitAction()
-            guard let owner = self.captureOwner(), self.isCurrent(owner) else {
-                throw DirectHermesError.secureStorageChanged
-            }
-            try await integration.hooks.eraseNotificationIdentity()
-            guard self.isCurrent(owner) else { throw DirectHermesError.secureStorageChanged }
-            try await priorIdentityErasure?()
         }
 
         applicationHooks.installAPNSToken { [weak self] token in
@@ -321,14 +293,25 @@ final class BighelpManagedNotificationComposition: HostNotificationSetupServing 
     /// reconcile, not a data delivery: report no new data rather than .failed
     /// so iOS does not throttle future wakes for a wake the app handled.
     private func handleLinkWake() async -> Bool {
-        guard let integration, let owner = captureOwner(), isCurrent(owner) else { return false }
+        let renewed = await renewSignInsWhileAway()
+        guard let integration, let owner = captureOwner(), isCurrent(owner) else { return renewed }
         do {
             try await integration.hooks.recoverWake { !Task.isCancelled && self.isCurrent(owner) }
         } catch {
             // A failed recovery is still a handled wake; fall through to the
             // truthful no-new-data result instead of .failed.
         }
-        return false
+        return renewed
+    }
+
+    /// Renews every computer's rotating sign-in that isn't connected right now.
+    private func renewSignInsWhileAway() async -> Bool {
+        guard let registry else { return false }
+        var renewed = false
+        for host in registry.hosts {
+            if await registry.workspace(for: host).renewSignInWhileAway() { renewed = true }
+        }
+        return renewed
     }
 
     private func scheduleChatPreparation(host: BighelpConfiguredHost, chat: DirectHermesChat) {

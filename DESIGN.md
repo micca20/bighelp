@@ -46,6 +46,11 @@ are historical (`docs/ui-v3-design.md`).
   grid, round 2-pt strokes and the brand's dot, with agents drawn as the orb with two eyes. Call sites still name SF
   Symbols; ones without a glyph fall back to the symbol. Edit `glyphs.py`, then run `export_assets.py`.
 - Product type is SF Pro. Root screens use large titles; section captions are small, bold, letterspaced and muted.
+- Attachments in a draft are one small glass tag above the message box, lined up with the field
+  (`DraftAttachmentRail`): the count first, then the kinds ("4 attached · 3 photos, 1 PDF"), with photos leading a
+  stack of up to three thumbnails. One photo says "1 photo"; one file shows its name and size. While photos or files
+  are being read in it says "Adding 2 of 4…" and Send waits; one that couldn't be read says "1 didn't attach" with
+  Try again, and Send waits for that too. Tap the tag for the sheet: open, remove or retry each one.
 
 ## Navigation and simplicity
 
@@ -94,7 +99,12 @@ Chats, Scheduled Tasks, New Chat and Recent Chats share the same look. Tinted an
 system styles. **Kanban** shows cards from the boards, filtered by board, status and agent and grouped by status,
 agent or board; tapping a card opens it in the app. **Feed**, **Ideas** and **Goals** each show one board, for an
 agent picked in the widget or Auto (the agent picked in the app). The app reads only the boards widgets are set to
-(`BighelpWidgetBoardLoader`, a few agents at most) and the widget says so until it has. On Vision Pro the same widgets sit on a wall or table as glass,
+(`BighelpWidgetBoardLoader`, a few agents at most) and the widget says so until it has. **Pinned Agents** is a
+grid of faces with names under them, like contacts: Current Gateway shows the computer in use's pinned agents,
+Multi Gateway every computer's (All agents' pinned row), with a small computer name under each when they're on
+more than one. A tap opens that agent's latest chat or a new one (`loopdy://agent-chat?agent=…&host=…`), switching
+computers first like All agents. Pictures are copied per agent and computer (`BighelpPinnedAvatarStore`), and a
+computer called only by its address shows as "Computer 2". On Vision Pro the same widgets sit on a wall or table as glass,
 without the Lock Screen sizes.
 
 Apps: **Artifacts** lists what the agent made or changed lately, newest first, from one plugin request
@@ -177,6 +187,11 @@ Touch and hold lifts an agent: drag it to reorder (the order is kept per host), 
 **Settings** is one short list where every row opens one page: you, Assistants (default model, providers,
 personalities), then Appearance, Chat, Voice, Notifications and Provider usage, then Hosts, Permissions, Apple
 Watch, Companion pet and Help. Don't add sections that compete with these; add to the page a row already opens.
+Settings › Chat starts with **When bighelp opens**: Open on (Agents, Agents (multi), Last chat, Feed, Ideas, Goals,
+Kanban, Projects; Last chat, the agent's latest chat, until you pick) and Start with (Automatic, the agent you used
+last, or one of this computer's agents, kept per computer; Agents (multi) has none). It applies when the app starts,
+not when it comes back; a link, widget or notification that opens the app wins, and Kanban or Projects where the
+computer can't open them fall back to Last chat (`BighelpLanding`).
 Host administration — files, gateways/messaging, plugins, MCP, memory, logs, activity — is hidden until **Nerd
 Mode** is on, which adds a Hermes section at the bottom: **System** (Update Hermes with how many commits behind,
 Restart Hermes Gateway, the plugin's Update button, then everything else folded away) and **Hermes tools** (the

@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Hosts the menu can switch between: independently connected hosts, or hosts
-/// paired through bighelp Link.
+/// Hosts the menu can switch between: connected hosts, or demo mode's sample ones.
 struct BighelpMenuHosts {
     struct Host: Identifiable, Equatable {
         let id: String
@@ -21,7 +20,7 @@ struct BighelpMenuHosts {
     var allHosts: AllHosts?
 
     @MainActor
-    static func current(registry: BighelpHostRegistry?, linkDevices: BighelpLinkDeviceStore?) -> BighelpMenuHosts {
+    static func current(registry: BighelpHostRegistry?, demoHosts: DemoHosts?) -> BighelpMenuHosts {
         let add: (() -> Void)? = registry.flatMap { registry in
             registry.canConfigureHosts ? { registry.beginSetup() } : nil
         }
@@ -34,15 +33,12 @@ struct BighelpMenuHosts {
                 add: add
             )
         }
-        if let linkDevices {
-            let paired = BighelpLinkDeviceSections(devices: linkDevices.devices).hosts
-            if !paired.isEmpty {
-                return BighelpMenuHosts(
-                    hosts: paired.map { Host(id: $0.id, name: $0.name, isSelected: $0.id == linkDevices.selectedHostID) },
-                    select: { id in _ = linkDevices.selectHost(id) },
-                    add: add
-                )
-            }
+        if let demoHosts, !demoHosts.hosts.isEmpty {
+            return BighelpMenuHosts(
+                hosts: demoHosts.hosts.map { Host(id: $0.id, name: $0.name, isSelected: $0.id == demoHosts.selectedHostID) },
+                select: { id in _ = demoHosts.selectHost(id) },
+                add: add
+            )
         }
         return BighelpMenuHosts(add: add)
     }
@@ -50,11 +46,11 @@ struct BighelpMenuHosts {
 
 /// Where the menu can go.
 struct BighelpMenuDestinations {
-    /// The all-hosts view's list, its home while it's on.
+    /// The all-hosts view's list, its home while it's on. When set, ☰'s Agents opens it
+    /// and the one-host places (Projects, Kanban, Scheduled tasks) stay out of the menu.
     var onAllAgents: (() -> Void)? = nil
     var newChatTitle = "New chat"
     var onNewChat: () -> Void
-    var onNewGroup: (() -> Void)?
     var onAllChats: () -> Void
     /// Projects: related chats and folders together.
     var onProjects: (() -> Void)? = nil
@@ -73,8 +69,9 @@ struct BighelpMenuDestinations {
 
 /// bighelp's one menu (☰). The first screen is short on purpose: New chat,
 /// Agents, Projects, Kanban, Scheduled tasks and Settings, then recent chats
-/// with See all. The host switcher is one compact row on top; the rest
-/// (provider usage, Nerd Mode's folder) waits below the chats.
+/// with See all. With all hosts showing, Agents is All agents and the one-host
+/// places stay out, so each view keeps to its purpose. The host switcher is one
+/// compact row on top; the rest (provider usage, Nerd Mode's folder) waits below the chats.
 struct BighelpMenu<Recent: View>: View {
 
     let hosts: BighelpMenuHosts
@@ -107,19 +104,20 @@ struct BighelpMenu<Recent: View>: View {
 
     private var mainSection: some View {
         Section {
-            if let onAllAgents = destinations.onAllAgents {
-                row("All agents", symbol: "square.stack.3d.up", id: "menu.all-agents", action: onAllAgents)
-            }
             newChatRow
-            row("Agents", symbol: "person.2", id: "menu.agents", action: destinations.onAgents)
-            if let onProjects = destinations.onProjects {
-                row("Projects", symbol: "folder", id: "menu.projects", action: onProjects)
+            if let onAllAgents = destinations.onAllAgents {
+                row("Agents", symbol: "person.2", id: "menu.all-agents", action: onAllAgents)
+            } else {
+                row("Agents", symbol: "person.2", id: "menu.agents", action: destinations.onAgents)
+                if let onProjects = destinations.onProjects {
+                    row("Projects", symbol: "folder", id: "menu.projects", action: onProjects)
+                }
+                if let onKanban = destinations.onKanban {
+                    row("Kanban", symbol: "rectangle.split.3x1", id: "menu.kanban", action: onKanban)
+                }
+                row("Scheduled tasks", symbol: "calendar.badge.clock", id: "menu.scheduled-tasks",
+                    action: destinations.onScheduledTasks)
             }
-            if let onKanban = destinations.onKanban {
-                row("Kanban", symbol: "rectangle.split.3x1", id: "menu.kanban", action: onKanban)
-            }
-            row("Scheduled tasks", symbol: "calendar.badge.clock", id: "menu.scheduled-tasks",
-                action: destinations.onScheduledTasks)
             row("Settings", symbol: "gearshape", id: "menu.settings", action: destinations.onSettings)
         } header: {
             if !hosts.hosts.isEmpty || hosts.add != nil {
@@ -136,31 +134,15 @@ struct BighelpMenu<Recent: View>: View {
     /// Compact rows, so the whole first screen fits without scrolling.
     private static var rowInsets: EdgeInsets { EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16) }
 
-    /// New chat, with New group beside it rather than on its own row.
+    /// New chat. Group chats start from its own picker ("Group chat").
     private var newChatRow: some View {
-        HStack(spacing: BighelpTokens.space8) {
-            Button { choose(destinations.onNewChat) } label: {
-                BighelpMenuRowLabel(title: destinations.newChatTitle, symbol: "square.and.pencil", trailing: .none)
-            }
-            .bighelpPointerButtonStyle(.borderless, outline: .rounded(BighelpTokens.radius12),
-                                       padding: BighelpTokens.space4)
-            .bighelpHelp(destinations.newChatTitle, shortcut: "⌘N")
-            .accessibilityIdentifier("menu.new-chat")
-            if let onNewGroup = destinations.onNewGroup {
-                Button { choose(onNewGroup) } label: {
-                    Label("Group", systemImage: "person.3")
-                        .font(.bighelp(.subheadline).weight(.semibold))
-                        .padding(.horizontal, BighelpTokens.space12)
-                        .frame(minHeight: 34)
-                        .background(theme.action.opacity(0.12), in: .capsule)
-                        .contentShape(.capsule)
-                }
-                .bighelpPointerButtonStyle(.borderless, outline: .capsule)
-                .foregroundStyle(theme.action)
-                .accessibilityLabel("New group chat")
-                .accessibilityIdentifier("menu.new-group")
-            }
+        Button { choose(destinations.onNewChat) } label: {
+            BighelpMenuRowLabel(title: destinations.newChatTitle, symbol: "square.and.pencil", trailing: .none)
         }
+        .bighelpPointerButtonStyle(.borderless, outline: .rounded(BighelpTokens.radius12),
+                                   padding: BighelpTokens.space4)
+        .bighelpHelp(destinations.newChatTitle, shortcut: "⌘N")
+        .accessibilityIdentifier("menu.new-chat")
         .listRowInsets(Self.rowInsets)
     }
 
@@ -403,11 +385,11 @@ struct BighelpMenuChatRow: View {
 /// The bighelp lockup in the top bar. Touch and hold it to switch hosts; on
 /// the Mac, click it.
 struct EmberHostSwitcherLockup: View {
-    var linkDevices: BighelpLinkDeviceStore?
+    var demoHosts: DemoHosts?
     @Environment(\.bighelpHostRegistry) private var registry
 
     var body: some View {
-        let hosts = BighelpMenuHosts.current(registry: registry, linkDevices: linkDevices)
+        let hosts = BighelpMenuHosts.current(registry: registry, demoHosts: demoHosts)
         if hosts.hosts.count + (hosts.add == nil ? 0 : 1) > 0 {
             #if targetEnvironment(macCatalyst)
             // A click that does nothing reads as broken on a Mac, where holding is rare.
