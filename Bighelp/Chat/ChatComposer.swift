@@ -119,12 +119,15 @@ struct ChatComposer: View {
             }
         }
         .onChange(of: model.sessionSubagents) { _, subagents in
-            if subagents.isEmpty, model.nativeSubagents.isEmpty, presentedStatus == .subagents {
+            if subagents.isEmpty, model.nativeSubagents.isEmpty, model.subagentCanvases.isEmpty,
+               presentedStatus == .subagents {
                 presentedStatus = nil
             }
         }
         .onChange(of: model.nativeSubagents) { _, nativeSubagents in
-            if nativeSubagents.isEmpty, model.sessionSubagents.isEmpty, presentedStatus == .subagents {
+            // A finished helper keeps its canvas; the sheet stays open to show how it ended.
+            if nativeSubagents.isEmpty, model.sessionSubagents.isEmpty, model.subagentCanvases.isEmpty,
+               presentedStatus == .subagents {
                 presentedStatus = nil
             }
         }
@@ -164,11 +167,7 @@ struct ChatComposer: View {
                         )
                     }
                 case .subagents:
-                    SessionSubagentRosterSheet(
-                        subagents: model.sessionSubagents,
-                        nativeSubagents: model.nativeSubagents,
-                        sessionCatalog: sessionCatalog
-                    )
+                    SessionSubagentRosterSheet(model: model, sessionCatalog: sessionCatalog)
                 case .tasks:
                     if let tasks = model.taskDrawer {
                         SessionTasksSheet(state: tasks)
@@ -241,7 +240,7 @@ struct ChatComposer: View {
                     } label: {
                         switch item.kind {
                         case .goal: Label("Goal", systemImage: "target")
-                        case .subagents: Label("Agents", systemImage: "person.2")
+                        case .subagents: Label("Subagents", systemImage: "person.2")
                         case .tasks: Label("Tasks", systemImage: "checklist")
                         }
                     }
