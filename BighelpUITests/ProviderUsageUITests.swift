@@ -111,6 +111,89 @@ final class ProviderUsageUITests: BighelpUITestCase {
         XCTAssertTrue(studio.isSelected)
     }
 
+    /// Limits' computer menu: all of them, each under its own name, or just one.
+    /// One computer has no menu at all.
+    @MainActor
+    func testLimitsShowOneComputerOrAllUnderTheirNames() throws {
+        let app = launch(["-bighelp.hosts.all-hosts", "YES"])
+        openMenu(app)
+        let usage = app.buttons["menu.usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 8))
+        usage.tap()
+        _ = expectPage(app)
+        let any = app.descendants(matching: .any)
+        let menu = app.buttons["usage.limits.computer"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 8), "Several computers: a menu picks which")
+
+        menu.tap()
+        let all = app.buttons["All computers"]
+        XCTAssertTrue(all.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Home Hermes"].exists && app.buttons["Studio Mac"].exists
+                      && app.buttons["Office Linux"].exists, "Every computer is a choice")
+        all.tap()
+        XCTAssertTrue(menu.label.contains("All computers"), menu.label)
+        for name in ["Home Hermes", "Studio Mac", "Office Linux"] {
+            XCTAssertTrue(any["usage.limits.host.\(name)"].waitForExistence(timeout: 8), "\(name) has its own heading")
+        }
+        // Home Hermes and Studio Mac both have a Claude plan, each under its own computer.
+        XCTAssertEqual(any.matching(identifier: "provider-usage.claude").count, 2)
+        XCTAssertLessThan(any["usage.limits.host.Home Hermes"].frame.minY,
+                          any["usage.limits.host.Studio Mac"].frame.minY, "The computer in use first")
+        XCTAssertTrue(any.matching(NSPredicate(format: "label CONTAINS %@", "Couldn't reach this computer"))
+            .firstMatch.exists, "One out of reach says so in its own section")
+        save("usage-7-limits-all-computers-\(appearance)", app)
+
+        menu.tap()
+        app.buttons["Studio Mac"].tap()
+        XCTAssertTrue(menu.label.contains("Studio Mac"), menu.label)
+        XCTAssertTrue(any["provider-usage.openrouter"].waitForExistence(timeout: 5))
+        XCTAssertFalse(any["provider-usage.codex"].exists, "Only Studio Mac's plans")
+        XCTAssertFalse(any["usage.limits.host.Studio Mac"].exists, "The menu says which; no headings")
+        save("usage-8-limits-one-computer-\(appearance)", app)
+
+        menu.tap()
+        app.buttons["Home Hermes"].tap()
+        XCTAssertTrue(menu.label.contains("Home Hermes"), menu.label)
+        XCTAssertTrue(any["provider-usage.claude"].waitForExistence(timeout: 5))
+        XCTAssertEqual(any.matching(identifier: "provider-usage.claude").count, 1)
+    }
+
+    /// Share, top right: PDF, PNG, HTML and CSV, each to the system share sheet.
+    @MainActor
+    func testShareOffersFourFormats() throws {
+        let app = launch(["-bighelp.hosts.all-hosts", "YES"])
+        openMenu(app)
+        app.buttons["menu.usage"].tap()
+        _ = expectPage(app)
+        let share = app.buttons["usage.share"]
+        XCTAssertTrue(share.waitForExistence(timeout: 8))
+        XCTAssertTrue(share.isEnabled, "Something to share once usage loads")
+        XCTAssertLessThan(app.buttons["usage.refresh"].frame.minX - share.frame.minX, 200, "Top right, beside Refresh")
+        share.tap()
+        for title in ["PDF", "Image (PNG)", "Web page (HTML)", "Spreadsheet (CSV)"] {
+            XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5), "\(title) is offered")
+        }
+        save("usage-9-share-\(appearance)", app)
+        app.buttons["PDF"].tap()
+        // The system share sheet, with the file ready to send.
+        let sheet = app.otherElements["ActivityListView"]
+        let named = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Usage, ")).firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15) || named.waitForExistence(timeout: 5), "The share sheet opens")
+        save("usage-10-share-sheet-\(appearance)", app)
+    }
+
+    @MainActor
+    func testOneComputerHasNoLimitsMenu() throws {
+        let app = launch(["-bighelp.hosts.all-hosts", "NO"])
+        openMenu(app)
+        app.buttons["menu.usage"].tap()
+        _ = expectPage(app)
+        XCTAssertTrue(app.descendants(matching: .any)["provider-usage.claude"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["usage.limits.computer"].exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "usage.limits.host.")).count, 0, "No computer names")
+    }
+
     @MainActor
     func testTheChatMenuOpensTheSamePage() throws {
         let app = launch(["-preview-simple-chat"])

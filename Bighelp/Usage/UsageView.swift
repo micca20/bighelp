@@ -13,16 +13,20 @@ struct UsageView: View {
 
     @State private var selectedDay: String?
     @State private var isChoosingProviders = false
+    /// Which computers' plans Limits shows (`UsageLimitsComputers.Choice`).
+    @AppStorage(UsageLimitsComputers.choiceKey) private var limitsChoice = "current"
+    @AppStorage(ProviderUsagePreferences.hiddenKey) private var hiddenProviders = ""
+    @Environment(\.appAppearance) private var appearance
     @BighelpThemeReader private var theme
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BighelpTokens.space24) {
-                if let providerUsage, providerUsage.isAvailable || !limitHosts.isEmpty {
+                if let providerUsage, providerUsage.isAvailable || limitsComputers.offersChoice {
                     BighelpDeferredSection {
-                        UsageLimitsSection(store: providerUsage, otherHosts: limitHosts, summary: store.summary,
-                                           selectedHostID: selectedHostID, selectedHostName: selectedHostName,
-                                           range: store.range, onChoose: { isChoosingProviders = true })
+                        UsageLimitsSection(store: providerUsage, computers: limitsComputers, summary: store.summary,
+                                           range: store.range, onChoose: { isChoosingProviders = true },
+                                           onPickComputers: { limitsChoice = $0 })
                     }
                 }
                 rangePicker
@@ -40,8 +44,11 @@ struct UsageView: View {
         .navigationTitle("Usage")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { shareMenu }
             ToolbarItem(placement: .topBarTrailing) { refreshButton }
         }
+        // Exports are only for the share sheet.
+        .onDisappear { UsageExporter.removeAll() }
         .refreshable { await refresh() }
         .task {
             await store.load(refresh: false)
@@ -64,9 +71,10 @@ struct UsageView: View {
         }
     }
 
-    /// Other computers' plans and limits, while All hosts shows them.
-    private var limitHosts: [HostUsage] {
-        store.hosts.filter { $0.id != selectedHostID && $0.limits != nil }
+    /// The computer in use and, while All hosts is on, the others.
+    private var limitsComputers: UsageLimitsComputers {
+        UsageLimitsComputers(selectedID: selectedHostID, selectedName: selectedHostName, hosts: store.hosts,
+                             saved: limitsChoice)
     }
 
     private var refreshButton: some View {
@@ -86,6 +94,33 @@ struct UsageView: View {
         .keyboardShortcut("r")
         #endif
         .accessibilityIdentifier("usage.refresh")
+    }
+
+    /// PDF, PNG and HTML show the page as it is (range, Cost or Tokens, the
+    /// computers in Limits); CSV has the numbers. Written when shared.
+    @ViewBuilder
+    private var shareMenu: some View {
+        let snapshot = UsageExportSnapshot.make(store: store, providerUsage: providerUsage, computers: limitsComputers,
+                                                hidden: ProviderUsagePreferences.hidden(hiddenProviders))
+        Menu {
+            if let snapshot {
+                Section("Share as") {
+                    ForEach(UsageExportFormat.allCases) { format in
+                        ShareLink(item: UsageExportItem(format: format, snapshot: snapshot, appearance: appearance),
+                                  preview: SharePreview("Usage, \(snapshot.dateRangeText)")) {
+                            Label(format.title, systemImage: format.symbol)
+                        }
+                        .accessibilityIdentifier("usage.share.\(format.rawValue)")
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .bighelpToolbarIcon()
+        }
+        .disabled(snapshot == nil)
+        .bighelpIconLabel("Share")
+        .accessibilityIdentifier("usage.share")
     }
 
     private func refresh() async {

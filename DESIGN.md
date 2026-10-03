@@ -173,12 +173,18 @@ folders. A chat started there runs in the project's folder (Hermes files chats b
 the current one). Folder and Git management stay in Settings › Hermes tools (Nerd Mode). 
 
 **Usage** (☰ › Usage, above Settings) is the one place for what the agents use. Limits come first: each plan,
-limit and balance the plugin finds (Choose hides one), with what the agents used through it in the range. Then 7, 30
+limit and balance the plugin finds (Choose hides one), with what the agents used through it in the range. With
+several computers (All hosts on) a menu beside Choose shows the computer in use, another one, or All computers, where
+each computer's plans sit under its own name; it changes only Limits and is remembered on the device. Then 7, 30
 or 90 days of Hermes' own numbers (`/api/analytics/usage` and `/api/analytics/models`, per agent): estimated cost or
 processed tokens per day as bars (tap one for its day), totals with the cache rate, when you use it (weekdays, and
 hours with the plugin's `usage/activity`), and ranked rows by model, by agent and, with All hosts on, by computer.
 Tap a row to chart it against everything else. Chat ⋯ › Usage and the context window open the same page; there is
 no overlay or Settings copy. Subscriptions report no cost, so a host where nothing cost money opens on Tokens.
+Share (top right, beside Refresh) sends the page as a PDF (paged, never cutting a card in two), a PNG (one tall
+picture), a web page (one file, inline styles and SVG charts, nothing loaded) or a CSV (one table of full-precision
+numbers: days, models, agents, computers, totals, limits), always light, in the range, Cost or Tokens and Limits
+computers on screen, with every row listed and the date range and time it was made at the top.
 
 **Kanban** (☰ › Kanban, above Scheduled tasks) is Hermes' Kanban plugin, shown only when the host has it. Five lanes
 in plain words: Later (triage, to-do, scheduled), Ready (an agent picks these up next), Working (only Hermes starts
