@@ -52,8 +52,9 @@ struct RootShellView: View {
     @State var sessionRestoreRequest: SessionRestoreRequest?
     @State var sessionRestoreTask: Task<Void, Never>?
     @State var managementStore: WorkspaceManagementStore?
-    @State var capabilitiesPresentation: NativeCapabilitiesPresentation?
-    @State var administrationPresentation: NativeAdministrationPresentation?
+    /// Host pages open in the stack, one per destination (`WorkspaceOpenScreens`).
+    @State var capabilitiesPresentations = WorkspaceOpenScreens<NativeCapabilitiesPresentation>()
+    @State var administrationPresentations = WorkspaceOpenScreens<NativeAdministrationPresentation>()
     @State var lifecycleCoordinator: NativeWorkspaceLifecycleCoordinator?
     @State var lifecycleProfileID: String?
     @State var lifecyclePresentationID: UUID?
@@ -68,6 +69,8 @@ struct RootShellView: View {
     @State private var newChatStartID: UUID?
     @State private var fixtureCanonicalSessions: [String: String] = [:]
     @State var workspaceFixtureGeneration = UUID()
+    /// Demo runs' connection; `-demo-reconnects-on-return` makes each return a reconnect.
+    @State var workspaceFixtureConnection = UUID()
     @State private var cardInteractionStore = BighelpCardInteractionStore()
     /// The all-hosts view asking which host a one-host screen is for.
     @State var fleetGateRequest: FleetDestination?
@@ -192,6 +195,9 @@ struct RootShellView: View {
         .onChange(of: hostRegistry?.onboardingHostID) { _, _ in
             reconcileRestoredHostOnboardingState()
         }
+        .modifier(DemoReconnectOnReturn(scenePhase: scenePhase, connection: $workspaceFixtureConnection,
+                                        isEnabled: usesWorkspaceFixtures))
+        .onChange(of: appState.path) { _, _ in retireClosedWorkspacePresentations() }
         .modifier(WorkspacePresentationContinuity(
             owner: currentWorkspaceOwner, registryGeneration: hostRegistry?.generation,
             isHostSettled: nativeRuntime.map { $0.isReady && !$0.isSuspended && !$0.isRefreshing } ?? true,
@@ -372,9 +378,8 @@ struct RootShellView: View {
     private func closeWorkspacePresentations() {
         managementStore?.retire()
         managementStore = nil
-        capabilitiesPresentation = nil
-        administrationPresentation?.retire()
-        administrationPresentation = nil
+        _ = capabilitiesPresentations.removeAll()
+        for page in administrationPresentations.removeAll() { page.retire() }
         workspaceProfileEditor = nil
         lifecycleCoordinator = nil
         lifecycleProfileID = nil

@@ -121,18 +121,8 @@ extension RootShellView {
                     }
                 } else if let kind = CapabilitiesManagementKind(destination: destination), !usesWorkspaceFixtures {
                     nativeCapabilitiesDestination(kind, destination: destination)
-                } else if NativeAdministrationPresentation.supports(destination), !usesWorkspaceFixtures {
-                    if let presentation = administrationPresentation,
-                       presentation.destination == destination,
-                       isCurrentSignIn(presentation.owner), presentation.profileID == workspaceAgentID {
-                        NativeAdministrationDestination(presentation: presentation,
-                            permissionCenter: permissionCenter,
-                            onOpenProviderAccounts: { openWorkspaceDestination(.keys) },
-                            onOpenAgentDefaults: { openWorkspaceDestination(.profiles) })
-                    } else {
-                        WorkspaceUnavailableView(destination: destination, hostName: workspaceHostName,
-                            reason: "Reopen this feature after connecting to the selected host and profile.")
-                    }
+                } else if opensHostAdministration(destination) {
+                    hostAdministrationDestination(destination)
                 } else if let managementStore {
                     WorkspaceManagementView(store: managementStore, destination: destination,
                                             onOpenExisting: openWorkspaceDestination)
