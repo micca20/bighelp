@@ -139,8 +139,6 @@ struct FleetHomeView: View {
     var onSetPinned: ((FleetAgent, Bool) -> Void)? = nil
     /// Opens, renames or deletes a group chat. None hides group chats' actions.
     var onGroupAction: ((FleetGroup, FleetGroupAction) -> Void)? = nil
-    /// Starts a new group chat.
-    var onNewGroup: (() -> Void)? = nil
     /// The agent's routines: add, pause, resume or delete them there.
     var onOpenRoutines: ((FleetAgent) -> Void)? = nil
     @State private var hostFilter: UUID?
@@ -149,7 +147,8 @@ struct FleetHomeView: View {
     @State private var namePrompt: FleetNamePrompt?
     @State private var deletingGroup: FleetGroup?
     @State private var deletedSection: FleetSectionDeletion?
-    /// A pinned agent held and let go: its actions.
+    /// A pinned agent held and let go, where its menu can't open (visionOS,
+    /// iOS before 17.4): its actions.
     @State private var managing: FleetAgent?
     @State private var search = ""
     @State private var isArrangingPinned = false
@@ -278,15 +277,11 @@ struct FleetHomeView: View {
         }
     }
 
-    /// New section, new group chat, and showing hidden agents.
+    /// New section, and showing hidden agents. New group chat is in New chat.
     private var organizeMenu: some View {
         Menu {
             Button("New section", systemImage: "folder.badge.plus") { namePrompt = .newSection(filing: nil) }
                 .accessibilityIdentifier("fleet.organize.new-section")
-            if let onNewGroup {
-                Button("New group chat", systemImage: "person.3", action: onNewGroup)
-                    .accessibilityIdentifier("fleet.organize.new-group")
-            }
             let hidden = fleet.hiddenAgentCount
             if hidden > 0 || showsHidden {
                 Toggle(isOn: $showsHidden) {
@@ -303,7 +298,7 @@ struct FleetHomeView: View {
         .foregroundStyle(theme.action)
         .padding(.trailing, BighelpTokens.space8)
         .accessibilityLabel("Organize")
-        .accessibilityHint("New section, new group chat, hidden agents.")
+        .accessibilityHint("New section, hidden agents.")
         .accessibilityIdentifier("fleet.organize")
     }
 
@@ -322,36 +317,39 @@ struct FleetHomeView: View {
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
-        .contextMenu { agentMenu(agent) }
+        .contextMenu { TileMenuContent(items: agentMenu(agent)) }
         .accessibilityValue(agent.isHidden ? "Hidden" : "")
         .accessibilityIdentifier("fleet.agent.\(agent.name)")
     }
 
-    @ViewBuilder
-    private func agentMenu(_ agent: FleetAgent) -> some View {
+    /// An agent's long-press menu, the same for its row and its pinned tile.
+    private func agentMenu(_ agent: FleetAgent) -> [TileMenuItem] {
+        var items: [TileMenuItem] = []
         if let onSetPinned {
-            Button(agent.isPinned ? "Unpin" : "Pin", systemImage: agent.isPinned ? "pin.slash" : "pin") {
+            items.append(TileMenuItem(title: agent.isPinned ? "Unpin" : "Pin",
+                                      systemImage: agent.isPinned ? "pin.slash" : "pin",
+                                      identifier: "fleet.agent.\(agent.isPinned ? "unpin" : "pin")") {
                 onSetPinned(agent, !agent.isPinned)
-            }
-            .accessibilityIdentifier("fleet.agent.\(agent.isPinned ? "unpin" : "pin")")
+            })
         }
         if let onOpenRoutines {
             let count = fleet.tasks(on: agent.hostID).filter { $0.profileID == agent.profileID }.count
-            Button(count == 0 ? "Routines" : "Routines (\(count))", systemImage: "clock.arrow.circlepath") {
+            items.append(TileMenuItem(title: count == 0 ? "Routines" : "Routines (\(count))",
+                                      systemImage: "clock.arrow.circlepath", identifier: "fleet.agent.routines") {
                 onOpenRoutines(agent)
-            }
-            .accessibilityIdentifier("fleet.agent.routines")
+            })
         }
         if onGroupAction != nil {
-            sectionMenu(current: fleet.section(of: agent), item: .agent(agent)) { id in
+            items.append(sectionMenu(current: fleet.section(of: agent), item: .agent(agent)) { id in
                 Task { try? await fleet.file(agent, in: id) }
-            }
-            Button(agent.isHidden ? "Show in list" : "Hide from list",
-                   systemImage: agent.isHidden ? "eye" : "eye.slash") {
+            })
+            items.append(TileMenuItem(title: agent.isHidden ? "Show in list" : "Hide from list",
+                                      systemImage: agent.isHidden ? "eye" : "eye.slash",
+                                      identifier: "fleet.agent.\(agent.isHidden ? "unhide" : "hide")") {
                 Task { try? await fleet.setHidden(agent, !agent.isHidden) }
-            }
-            .accessibilityIdentifier("fleet.agent.\(agent.isHidden ? "unhide" : "hide")")
+            })
         }
+        return items
     }
 
     private func groupRow(_ group: FleetGroup) -> some View {
@@ -360,7 +358,9 @@ struct FleetHomeView: View {
             .listRowBackground(Color.clear)
             .contextMenu {
                 Button("Open chat", systemImage: "bubble.left.and.bubble.right") { onGroupAction?(group, .open) }
-                sectionMenu(current: fleet.section(of: group), item: .group(group)) { fleet.file(group, in: $0) }
+                TileMenuContent(items: [sectionMenu(current: fleet.section(of: group), item: .group(group)) {
+                    fleet.file(group, in: $0)
+                }])
                 if group.hostID == fleet.selectedHostID {
                     Button("Rename", systemImage: "pencil") { namePrompt = .renameGroup(group) }
                         .disabled(!group.canRename)
@@ -375,22 +375,18 @@ struct FleetHomeView: View {
 
     /// Move to a section, a new one, or out of the one it's in.
     private func sectionMenu(current: FleetSection?, item: FleetListItem,
-                             file: @escaping (String?) -> Void) -> some View {
-        Menu {
-            ForEach(fleet.sections) { section in
-                Button(section.name, systemImage: section.id == current?.id ? "checkmark" : "folder") { file(section.id) }
-                    .disabled(section.id == current?.id)
-            }
-            Button("New section", systemImage: "folder.badge.plus") { namePrompt = .newSection(filing: item) }
-                .accessibilityIdentifier("fleet.move.new-section")
-            if current != nil {
-                Button("Remove from section", systemImage: "folder.badge.minus") { file(nil) }
-                    .accessibilityIdentifier("fleet.move.remove")
-            }
-        } label: {
-            Label("Move to section", systemImage: "folder")
+                             file: @escaping (String?) -> Void) -> TileMenuItem {
+        var choices = fleet.sections.map { section in
+            TileMenuItem(title: section.name, systemImage: section.id == current?.id ? "checkmark" : "folder",
+                         isEnabled: section.id != current?.id) { file(section.id) }
         }
-        .accessibilityIdentifier("fleet.move")
+        choices.append(TileMenuItem(title: "New section", systemImage: "folder.badge.plus",
+                                    identifier: "fleet.move.new-section") { namePrompt = .newSection(filing: item) })
+        if current != nil {
+            choices.append(TileMenuItem(title: "Remove from section", systemImage: "folder.badge.minus",
+                                        identifier: "fleet.move.remove") { file(nil) })
+        }
+        return TileMenuItem(title: "Move to section", systemImage: "folder", children: choices, identifier: "fleet.move")
     }
 
     /// Big pictures with the name and role, simple like a contact grid. Touch
@@ -400,7 +396,7 @@ struct FleetHomeView: View {
             items: agents,
             columns: PinnedAgentsLayout.columns,
             canReorder: true, space: "fleet.pinned", open: onOpen, manage: { managing = $0 },
-            reorder: { fleet.reorderPinned($0) }, isArranging: $isArrangingPinned,
+            menu: { agentMenu($0) }, reorder: { fleet.reorderPinned($0) }, isArranging: $isArrangingPinned,
             identifier: { "fleet.pinned.\($0.name)" },
             tile: { agent, lifted in pinnedTile(agent, lifted: lifted) },
             trailing: { EmptyView() }
@@ -728,45 +724,127 @@ struct FleetHostPicker: View {
     @BighelpThemeReader private var theme
 }
 
-/// New chat in the all-hosts view: pick any agent on any host.
+/// New chat in the all-hosts view: pick any agent on any host. Group chat
+/// turns it into picking several agents from one host.
 struct FleetAgentPicker: View {
     let fleet: FleetStore
     let onPick: (FleetAgent) -> Void
+    /// Starts a group chat with the picked agents. None hides Group chat.
+    var onPickGroup: (([FleetAgent]) -> Void)? = nil
     @State private var search = ""
+    @State private var isPickingGroup = false
+    /// Picked agents, in the order they were tapped.
+    @State private var picked: [FleetAgent] = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            List(agents) { agent in
-                Button { onPick(agent) } label: {
-                    HStack(spacing: BighelpTokens.space12) {
-                        AvatarView(stableID: agent.profileID, displayName: agent.name,
-                                   imageURL: fleet.avatars.url(for: agent.avatarFile), size: 40)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: BighelpTokens.space8) {
-                                Text(agent.name).font(.bighelp(.body).weight(.semibold)).foregroundStyle(theme.primaryText)
-                                if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(agent.hostID)) }
-                            }
-                            if !agent.role.isEmpty {
-                                Text(agent.role).font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText).lineLimit(1)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .frame(minHeight: BighelpTokens.hitTarget)
-                    .contentShape(.rect)
+            List {
+                Section {
+                    ForEach(agents) { agent in row(agent) }
+                } header: {
+                    if isPickingGroup { groupHeader }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("fleet.new-chat.\(agent.name)")
             }
             .searchable(text: $search, prompt: "Search agents")
-            .navigationTitle("New chat with…")
+            .navigationTitle(isPickingGroup ? "New group chat" : "New chat with…")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).bighelpToolbarText() }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("fleet.new-chat.cancel")
+                        .bighelpToolbarText()
+                }
+                if let onPickGroup {
+                    ToolbarItem(placement: .confirmationAction) {
+                        if isPickingGroup {
+                            Button("Create chat") { onPickGroup(picked) }
+                                .fontWeight(.semibold)
+                                .disabled(!(2...BotModeRoom.maximumMembers).contains(picked.count))
+                                .bighelpDefaultAction()
+                                .accessibilityIdentifier("fleet.new-chat.create-group")
+                                .bighelpToolbarText()
+                        } else {
+                            Button("Group chat") { withAnimation(.snappy(duration: 0.2)) { isPickingGroup = true } }
+                                .accessibilityHint("Pick several agents for one chat.")
+                                .accessibilityIdentifier("fleet.new-chat.group")
+                                .bighelpToolbarText()
+                        }
+                    }
+                }
             }
         }
         .presentationDragIndicator(.visible)
+        .bighelpSheetSize(.standard)
+    }
+
+    private func row(_ agent: FleetAgent) -> some View {
+        let isPicked = picked.contains { $0.id == agent.id }
+        let isAvailable = !isPickingGroup || isPicked || canAdd(agent)
+        return Button { tap(agent) } label: {
+            HStack(spacing: BighelpTokens.space12) {
+                AvatarView(stableID: agent.profileID, displayName: agent.name,
+                           imageURL: fleet.avatars.url(for: agent.avatarFile), size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: BighelpTokens.space8) {
+                        Text(agent.name).font(.bighelp(.body).weight(.semibold)).foregroundStyle(theme.primaryText)
+                        if fleet.showsHostNames { FleetHostTag(name: fleet.hostName(agent.hostID)) }
+                    }
+                    if !agent.role.isEmpty {
+                        Text(agent.role).font(.bighelp(.footnote)).foregroundStyle(theme.secondaryText).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                if isPickingGroup {
+                    Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
+                        .font(.bighelp(.title3))
+                        .foregroundStyle(isPicked ? theme.action : theme.tertiaryText)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(minHeight: BighelpTokens.hitTarget)
+            .contentShape(.rect)
+            .opacity(isAvailable ? 1 : 0.4)
+        }
+        .bighelpPlainButtonStyle()
+        .disabled(!isAvailable)
+        .accessibilityValue(isPickingGroup ? (isPicked ? "Selected" : "Not selected") : "")
+        .accessibilityAddTraits(isPicked ? .isSelected : [])
+        .accessibilityIdentifier("fleet.new-chat.\(agent.name)")
+    }
+
+    /// How many are picked, and why another host's agents can't join.
+    private var groupHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(picked.count < 2 ? "Pick 2 to \(BotModeRoom.maximumMembers) agents"
+                 : "\(picked.count) of \(BotModeRoom.maximumMembers) picked")
+                .monospacedDigit()
+            if fleet.showsHostNames {
+                Text(picked.first.map { "Agents on \(fleet.hostName($0.hostID)) can join." }
+                     ?? "Everyone in a group chat is on the same host.")
+            }
+        }
+        .font(.bighelp(.footnote))
+        .textCase(nil)
+        .foregroundStyle(theme.secondaryText)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("fleet.new-chat.group-note")
+    }
+
+    /// A group chat lives on one host, and holds a few agents at most.
+    private func canAdd(_ agent: FleetAgent) -> Bool {
+        guard picked.count < BotModeRoom.maximumMembers else { return false }
+        return picked.first.map { $0.hostID == agent.hostID } ?? true
+    }
+
+    private func tap(_ agent: FleetAgent) {
+        guard isPickingGroup else { return onPick(agent) }
+        if let index = picked.firstIndex(where: { $0.id == agent.id }) {
+            picked.remove(at: index)
+        } else if canAdd(agent) {
+            picked.append(agent)
+        }
     }
 
     private var agents: [FleetAgent] {
