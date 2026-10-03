@@ -32,9 +32,6 @@ struct ChatComposer: View {
     @State private var presentedSheet: ChatComposerSheet?
     @State private var restoresFocusAfterExpansion = false
     @State private var presentedStatus: SessionStatusRailDestination?
-    @State private var isSessionContextPresented = false
-    /// Change in the context pop-up: open Model & reasoning once the pop-up is gone.
-    @State private var opensModelControlsAfterContext = false
     @State private var companionAdventureResetToken = 0
     @State private var clipboardImportSession = ClipboardImageImportSession()
     @State private var clipboardImportTask: Task<Void, Never>?
@@ -61,6 +58,13 @@ struct ChatComposer: View {
 
             if !referenceHub.selected.isEmpty || referenceHub.message != nil {
                 ReferenceDraftStrip(hub: referenceHub)
+            }
+
+            if let reply = model.replyDraft {
+                ChatReplyDraftBar(quote: reply, agentName: agentName) { model.replyDraft = nil }
+                    .padding(.horizontal, BighelpTokens.space4)
+                    .frame(maxWidth: horizontalSizeClass == .regular ? ChatCanvasLayout.regularLaneMaximumWidth : .infinity)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             DraftAttachmentRail(model: model)
@@ -108,6 +112,7 @@ struct ChatComposer: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: BighelpTokens.stateDuration), value: model.nativeSubagents)
         .animation(reduceMotion ? nil : .easeInOut(duration: BighelpTokens.stateDuration), value: model.goalRailState)
         .animation(reduceMotion ? nil : .easeInOut(duration: BighelpTokens.stateDuration), value: model.sessionContext)
+        .animation(reduceMotion ? nil : .easeInOut(duration: BighelpTokens.stateDuration), value: model.replyDraft)
         .onChange(of: model.taskDrawer) { _, tasks in
             if tasks == nil, presentedStatus == .tasks {
                 presentedStatus = nil
@@ -196,8 +201,9 @@ struct ChatComposer: View {
         }
     }
 
-    /// Context and conditional status controls share one adaptive glass surface.
-    /// Keep the companion's reserved landing space outside that surface.
+    /// Goal, tasks and helpers share one adaptive glass surface. The context
+    /// window lives in the chat's ⋯ menu. Keep the companion's reserved landing
+    /// space outside that surface.
     @ViewBuilder
     private var composerStatusRail: some View {
         // Keep the menu mounted when its action dismisses the keyboard.
@@ -210,25 +216,7 @@ struct ChatComposer: View {
                 nativeSubagents: nerdModeEnabled ? model.nativeSubagents : [],
                 tasks: model.taskDrawer,
                 onSelect: presentStatus,
-                onFittingVerticalDrag: onFittingRailVerticalDrag,
-                // Token context is a technical readout: Nerd Mode only.
-                context: nerdModeEnabled ? model.sessionContext : nil,
-                isContextPresented: $isSessionContextPresented,
-                onContextSelect: {
-                    isSessionContextPresented = true
-                    onDismissKeyboard()
-                },
-                onShowProviderUsage: providerUsageAction,
-                runtimeControls: model.runtimeControls,
-                onChangeModel: {
-                    opensModelControlsAfterContext = true
-                    isSessionContextPresented = false
-                },
-                onContextDismissed: {
-                    guard opensModelControlsAfterContext else { return }
-                    opensModelControlsAfterContext = false
-                    model.requestSessionControls()
-                }
+                onFittingVerticalDrag: onFittingRailVerticalDrag
             )
             .padding(.leading, horizontalSizeClass == .regular ? companionRailReservation : 0)
             .padding(.trailing, companionRailReservation)
@@ -245,8 +233,7 @@ struct ChatComposer: View {
             nativeSubagents: nerdModeEnabled ? model.nativeSubagents : [],
             tasks: model.taskDrawer
         )
-        let showsContext = nerdModeEnabled && model.sessionContext != nil
-        if !items.isEmpty || showsContext || model.runtimeControls != nil {
+        if !items.isEmpty || model.runtimeControls != nil {
             Menu {
                 ForEach(items) { item in
                     Button {
@@ -268,13 +255,6 @@ struct ChatComposer: View {
                     .disabled(ChatRuntimeSelectionLockout.isLocked(isTurnActive: controls.isTurnActive))
                     .accessibilityIdentifier("chat.composer.menu.model")
                 }
-                if showsContext {
-                    Button("Context usage", systemImage: "gauge.with.dots.needle.33percent") {
-                        isSessionContextPresented = true
-                        onDismissKeyboard()
-                    }
-                    .accessibilityIdentifier("chat.composer.menu.context")
-                }
                 if providerUsage?.isAvailable == true {
                     Button("Provider usage", systemImage: "gauge.with.dots.needle.50percent") { showProviderUsage() }
                         .accessibilityIdentifier("chat.composer.menu.provider-usage")
@@ -292,20 +272,9 @@ struct ChatComposer: View {
         }
     }
 
-    private var providerUsageAction: (() -> Void)? {
-        guard providerUsage?.isAvailable == true else { return nil }
-        return { showProviderUsage() }
-    }
-
-    /// Closes the context popover first; a popover and the overlay can't show together.
     private func showProviderUsage() {
-        let wasPresented = isSessionContextPresented
-        isSessionContextPresented = false
         onDismissKeyboard()
-        Task { @MainActor in
-            if wasPresented { try? await Task.sleep(for: .milliseconds(350)) }
-            providerUsage?.show(agentID: model.memberIDs.first ?? "default")
-        }
+        providerUsage?.show(agentID: model.memberIDs.first ?? "default")
     }
 
     private var companionRailReservation: CGFloat {
@@ -319,13 +288,8 @@ struct ChatComposer: View {
         !model.draft.isEmpty || isDraftOverflowing
     }
 
-    private var showsComposerEditingControls: Bool {
-        // iPad popovers may release keyboard focus without retiring their anchor.
-        draftFocus.wrappedValue || isSessionContextPresented
-    }
-
     private var usesCompactEditingLayout: Bool {
-        verticalSizeClass == .compact && showsComposerEditingControls
+        verticalSizeClass == .compact && draftFocus.wrappedValue
     }
 
     private var composerFooterLayout: AnyLayout {
@@ -595,6 +559,11 @@ struct ChatComposer: View {
         guard model.canSend else { return }
         if !keepsFocus { dismissComposerKeyboard() }
         if !referenceHub.selected.isEmpty {
+            // A reference send keeps its exact reviewed bytes, so a quote line can't ride along.
+            guard model.replyDraft == nil else {
+                referenceHub.showMessage("A reply can't include references yet. Cancel the reply or remove the references.")
+                return
+            }
             prepareReferenceSend(behavior: behavior)
             return
         }
