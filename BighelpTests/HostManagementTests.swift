@@ -41,6 +41,32 @@ import Testing
         #expect(fixture.registry.hosts.first?.notificationState == fixture.host.notificationState)
     }
 
+    @Test func disconnectedNotificationSetupDoesNotClaimAnUnconfirmedInstall() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.isConnected = false
+        management.rows = [fixture.plugin(enabled: true)]
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+
+        await model.enable()
+        #expect(model.state == .notConnected)
+        #expect(model.message == "Can't reach this computer. Reconnect and check setup again.")
+        #expect(model.actionTitle == "Retry Connection")
+        #expect(management.actions.isEmpty)
+        #expect(setup.calls == 0)
+        #expect(fixture.registry.hosts.first?.notificationState == .notConnected)
+
+        management.isConnected = true
+        await model.enable()
+        #expect(model.state == .enabled)
+        #expect(management.actions == ["list"])
+        #expect(setup.calls == 1)
+    }
+
     @Test func savedNotificationOptInDoesNotPromptAgainOnReopen() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

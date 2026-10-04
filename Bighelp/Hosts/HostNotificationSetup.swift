@@ -43,6 +43,7 @@ enum HostNotificationSetupResult: Sendable {
 enum HostNotificationState: String, Codable, Sendable {
     case notConfigured, checking, installing, installed, enabled, backendRestartRequired
     case verificationRequired, prerequisitesRequired, permissionDenied, managementRejected, unsupported, replacementRequired, outcomeUnknown
+    case notConnected
     case releaseUnavailable
 
     var message: String {
@@ -60,6 +61,7 @@ enum HostNotificationState: String, Codable, Sendable {
         case .unsupported: "This Hermes version doesn't support in-app installation."
         case .replacementRequired: "Update the existing bighelp plugin on this computer."
         case .outcomeUnknown: "Couldn't confirm setup. Check again before reinstalling."
+        case .notConnected: "Can't reach this computer. Reconnect and check setup again."
         case .releaseUnavailable: "Couldn't reach GitHub for the newest bighelp plugin. Check the internet connection and try again."
         }
     }
@@ -207,6 +209,8 @@ final class HostNotificationSetupModel {
             "Check Again"
         case .installing, .outcomeUnknown:
             "Check Installed State"
+        case .notConnected:
+            "Retry Connection"
         case .installed:
             enrollNotifications ? "Continue Notification Setup" : nil
         case .verificationRequired:
@@ -567,6 +571,7 @@ final class HostNotificationSetupModel {
         }
         guard let error = error as? DirectHermesError else { return .outcomeUnknown }
         switch error {
+        case .notConnected: return .notConnected
         case .rpcRejected(code: -32601): return .unsupported
         case .rpcRejected(code: 403): return .permissionDenied
         case .rpcRejected(code: 5026): return .managementRejected
