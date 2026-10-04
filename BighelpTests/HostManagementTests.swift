@@ -41,30 +41,164 @@ import Testing
         #expect(fixture.registry.hosts.first?.notificationState == fixture.host.notificationState)
     }
 
-    @Test func disconnectedNotificationSetupDoesNotClaimAnUnconfirmedInstall() async throws {
+    @Test func disconnectedNotificationSetupUsesSavedConnectionToEnroll() async throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }
         let management = Manager(saved: fixture.saved)
         management.isConnected = false
-        management.rows = [fixture.plugin(enabled: true)]
         let setup = Enrollment()
         fixture.registry.notificationSetup = setup
         let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
             pin: fixture.pin, management: management)
-
         await model.enable()
-        #expect(model.state == .notConnected)
-        #expect(model.message == "Can't reach this computer. Reconnect and check setup again.")
-        #expect(model.actionTitle == "Retry Connection")
+        #expect(model.state == .enabled)
         #expect(management.actions.isEmpty)
-        #expect(setup.calls == 0)
-        #expect(fixture.registry.hosts.first?.notificationState == .notConnected)
+        #expect(fixture.registry.hosts.first?.notificationState == .enabled)
+        #expect(setup.calls == 1)
+    }
 
-        management.isConnected = true
+    @Test func failedPluginListEnrollsWithoutPluginMutation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.listError = .disconnected(outcomeUnknown: true)
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
         await model.enable()
         #expect(model.state == .enabled)
         #expect(management.actions == ["list"])
         #expect(setup.calls == 1)
+    }
+
+    @Test func emptyOrDuplicatePluginRowsEnrollWithoutInstalling() async throws {
+        for duplicate in [false, true] {
+            let fixture = try Fixture()
+            defer { fixture.cleanup() }
+            let management = Manager(saved: fixture.saved)
+            if duplicate { management.rows = [fixture.plugin(enabled: true), fixture.plugin(enabled: true)] }
+            let setup = Enrollment()
+            fixture.registry.notificationSetup = setup
+            let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+                pin: fixture.pin, management: management)
+            await model.enable()
+            #expect(model.state == .enabled)
+            #expect(management.actions == ["list"])
+            #expect(setup.calls == 1)
+        }
+    }
+
+    @Test func missingSavedConnectionKeepsDisconnectedFailure() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.isConnected = false
+        management.savedConnection = nil
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        await model.enable()
+        #expect(model.state == .notConnected)
+        #expect(setup.calls == 0)
+    }
+
+    @Test func failedPluginCheckPreservesEnrollmentPrerequisites() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.listError = .disconnected(outcomeUnknown: true)
+        let setup = Enrollment()
+        setup.result = .prerequisitesRequired
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        await model.enable()
+        #expect(model.state == .prerequisitesRequired)
+        #expect(fixture.registry.hosts.first?.notificationState == .prerequisitesRequired)
+        #expect(setup.calls == 1)
+    }
+
+    @Test func disconnectedFeatureSetupDoesNotEnroll() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.isConnected = false
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management, enrollNotifications: false)
+        await model.enable()
+        #expect(model.state == .notConnected)
+        #expect(management.actions.isEmpty)
+        #expect(setup.calls == 0)
+    }
+
+    @Test func disabledExistingPluginTogglesBeforeNotificationEnrollment() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.rows = [fixture.plugin(enabled: false)]
+        management.onToggle = { management.rows = [fixture.plugin(enabled: true)] }
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        await model.enable()
+        #expect(management.actions == ["list", "toggle", "list"])
+        #expect(setup.calls == 1)
+        #expect(model.state == .enabled)
+    }
+
+    @Test func lostToggleReceiptEnrollsWithoutAnotherMutation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.rows = [fixture.plugin(enabled: false)]
+        let setup = Enrollment()
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        await model.enable()
+        #expect(management.actions == ["list", "toggle", "list"])
+        #expect(setup.calls == 1)
+        #expect(model.state == .enabled)
+    }
+
+    @Test func genericEnrollmentFailureIsNotRelabeledAsPrerequisites() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let management = Manager(saved: fixture.saved)
+        management.listError = .disconnected(outcomeUnknown: true)
+        let setup = Enrollment()
+        setup.error = DirectHermesError.invalidResponse
+        fixture.registry.notificationSetup = setup
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        await model.enable()
+        #expect(setup.calls == 1)
+        #expect(model.state == .outcomeUnknown)
+        #expect(fixture.registry.hosts.first?.notificationState == .outcomeUnknown)
+    }
+
+    @Test func cancelDuringNotificationInstallingLeavesSavedStateAlone() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        var host = fixture.host
+        host.notificationState = .installing
+        try fixture.registry.update(host)
+        let management = Manager(saved: fixture.saved)
+        management.isConnected = false
+        let model = HostNotificationSetupModel(host: host, registry: fixture.registry,
+            pin: fixture.pin, management: management)
+        let savedBefore = fixture.registry.hosts.first?.notificationState
+        management.onReconnect = { model.cancel() }
+        await model.enable()
+        #expect(model.state == savedBefore)
+        #expect(fixture.registry.hosts.first?.notificationState == savedBefore)
+        #expect(fixture.registry.hosts.first?.notificationState != .outcomeUnknown)
+        #expect(fixture.registry.hosts.first?.notificationState != .verificationRequired)
     }
 
     @Test func savedNotificationOptInDoesNotPromptAgainOnReopen() throws {
@@ -308,12 +442,14 @@ import Testing
         management.installError = .disconnected(outcomeUnknown: true)
         let setup = Enrollment()
         fixture.registry.notificationSetup = setup
-        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry, pin: fixture.pin, management: management)
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management, enrollNotifications: false)
         await model.enable()
         #expect(management.actions.filter { $0 == "install" }.count == 1)
-        #expect(model.state == .enabled)
+        #expect(model.state == .installed)
         await model.enable()
         #expect(management.actions.filter { $0 == "install" }.count == 1)
+        #expect(setup.calls == 0)
         #expect(management.requests.allSatisfy { $0["force"] != .boolean(true) && $0["profile"] == nil })
     }
 
@@ -400,14 +536,15 @@ import Testing
         defer { fixture.cleanup() }
         let management = Manager(saved: fixture.saved)
         management.installError = .disconnected(outcomeUnknown: true)
-        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry, pin: fixture.pin, management: management)
+        let model = HostNotificationSetupModel(host: fixture.host, registry: fixture.registry,
+            pin: fixture.pin, management: management, enrollNotifications: false)
         await model.enable()
         await model.enable()
         #expect(management.actions.filter { $0 == "install" }.count == 1)
         #expect(model.state == .outcomeUnknown)
-        management.rows = [.object(["name": .string("loopdy"), "key": .string("loopdy"), "status": .string("enabled"), "pinned_sha": .string(String(repeating: "b", count: 40))])]
+        management.rows = [fixture.plugin(enabled: true)]
         await model.enable()
-        #expect(model.state == .prerequisitesRequired)
+        #expect(model.state == .installed)
         #expect(management.actions.filter { $0 == "install" }.count == 1)
     }
 
@@ -442,14 +579,17 @@ import Testing
         var actions: [String] = []
         var requests: [[String: BighelpJSONValue]] = []
         var installError: DirectHermesError?
+        var listError: DirectHermesError?
+        var onReconnect: (() -> Void)?
         var onInstall: (() -> Void)?
         var onToggle: (() -> Void)?
         init(saved: DirectHermesSavedConnection) { savedConnection = saved }
-        func reconnect() async {}
+        func reconnect() async { onReconnect?() }
         func managePlugins(_ params: [String: BighelpJSONValue]) async throws -> BighelpJSONValue {
             requests.append(params)
             let action = params["action"]?.string ?? ""
             actions.append(action)
+            if action == "list", let listError { throw listError }
             if action == "install" { onInstall?(); if let installError { throw installError } }
             if action == "toggle" { onToggle?() }
             return .object(["plugins": .array(rows)])

@@ -55,13 +55,13 @@ enum HostNotificationState: String, Codable, Sendable {
         case .enabled: "Notifications enabled."
         case .verificationRequired: "Check your saved setup to continue."
         case .backendRestartRequired: "Restart the hermes serve process on the host (not just the messaging gateway), then check again."
-        case .prerequisitesRequired: "This computer needs notification support."
-        case .permissionDenied: "This computer doesn't allow plugin installation."
-        case .managementRejected: "This computer rejected installation. Check Hermes for details."
+        case .prerequisitesRequired: "This device needs notification support."
+        case .permissionDenied: "This device doesn't allow plugin installation."
+        case .managementRejected: "This device rejected installation. Check Hermes for details."
         case .unsupported: "This Hermes version doesn't support in-app installation."
-        case .replacementRequired: "Update the existing bighelp plugin on this computer."
+        case .replacementRequired: "Update the existing bighelp plugin on this device."
         case .outcomeUnknown: "Couldn't confirm setup. Check again before reinstalling."
-        case .notConnected: "Can't reach this computer. Reconnect and check setup again."
+        case .notConnected: "Can't reach this device. Reconnect and check setup again."
         case .releaseUnavailable: "Couldn't reach GitHub for the newest bighelp plugin. Check the internet connection and try again."
         }
     }
@@ -188,7 +188,7 @@ final class HostNotificationSetupModel {
         guard !enrollNotifications else { return state.message }
         return switch state {
         case .notConfigured:
-            "Add optional bighelp features to this computer."
+            "Add optional bighelp features to this device."
         case .installed, .enabled:
             "Plugin installed."
         case .verificationRequired:
@@ -274,16 +274,14 @@ final class HostNotificationSetupModel {
         let wasActive = operation != nil || isWorking
         operation = nil
         isWorking = false
-        guard wasActive, var host = registry.hosts.first(where: { $0.id == hostID }) else { return }
+        guard wasActive, let host = registry.hosts.first(where: { $0.id == hostID }) else { return }
         switch state {
         case .installing:
             // The request may still have reached the host. Preserve its intent
             // and require list readback instead of exposing another install.
-            state = .outcomeUnknown
             if enrollNotifications {
-                host.notificationState = .outcomeUnknown
-                try? registry.update(host)
-            }
+                state = host.notificationState
+            } else { state = .outcomeUnknown }
         case .checking:
             state = enrollNotifications ? host.notificationState : .notConfigured
         default:
@@ -311,19 +309,31 @@ final class HostNotificationSetupModel {
         }
         var host = original
         let workspace = management
+        var checkingPlugin = false
         do {
             if !workspace.isConnected { await workspace.reconnect() }
             guard owns() else { return }
-            guard workspace.isConnected else { throw DirectHermesError.notConnected }
+            guard workspace.isConnected else {
+                try await enrollAfterFailedCheck(.notConnected, host: &host,
+                    connection: workspace.savedConnection, isCurrent: { owns() })
+                return
+            }
             guard DirectHermesIdentity.matches(workspace.savedConnection?.identity, host.principalIdentity) else {
                 throw DirectHermesError.identityChanged
             }
             state = .checking
+            checkingPlugin = true
             var rows = try HostInstalledPlugin.decodeList(await workspace.managePlugins(["action": .string("list")]))
             guard owns() else { return }
             var matches = rows.filter { $0.name == "loopdy" }
-            guard matches.count <= 1 else { try finish(.replacementRequired, host: &host); return }
+            guard matches.count <= 1 else {
+                checkingPlugin = false
+                try await enrollAfterFailedCheck(.replacementRequired, host: &host,
+                    connection: workspace.savedConnection, isCurrent: { owns() })
+                return
+            }
             if let installed = matches.first {
+                checkingPlugin = false
                 // A newer or equal plugin stays; GitHub being unreachable doesn't block enabling it.
                 var target: HostPluginPin?
                 if !enrollNotifications { target = try? await installTarget(for: host) }
@@ -365,6 +375,7 @@ final class HostNotificationSetupModel {
                     guard owns() else { return }
                     // Enabling preserves the operator's installed revision. A
                     // lost receipt is reconciled without reinstalling anything.
+                    checkingPlugin = true
                     let observed = try HostInstalledPlugin.decodeList(
                         await workspace.managePlugins(["action": .string("list")])
                     ).filter { $0.name == "loopdy" }
@@ -372,9 +383,13 @@ final class HostNotificationSetupModel {
                     guard observed.count == 1, let verified = observed.first,
                           verified.key == installed.key, verified.pinnedSHA == installed.pinnedSHA,
                           verified.configuredEnabled else {
-                        try finish(toggleError.map(Self.failureState) ?? .outcomeUnknown, host: &host)
+                        if toggleError is CancellationError { return }
+                        checkingPlugin = false
+                        try await enrollAfterFailedCheck(toggleError.map(Self.failureState) ?? .outcomeUnknown,
+                            host: &host, connection: workspace.savedConnection, isCurrent: { owns() })
                         return
                     }
+                    checkingPlugin = false
                 }
                 // The pin controls an installation we initiate, not compatibility
                 // of an operator's existing plugin. Enrollment verifies the live
@@ -385,6 +400,13 @@ final class HostNotificationSetupModel {
                 try await enrollInstalled(host: &host, connection: workspace.savedConnection, isCurrent: { owns() })
                 return
             }
+            if enrollNotifications {
+                checkingPlugin = false
+                try await enrollAfterFailedCheck(.outcomeUnknown, host: &host,
+                    connection: workspace.savedConnection, isCurrent: { owns() })
+                return
+            }
+            checkingPlugin = false
             let pin: HostPluginPin
             do {
                 pin = try await installTarget(for: host)
@@ -488,12 +510,39 @@ final class HostNotificationSetupModel {
             try await enrollInstalled(host: &host, connection: workspace.savedConnection, isCurrent: { owns() })
         } catch {
             guard owns() else { return }
-            state = Self.failureState(error)
-            host.notificationBinding = registry.hosts.first(where: { $0.id == host.id })?.notificationBinding
-            providerFailure = error as? BighelpManagedNotificationSetupError
-            if enrollNotifications { host.notificationState = state }
-            try? registry.update(host)
+            if error is CancellationError { return }
+            if checkingPlugin && enrollNotifications,
+               let connection = workspace.savedConnection,
+               DirectHermesIdentity.matches(connection.identity, host.principalIdentity) {
+                checkingPlugin = false
+                do {
+                    try await enrollInstalled(host: &host, connection: connection, isCurrent: { owns() })
+                } catch {
+                    guard owns() else { return }
+                    recordFailure(error, host: &host)
+                }
+                return
+            }
+            recordFailure(error, host: &host)
         }
+    }
+
+    private func recordFailure(_ error: any Error, host: inout BighelpConfiguredHost) {
+        state = Self.failureState(error)
+        host.notificationBinding = registry.hosts.first(where: { $0.id == host.id })?.notificationBinding
+        providerFailure = error as? BighelpManagedNotificationSetupError
+        if enrollNotifications { host.notificationState = state }
+        try? registry.update(host)
+    }
+
+    private func enrollAfterFailedCheck(_ failure: HostNotificationState, host: inout BighelpConfiguredHost,
+                                        connection: DirectHermesSavedConnection?,
+                                        isCurrent: @escaping @MainActor () -> Bool) async throws {
+        guard enrollNotifications, let connection,
+              DirectHermesIdentity.matches(connection.identity, host.principalIdentity) else {
+            try finish(failure, host: &host); return
+        }
+        try await enrollInstalled(host: &host, connection: connection, isCurrent: isCurrent)
     }
 
     /// Shows the newest release before someone confirms an install.
